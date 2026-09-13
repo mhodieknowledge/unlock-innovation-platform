@@ -1,0 +1,45 @@
+# Secrets — this repository is public (see SECURITY.md §6, FREE_INFRASTRUCTURE.md §3.8).
+# No secret may ever be committed. Secrets live in GitHub Actions secrets and
+# Cloudflare Worker secrets only.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.json
+.dev.vars
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+.next/
+out/
+dist/
+build/
+.open-next/
+.wrangler/
+
+# Testing / coverage
+coverage/
+*.lcov
+
+# Supabase local
+supabase/.branches/
+supabase/.temp/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Byte-budget reports (generated)
+.budget-report.json
