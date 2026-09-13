@@ -1,0 +1,16 @@
+{
+  "name": "@mbele/eligibility",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Deterministic eligibility engine. Pure functions, no I/O, no network, no LLM.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -b --pretty false"
+  }
+}

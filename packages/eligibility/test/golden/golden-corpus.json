@@ -1,0 +1,508 @@
+{
+  "$comment": "SYNTHETIC regression fixtures. See README.md in this directory: AI_SYSTEM.md §12 additionally requires >=60 hand-labelled REAL records, which is tracked as outstanding. Rule text here is representative of real phrasing but was authored for this suite.",
+  "as_of_default": "2026-09-13T00:00:00Z",
+  "cases": [
+    {
+      "id": "C01",
+      "name": "Africa-wide call, resident Zimbabwe",
+      "covers": ["country_in"],
+      "rules": [{ "rule_type": "country_in", "params": { "countries": ["ZW", "ZM", "BW", "NA", "MW", "MZ", "KE", "NG", "GH", "ZA"] }, "source_quote": "Applications are open to individuals resident in any African country.", "confidence": 0.94 }],
+      "input": { "country_of_residence": "ZW" },
+      "expect": { "verdict": "eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C02",
+      "name": "Africa-wide call, resident Zambia",
+      "covers": ["country_in"],
+      "rules": [{ "rule_type": "country_in", "params": { "countries": ["ZW", "ZM", "BW", "NA", "MW", "MZ"] }, "source_quote": "Open to applicants across Southern Africa.", "confidence": 0.91 }],
+      "input": { "country_of_residence": "ZM" },
+      "expect": { "verdict": "eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C03",
+      "name": "Southern Africa call, resident Botswana",
+      "covers": ["country_in"],
+      "rules": [{ "rule_type": "country_in", "params": { "countries": ["ZW", "ZM", "BW", "NA", "MW", "MZ"] }, "source_quote": "Open to applicants across Southern Africa.", "confidence": 0.91 }],
+      "input": { "country_of_residence": "BW" },
+      "expect": { "verdict": "eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C04",
+      "name": "Southern Africa call, resident Namibia",
+      "covers": ["country_in"],
+      "rules": [{ "rule_type": "country_in", "params": { "countries": ["ZW", "ZM", "BW", "NA", "MW", "MZ"] }, "source_quote": "Open to applicants across Southern Africa.", "confidence": 0.91 }],
+      "input": { "country_of_residence": "NA" },
+      "expect": { "verdict": "eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C05",
+      "name": "Southern Africa call, resident Malawi",
+      "covers": ["country_in"],
+      "rules": [{ "rule_type": "country_in", "params": { "countries": ["ZW", "ZM", "BW", "NA", "MW", "MZ"] }, "source_quote": "Open to applicants across Southern Africa.", "confidence": 0.91 }],
+      "input": { "country_of_residence": "MW" },
+      "expect": { "verdict": "eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C06",
+      "name": "Southern Africa call, resident Mozambique",
+      "covers": ["country_in"],
+      "rules": [{ "rule_type": "country_in", "params": { "countries": ["ZW", "ZM", "BW", "NA", "MW", "MZ"] }, "source_quote": "Open to applicants across Southern Africa.", "confidence": 0.91 }],
+      "input": { "country_of_residence": "MZ" },
+      "expect": { "verdict": "eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C07",
+      "name": "Country list excludes the applicant's country",
+      "covers": ["country_in"],
+      "rules": [{ "rule_type": "country_in", "params": { "countries": ["NG", "GH"] }, "source_quote": "This programme is open to residents of Nigeria and Ghana only.", "confidence": 0.93 }],
+      "input": { "country_of_residence": "ZW" },
+      "expect": { "verdict": "not_eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C08",
+      "name": "Country rule with no country supplied",
+      "covers": ["country_in"],
+      "rules": [{ "rule_type": "country_in", "params": { "countries": ["ZW", "ZM"] }, "source_quote": "Open to residents of Zimbabwe and Zambia.", "confidence": 0.9 }],
+      "input": {},
+      "expect": { "verdict": "unclear", "missing_fields": ["country_of_residence"] }
+    },
+    {
+      "id": "C09",
+      "name": "Excluded country matches the applicant",
+      "covers": ["country_not_in"],
+      "rules": [{ "rule_type": "country_not_in", "params": { "countries": ["ZW", "SD"] }, "source_quote": "Residents of Zimbabwe and Sudan are not eligible under our funder's terms.", "confidence": 0.88 }],
+      "input": { "country_of_residence": "ZW" },
+      "expect": { "verdict": "not_eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C10",
+      "name": "Exclusion list does not match the applicant",
+      "covers": ["country_not_in"],
+      "rules": [{ "rule_type": "country_not_in", "params": { "countries": ["NG"] }, "source_quote": "Applicants resident in Nigeria are not eligible for this cycle.", "confidence": 0.9 }],
+      "input": { "country_of_residence": "ZW" },
+      "expect": { "verdict": "eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C11",
+      "name": "Exclusion rule with no country supplied",
+      "covers": ["country_not_in"],
+      "rules": [{ "rule_type": "country_not_in", "params": { "countries": ["NG"] }, "source_quote": "Applicants resident in Nigeria are not eligible for this cycle.", "confidence": 0.9 }],
+      "input": {},
+      "expect": { "verdict": "unclear", "missing_fields": ["country_of_residence"] }
+    },
+    {
+      "id": "C12",
+      "name": "Malformed params must not throw and must not pass",
+      "covers": ["country_in"],
+      "rules": [{ "rule_type": "country_in", "params": { "countries": "ZW" }, "source_quote": "Open to residents of Zimbabwe.", "confidence": 0.9 }],
+      "input": { "country_of_residence": "ZW" },
+      "expect": { "verdict": "unclear", "missing_fields": [] }
+    },
+    {
+      "id": "C13",
+      "name": "Nationality matches",
+      "covers": ["nationality_in"],
+      "rules": [{ "rule_type": "nationality_in", "params": { "countries": ["ZW"] }, "source_quote": "Applicants must be Zimbabwean nationals.", "confidence": 0.92 }],
+      "input": { "nationalities": ["ZW"] },
+      "expect": { "verdict": "eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C14",
+      "name": "Nationality does not match",
+      "covers": ["nationality_in"],
+      "rules": [{ "rule_type": "nationality_in", "params": { "countries": ["ZM"] }, "source_quote": "Open to Zambian citizens.", "confidence": 0.92 }],
+      "input": { "nationalities": ["ZW"] },
+      "expect": { "verdict": "not_eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C15",
+      "name": "Nationality rule with no nationality supplied",
+      "covers": ["nationality_in"],
+      "rules": [{ "rule_type": "nationality_in", "params": { "countries": ["ZM"] }, "source_quote": "Open to Zambian citizens.", "confidence": 0.92 }],
+      "input": { "country_of_residence": "ZM" },
+      "expect": { "verdict": "unclear", "missing_fields": ["nationalities"] }
+    },
+    {
+      "id": "C16",
+      "name": "Dual national, one nationality qualifies",
+      "covers": ["nationality_in"],
+      "rules": [{ "rule_type": "nationality_in", "params": { "countries": ["MW", "MZ"] }, "source_quote": "Open to nationals of Malawi and Mozambique.", "confidence": 0.9 }],
+      "input": { "nationalities": ["GB", "MW"] },
+      "expect": { "verdict": "eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C17",
+      "name": "Residency requirement satisfied",
+      "covers": ["residency_required"],
+      "rules": [{ "rule_type": "residency_required", "params": { "countries": ["BW"] }, "source_quote": "Applicants must be resident in Botswana at the time of application.", "confidence": 0.89 }],
+      "input": { "country_of_residence": "BW", "nationalities": ["ZW"] },
+      "expect": { "verdict": "eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C18",
+      "name": "Residency requirement not satisfied, nationality irrelevant",
+      "covers": ["residency_required"],
+      "rules": [{ "rule_type": "residency_required", "params": { "countries": ["BW"] }, "source_quote": "Applicants must be resident in Botswana at the time of application.", "confidence": 0.89 }],
+      "input": { "country_of_residence": "ZW", "nationalities": ["BW"] },
+      "expect": { "verdict": "not_eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C19",
+      "name": "Residency required but the rule does not say where",
+      "covers": ["residency_required"],
+      "rules": [{ "rule_type": "residency_required", "params": {}, "source_quote": "Applicants must satisfy the residency requirements set out in the guidelines.", "confidence": 0.55 }],
+      "input": { "country_of_residence": "ZW" },
+      "expect": { "verdict": "unclear", "missing_fields": [] }
+    },
+    {
+      "id": "C20",
+      "name": "Age band satisfied for both possible ages",
+      "covers": ["age_between"],
+      "rules": [{ "rule_type": "age_between", "params": { "min": 18, "max": 25 }, "source_quote": "Applicants must be between 18 and 25 years of age.", "confidence": 0.9 }],
+      "input": { "birth_year": 2004 },
+      "expect": { "verdict": "eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C21",
+      "name": "Age above the maximum for both possible ages",
+      "covers": ["age_between"],
+      "rules": [{ "rule_type": "age_between", "params": { "max": 20 }, "source_quote": "Applicants must be under 21 at the closing date.", "confidence": 0.9 }],
+      "input": { "birth_year": 2004 },
+      "expect": { "verdict": "not_eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C22",
+      "name": "Age below the minimum for both possible ages",
+      "covers": ["age_between"],
+      "rules": [{ "rule_type": "age_between", "params": { "min": 25 }, "source_quote": "This fellowship is open to applicants aged 25 and over.", "confidence": 0.9 }],
+      "input": { "birth_year": 2004 },
+      "expect": { "verdict": "not_eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C23",
+      "name": "Birth year alone leaves the upper bound ambiguous",
+      "covers": ["age_between"],
+      "rules": [{ "rule_type": "age_between", "params": { "max": 21 }, "source_quote": "Applicants must be 21 or younger at the closing date.", "confidence": 0.9 }],
+      "input": { "birth_year": 2004 },
+      "expect": { "verdict": "unclear", "missing_fields": [] }
+    },
+    {
+      "id": "C24",
+      "name": "Age rule with no birth year supplied",
+      "covers": ["age_between"],
+      "rules": [{ "rule_type": "age_between", "params": { "min": 18, "max": 25 }, "source_quote": "Applicants must be between 18 and 25 years of age.", "confidence": 0.9 }],
+      "input": { "country_of_residence": "ZW" },
+      "expect": { "verdict": "unclear", "missing_fields": ["birth_year"] }
+    },
+    {
+      "id": "C25",
+      "name": "Under-18-eligible programme, applicant clearly inside the band",
+      "covers": ["age_between"],
+      "rules": [{ "rule_type": "age_between", "params": { "min": 15, "max": 22 }, "source_quote": "The prize is open to young entrepreneurs aged 15 to 22.", "confidence": 0.93 }],
+      "input": { "birth_year": 2008 },
+      "expect": { "verdict": "eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C26",
+      "name": "Birth year alone leaves the lower bound ambiguous",
+      "covers": ["age_between"],
+      "rules": [{ "rule_type": "age_between", "params": { "min": 18 }, "source_quote": "Applicants must be at least 18 years old.", "confidence": 0.95 }],
+      "input": { "birth_year": 2008 },
+      "expect": { "verdict": "unclear", "missing_fields": [] }
+    },
+    {
+      "id": "C27",
+      "name": "Student status matches",
+      "covers": ["student_status_in"],
+      "rules": [{ "rule_type": "student_status_in", "params": { "statuses": ["undergraduate"] }, "source_quote": "Open to currently enrolled undergraduate students.", "confidence": 0.9 }],
+      "input": { "student_status": "undergraduate" },
+      "expect": { "verdict": "eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C28",
+      "name": "Student status does not match",
+      "covers": ["student_status_in"],
+      "rules": [{ "rule_type": "student_status_in", "params": { "statuses": ["postgraduate"] }, "source_quote": "This scholarship supports postgraduate study only.", "confidence": 0.91 }],
+      "input": { "student_status": "undergraduate" },
+      "expect": { "verdict": "not_eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C29",
+      "name": "Student status rule with no status supplied",
+      "covers": ["student_status_in"],
+      "rules": [{ "rule_type": "student_status_in", "params": { "statuses": ["undergraduate", "postgraduate"] }, "source_quote": "Open to students in undergraduate or postgraduate programmes.", "confidence": 0.88 }],
+      "input": { "country_of_residence": "ZM" },
+      "expect": { "verdict": "unclear", "missing_fields": ["student_status"] }
+    },
+    {
+      "id": "C30",
+      "name": "Student status matches the second listed value",
+      "covers": ["student_status_in"],
+      "rules": [{ "rule_type": "student_status_in", "params": { "statuses": ["undergraduate", "postgraduate"] }, "source_quote": "Open to students in undergraduate or postgraduate programmes.", "confidence": 0.88 }],
+      "input": { "student_status": "postgraduate" },
+      "expect": { "verdict": "eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C31",
+      "name": "Secondary-only programme, applicant not a student",
+      "covers": ["student_status_in"],
+      "rules": [{ "rule_type": "student_status_in", "params": { "statuses": ["secondary"] }, "source_quote": "The competition is open to secondary school learners.", "confidence": 0.92 }],
+      "input": { "student_status": "not_student" },
+      "expect": { "verdict": "not_eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C32",
+      "name": "Year of study in the explicit list",
+      "covers": ["year_of_study_in"],
+      "rules": [{ "rule_type": "year_of_study_in", "params": { "years": [2, 3] }, "source_quote": "Applicants must be in their second or third year of study.", "confidence": 0.87 }],
+      "input": { "year_of_study": 2 },
+      "expect": { "verdict": "eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C33",
+      "name": "Year of study outside the range",
+      "covers": ["year_of_study_in"],
+      "rules": [{ "rule_type": "year_of_study_in", "params": { "min": 2, "max": 4 }, "source_quote": "Open to students from second year onwards.", "confidence": 0.86 }],
+      "input": { "year_of_study": 1 },
+      "expect": { "verdict": "not_eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C34",
+      "name": "Year of study rule with no year supplied",
+      "covers": ["year_of_study_in"],
+      "rules": [{ "rule_type": "year_of_study_in", "params": { "years": [2, 3] }, "source_quote": "Applicants must be in their second or third year of study.", "confidence": 0.87 }],
+      "input": { "student_status": "undergraduate" },
+      "expect": { "verdict": "unclear", "missing_fields": ["year_of_study"] }
+    },
+    {
+      "id": "C35",
+      "name": "Institution type matches",
+      "covers": ["institution_type_in"],
+      "rules": [{ "rule_type": "institution_type_in", "params": { "types": ["university", "polytechnic"] }, "source_quote": "Applicants must be enrolled at a recognised university or polytechnic.", "confidence": 0.85 }],
+      "input": { "institution_type": "university" },
+      "expect": { "verdict": "eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C36",
+      "name": "Institution type rule with nothing supplied",
+      "covers": ["institution_type_in"],
+      "rules": [{ "rule_type": "institution_type_in", "params": { "types": ["university"] }, "source_quote": "Applicants must be enrolled at a recognised university.", "confidence": 0.85 }],
+      "input": { "student_status": "undergraduate" },
+      "expect": { "verdict": "unclear", "missing_fields": ["institution_type"] }
+    },
+    {
+      "id": "C37",
+      "name": "Experience under the cap",
+      "covers": ["experience_between"],
+      "rules": [{ "rule_type": "experience_between", "params": { "max": 2 }, "source_quote": "This is an early-career programme for those with no more than two years of professional experience.", "confidence": 0.84 }],
+      "input": { "years_experience": 1 },
+      "expect": { "verdict": "eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C38",
+      "name": "Experience below the floor",
+      "covers": ["experience_between"],
+      "rules": [{ "rule_type": "experience_between", "params": { "min": 5 }, "source_quote": "Applicants should have at least five years of relevant experience.", "confidence": 0.86 }],
+      "input": { "years_experience": 1 },
+      "expect": { "verdict": "not_eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C39",
+      "name": "Zero years of experience is a supplied value, not a missing one",
+      "covers": ["experience_between"],
+      "rules": [{ "rule_type": "experience_between", "params": { "min": 0, "max": 2 }, "source_quote": "Open to beginners with up to two years of experience.", "confidence": 0.83 }],
+      "input": { "years_experience": 0 },
+      "expect": { "verdict": "eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C40",
+      "name": "Women-in-tech programme, applicant qualifies",
+      "covers": ["gender_restricted"],
+      "rules": [{ "rule_type": "gender_restricted", "params": { "genders": ["female"] }, "source_quote": "This programme is open to women in technology across the continent.", "confidence": 0.94 }],
+      "input": { "gender": "female" },
+      "expect": { "verdict": "eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C41",
+      "name": "Gender-restricted programme, applicant does not qualify",
+      "covers": ["gender_restricted"],
+      "rules": [{ "rule_type": "gender_restricted", "params": { "genders": ["female"] }, "source_quote": "This programme is open to women in technology across the continent.", "confidence": 0.94 }],
+      "input": { "gender": "male" },
+      "expect": { "verdict": "not_eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C42",
+      "name": "Gender is never inferred when not supplied",
+      "covers": ["gender_restricted"],
+      "rules": [{ "rule_type": "gender_restricted", "params": { "genders": ["female"] }, "source_quote": "This programme is open to women in technology across the continent.", "confidence": 0.94 }],
+      "input": { "country_of_residence": "NA" },
+      "expect": { "verdict": "unclear", "missing_fields": ["gender"] }
+    },
+    {
+      "id": "C43",
+      "name": "Language requirement satisfied",
+      "covers": ["language_required"],
+      "rules": [{ "rule_type": "language_required", "params": { "languages": ["English"] }, "source_quote": "All applications must be submitted in English.", "confidence": 0.9 }],
+      "input": { "languages": ["English", "Shona"] },
+      "expect": { "verdict": "eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C44",
+      "name": "Language requirement not satisfied",
+      "covers": ["language_required"],
+      "rules": [{ "rule_type": "language_required", "params": { "languages": ["French"] }, "source_quote": "Applications must be submitted in French.", "confidence": 0.9 }],
+      "input": { "languages": ["English"] },
+      "expect": { "verdict": "not_eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C45",
+      "name": "Travel required and possible",
+      "covers": ["travel_required"],
+      "rules": [{ "rule_type": "travel_required", "params": {}, "source_quote": "Finalists must travel to Nairobi for the final pitch.", "confidence": 0.88 }],
+      "input": { "can_travel": true },
+      "expect": { "verdict": "eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C46",
+      "name": "Travel required and explicitly not possible",
+      "covers": ["travel_required"],
+      "rules": [{ "rule_type": "travel_required", "params": {}, "source_quote": "Finalists must travel to Nairobi for the final pitch.", "confidence": 0.88 }],
+      "input": { "can_travel": false },
+      "expect": { "verdict": "not_eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C47",
+      "name": "Travel rule with nothing supplied",
+      "covers": ["travel_required"],
+      "rules": [{ "rule_type": "travel_required", "params": {}, "source_quote": "Finalists must travel to Nairobi for the final pitch.", "confidence": 0.88 }],
+      "input": { "country_of_residence": "MW" },
+      "expect": { "verdict": "unclear", "missing_fields": ["can_travel"] }
+    },
+    {
+      "id": "C48",
+      "name": "A remote-only preference is not read as ineligibility",
+      "covers": ["travel_required"],
+      "rules": [{ "rule_type": "travel_required", "params": {}, "source_quote": "Finalists must travel to Nairobi for the final pitch.", "confidence": 0.88 }],
+      "input": { "remote_only": true },
+      "expect": { "verdict": "unclear", "missing_fields": ["can_travel"] }
+    },
+    {
+      "id": "C49",
+      "name": "Informational rules alone tell us nothing about this person",
+      "covers": ["team_size_between"],
+      "rules": [{ "rule_type": "team_size_between", "params": { "min": 2, "max": 5 }, "source_quote": "Entries must be submitted by teams of between two and five members.", "confidence": 0.95 }],
+      "input": { "country_of_residence": "ZW" },
+      "expect": { "verdict": "unclear", "missing_fields": [] }
+    },
+    {
+      "id": "C50",
+      "name": "Team size does not block an otherwise eligible individual",
+      "covers": ["team_size_between", "country_in"],
+      "rules": [
+        { "rule_type": "country_in", "params": { "countries": ["ZW"] }, "source_quote": "Open to residents of Zimbabwe.", "confidence": 0.93 },
+        { "rule_type": "team_size_between", "params": { "min": 2, "max": 5 }, "source_quote": "Entries must be submitted by teams of between two and five members.", "confidence": 0.95 }
+      ],
+      "input": { "country_of_residence": "ZW" },
+      "expect": { "verdict": "eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C51",
+      "name": "Individual-only is informational",
+      "covers": ["individual_only", "country_in"],
+      "rules": [
+        { "rule_type": "country_in", "params": { "countries": ["ZM"] }, "source_quote": "Open to residents of Zambia.", "confidence": 0.93 },
+        { "rule_type": "individual_only", "params": {}, "source_quote": "This award is made to individuals, not teams.", "confidence": 0.9 }
+      ],
+      "input": { "country_of_residence": "ZM" },
+      "expect": { "verdict": "eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C52",
+      "name": "Team-only is informational",
+      "covers": ["team_only", "country_in"],
+      "rules": [
+        { "rule_type": "country_in", "params": { "countries": ["BW"] }, "source_quote": "Open to residents of Botswana.", "confidence": 0.93 },
+        { "rule_type": "team_only", "params": {}, "source_quote": "Only team entries will be accepted.", "confidence": 0.9 }
+      ],
+      "input": { "country_of_residence": "BW" },
+      "expect": { "verdict": "eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C53",
+      "name": "Free to enter, otherwise eligible",
+      "covers": ["cost", "country_in"],
+      "rules": [
+        { "rule_type": "country_in", "params": { "countries": ["MZ"] }, "source_quote": "Open to residents of Mozambique.", "confidence": 0.93 },
+        { "rule_type": "cost", "params": { "kind": "free" }, "source_quote": "There is no fee to enter this competition.", "confidence": 0.97 }
+      ],
+      "input": { "country_of_residence": "MZ" },
+      "expect": { "verdict": "eligible", "missing_fields": [], "charges_fee": false }
+    },
+    {
+      "id": "C54",
+      "name": "A fee to apply is caught by the publication gate, not the verdict",
+      "covers": ["cost", "country_in"],
+      "rules": [
+        { "rule_type": "country_in", "params": { "countries": ["ZW"] }, "source_quote": "Open to residents of Zimbabwe.", "confidence": 0.93 },
+        { "rule_type": "cost", "params": { "kind": "paid" }, "source_quote": "A non-refundable processing fee of $50 is payable on application.", "confidence": 0.96 }
+      ],
+      "input": { "country_of_residence": "ZW" },
+      "expect": { "verdict": "eligible", "missing_fields": [], "charges_fee": true }
+    },
+    {
+      "id": "C55",
+      "name": "Low-confidence high-stakes rule that would pass cannot yield eligible",
+      "covers": ["country_in", "confidence"],
+      "rules": [{ "rule_type": "country_in", "params": { "countries": ["ZW"] }, "source_quote": "Open to applicants from the region.", "confidence": 0.62 }],
+      "input": { "country_of_residence": "ZW" },
+      "expect": { "verdict": "unclear", "missing_fields": [] }
+    },
+    {
+      "id": "C56",
+      "name": "Low-confidence high-stakes rule that would fail cannot yield not_eligible",
+      "covers": ["country_in", "confidence"],
+      "rules": [{ "rule_type": "country_in", "params": { "countries": ["NG"] }, "source_quote": "Open to applicants from the region.", "confidence": 0.62 }],
+      "input": { "country_of_residence": "ZW" },
+      "expect": { "verdict": "unclear", "missing_fields": [] }
+    },
+    {
+      "id": "C57",
+      "name": "Low-confidence non-high-stakes pass degrades to likely_eligible",
+      "covers": ["language_required", "confidence"],
+      "rules": [{ "rule_type": "language_required", "params": { "languages": ["English"] }, "source_quote": "Working knowledge of English is expected.", "confidence": 0.65 }],
+      "input": { "languages": ["English"] },
+      "expect": { "verdict": "likely_eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C58",
+      "name": "One below-floor rule among high-confidence passes gives likely_eligible",
+      "covers": ["country_in", "language_required", "confidence"],
+      "rules": [
+        { "rule_type": "country_in", "params": { "countries": ["ZW", "ZM"] }, "source_quote": "Open to residents of Zimbabwe and Zambia.", "confidence": 0.95 },
+        { "rule_type": "language_required", "params": { "languages": ["English"] }, "source_quote": "Working knowledge of English is expected.", "confidence": 0.7 }
+      ],
+      "input": { "country_of_residence": "ZW", "languages": ["English"] },
+      "expect": { "verdict": "likely_eligible", "missing_fields": [] }
+    },
+    {
+      "id": "C59",
+      "name": "A rule with a blank source quote is never relied upon",
+      "covers": ["invariant_2"],
+      "rules": [{ "rule_type": "country_in", "params": { "countries": ["ZW"] }, "source_quote": "", "confidence": 0.99 }],
+      "input": { "country_of_residence": "ZW" },
+      "expect": { "verdict": "unclear", "missing_fields": [] }
+    },
+    {
+      "id": "C60",
+      "name": "Unstructured prose, an explicit fail, and a pass combine to not_eligible",
+      "covers": ["other_unstructured", "student_status_in", "country_in"],
+      "rules": [
+        { "rule_type": "country_in", "params": { "countries": ["ZW", "ZM", "MW"] }, "source_quote": "Open to residents of Zimbabwe, Zambia and Malawi.", "confidence": 0.92 },
+        { "rule_type": "student_status_in", "params": { "statuses": ["postgraduate"] }, "source_quote": "Applicants must be enrolled in a postgraduate programme.", "confidence": 0.9 },
+        { "rule_type": "other_unstructured", "params": { "text": "a demonstrated commitment to open science" }, "source_quote": "Shortlisted candidates will show a demonstrated commitment to open science.", "confidence": 0.6 }
+      ],
+      "input": { "country_of_residence": "ZW", "student_status": "undergraduate" },
+      "expect": { "verdict": "not_eligible", "missing_fields": [] }
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "name": "mbele",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Africa-first builder opportunity platform. Brand name is a config token (PRODUCT_SPEC.md §1).",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -b --pretty false",
+    "lint": "echo \"(lint wired in Phase 0)\""
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  }
+}
