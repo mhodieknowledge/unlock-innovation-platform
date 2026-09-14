@@ -1,15 +1,15 @@
 /**
  * Byte budgets for ON-DEMAND (SSR) routes. Invariant 5.
  *
- * scripts/byte-budget.mjs measures prerendered HTML in dist. The opportunity
- * detail page renders on demand, and it is both the route with the tightest
- * budget (120 KB total, 30 KB JS) and the one ADR 0001 was decided on — so
+ * scripts/byte-budget.mjs measures prerendered HTML in dist. Every interesting
+ * route in this product renders on demand, including the opportunity detail page
+ * — which has the tightest budget and is the route ADR 0001 was decided on — so
  * without this test invariant 5 is unenforced exactly where it matters most.
  *
- * Renders the real page through Astro's container API with the data layer
- * mocked, against a DELIBERATELY WORST-CASE record: maximum-length summary, a
- * long title, ten eligibility rules each carrying a long verbatim quote. A thin
- * fixture would flatter the budget and prove nothing.
+ * Each route renders through Astro's container API with the data layer mocked,
+ * against DELIBERATELY WORST-CASE data: long titles, maximum-length summaries,
+ * ten eligibility rules each carrying a long verbatim quote, and a full page of
+ * result rows. A thin fixture would flatter the budget and prove nothing.
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -25,7 +25,12 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const CLIENT_DIR = resolve(HERE, "..", "dist", "client");
 const KB = 1024;
 
-const OPPORTUNITY_DETAIL_BUDGET = { total: 120 * KB, js: 30 * KB };
+/** PRODUCT_SPEC.md §25.1, for the routes that render on demand. */
+const BUDGETS = {
+  detail: { label: "Opportunity detail", total: 120 * KB, js: 30 * KB },
+  list: { label: "Opportunity list / search", total: 150 * KB, js: 40 * KB },
+  organisation: { label: "Organisation page", total: 120 * KB, js: 25 * KB },
+} as const;
 
 const LONG_QUOTE =
   "Applications are open to individuals who are resident in any African country at the time of submission, who are currently enrolled in or have recently completed a programme of study at a recognised institution, and who have not previously received funding under this scheme.";
@@ -36,12 +41,14 @@ const RULE_TYPES = [
   "experience_between", "language_required",
 ] as const;
 
-const WORST_CASE = {
-  opportunity: {
-    id: "00000000-0000-4000-8000-000000000001",
-    slug: "worst-case-measurement",
-    title:
-      "Pan-African AgriTech and Climate Resilience Innovation Challenge for Early-Career Builders 2026",
+const LONG_TITLE =
+  "Pan-African AgriTech and Climate Resilience Innovation Challenge for Early-Career Builders 2026";
+
+function worstCaseOpportunity(i: number) {
+  return {
+    id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+    slug: `worst-case-${i}`,
+    title: `${LONG_TITLE} — cohort ${i}`,
     summary: "x".repeat(400),
     description_md: "y".repeat(4000),
     deadline_at: "2026-12-30T21:59:00Z",
@@ -75,7 +82,11 @@ const WORST_CASE = {
       verification: "verified",
     },
     categories: { code: "ai_challenge", name: "AI challenge", slug: "ai-challenges" },
-  },
+  };
+}
+
+const DETAIL = {
+  opportunity: worstCaseOpportunity(1),
   rules: RULE_TYPES.map((rule_type, i) => ({
     id: `rule-${i}`,
     rule_type,
@@ -85,9 +96,33 @@ const WORST_CASE = {
   })),
 };
 
+// A full page of rows, which is what the list budget has to survive.
+const PAGE_OF_ROWS = Array.from({ length: 20 }, (_, i) => worstCaseOpportunity(i + 1));
+
+const ORGANISATION = {
+  organisation: {
+    id: "org-1",
+    slug: "example-org",
+    name: "Example Foundation for African Innovation",
+    description: "z".repeat(2000),
+    website_url: "https://example.org",
+    country_iso2: "GH",
+    org_type: "foundation",
+    verification: "verified",
+    verified_at: "2026-05-01T00:00:00Z",
+  },
+  open: PAGE_OF_ROWS.slice(0, 10),
+  past: PAGE_OF_ROWS.slice(10),
+};
+
 vi.mock("../src/lib/db", () => ({
-  getOpportunity: vi.fn(async () => ({ ok: true, data: WORST_CASE })),
-  listOpportunities: vi.fn(async () => ({ ok: true, data: [WORST_CASE.opportunity] })),
+  getOpportunity: vi.fn(async () => ({ ok: true, data: DETAIL })),
+  searchOpportunities: vi.fn(async () => ({
+    ok: true,
+    data: { rows: PAGE_OF_ROWS, total: 137 },
+  })),
+  listOpportunities: vi.fn(async () => ({ ok: true, data: PAGE_OF_ROWS })),
+  getOrganisation: vi.fn(async () => ({ ok: true, data: ORGANISATION })),
   getPublishedCount: vi.fn(async () => 312),
   isFlagEnabled: vi.fn(async () => false),
   getClient: vi.fn(() => null),
@@ -99,18 +134,16 @@ const fmt = (n: number) => `${(n / KB).toFixed(1)} KB`;
 /**
  * Client-side asset weight, measured from the REAL build output.
  *
- * Why not from the rendered HTML: the container API renders the page but does
- * not resolve island hydration assets the way a real build does, so the HTML it
- * returns carries no <script src> or <link href>. Scanning it found 0 modules
- * and reported a pass — a false pass of exactly the kind this test exists to
- * prevent.
+ * Why not from the rendered HTML: the container API renders a page but does not
+ * resolve island hydration assets, so the HTML it returns carries no script or
+ * link tags. An earlier version of this test scanned the HTML, found 0 modules,
+ * measured 0 KB of JS and PASSED — a false pass of exactly the kind this test
+ * exists to prevent.
  *
- * So the whole built client bundle is measured instead, as a deliberate UPPER
- * BOUND. Every island shares the Svelte runtime, and this route has the tightest
- * JS budget in the product, so charging it the entire bundle can only
- * over-estimate. If it passes here it passes everywhere, and a new island that
- * pushes the shared bundle over the line fails the build rather than slipping
- * through unattributed.
+ * So the whole built client bundle is charged to every route, as a deliberate
+ * UPPER BOUND. Islands share the Svelte runtime, so this can only over-estimate,
+ * and a new island that pushes the shared bundle over a budget fails the build
+ * rather than slipping through unattributed.
  */
 function measureBuiltAssets(): { js: number; css: number; modules: number } {
   const assetDir = join(CLIENT_DIR, "_a");
@@ -119,7 +152,6 @@ function measureBuiltAssets(): { js: number; css: number; modules: number } {
   let js = 0;
   let css = 0;
   let modules = 0;
-
   for (const entry of readdirSync(assetDir)) {
     const file = join(assetDir, entry);
     if (entry.endsWith(".js")) {
@@ -132,85 +164,167 @@ function measureBuiltAssets(): { js: number; css: number; modules: number } {
   return { js, css, modules };
 }
 
-describe("byte budgets — on-demand routes (invariant 5)", () => {
-  let html: string;
-  let assets: { js: number; css: number; modules: number };
+interface Measured {
+  html: string;
+  htmlBytes: number;
+  total: number;
+  js: number;
+  css: number;
+  modules: number;
+  hydrates: boolean;
+}
 
-  beforeAll(async () => {
-    // The JS half of the measurement reads the built client output, so a build
-    // must have run. Failing loudly beats silently measuring 0 KB of JS and
-    // calling it a pass.
-    expect(
-      existsSync(CLIENT_DIR),
-      `No build output at ${CLIENT_DIR}. Run the build before this test.`,
-    ).toBe(true);
+const measured: Record<string, Measured> = {};
 
-    const container = await AstroContainer.create();
-    container.addServerRenderer({ name: "@astrojs/svelte", renderer: svelteRenderer });
-    container.addClientRenderer({
-      name: "@astrojs/svelte",
-      entrypoint: "@astrojs/svelte/client.js",
-    });
+async function render(
+  key: keyof typeof BUDGETS,
+  importer: () => Promise<{ default: unknown }>,
+  params: Record<string, string>,
+  url: string,
+) {
+  const container = await AstroContainer.create();
+  container.addServerRenderer({ name: "@astrojs/svelte", renderer: svelteRenderer });
+  container.addClientRenderer({
+    name: "@astrojs/svelte",
+    entrypoint: "@astrojs/svelte/client.js",
+  });
 
-    const { default: Page } = await import("../src/pages/opportunities/[slug].astro");
-    const response = await container.renderToResponse(Page, {
-      params: { slug: "worst-case-measurement" },
-      locals: { runtime: { env: {} } },
-      request: new Request("https://example.invalid/opportunities/worst-case-measurement"),
-    });
+  const { default: Page } = await importer();
+  const response = await container.renderToResponse(Page as never, {
+    params,
+    locals: { runtime: { env: {} } },
+    request: new Request(url),
+  });
 
-    html = await response.text();
-    assets = measureBuiltAssets();
+  const html = await response.text();
+  const assets = measureBuiltAssets();
+  const htmlBytes = gz(html);
 
-    // Printed so the headroom is visible in CI output, not only on failure.
-    // A budget you only see when it breaks is a budget nobody is managing.
-    const htmlBytes = gz(html);
-    const total = htmlBytes + assets.css + assets.js;
-    const pct = (n: number, of: number) => `${Math.round((n / of) * 100)}%`;
-    console.log(
-      `\n  opportunity detail (worst case): total ${fmt(total)} / ${fmt(OPPORTUNITY_DETAIL_BUDGET.total)} (${pct(total, OPPORTUNITY_DETAIL_BUDGET.total)})` +
-        `\n    html ${fmt(htmlBytes)}  css ${fmt(assets.css)}  js ${fmt(assets.js)} / ${fmt(OPPORTUNITY_DETAIL_BUDGET.js)} (${pct(assets.js, OPPORTUNITY_DETAIL_BUDGET.js)}, ${assets.modules} modules)\n`,
+  // A route with no island ships no JS at all, so charging it the shared bundle
+  // would be conservative past the point of usefulness — the organisation page
+  // would sit at 76% of a budget it does not spend, and a later island would
+  // fail it spuriously. Routes WITH an island are still charged the whole bundle
+  // as an upper bound, since islands share the Svelte runtime.
+  const hydrates = html.includes("astro-island");
+  const js = hydrates ? assets.js : 0;
+  const modules = hydrates ? assets.modules : 0;
+
+  measured[key] = {
+    html,
+    htmlBytes,
+    js,
+    css: assets.css,
+    modules,
+    total: htmlBytes + assets.css + js,
+    hydrates,
+  };
+}
+
+beforeAll(async () => {
+  // The JS half reads the built client output, so a build must have run. Failing
+  // loudly beats silently measuring 0 KB and calling it a pass.
+  expect(
+    existsSync(CLIENT_DIR),
+    `No build output at ${CLIENT_DIR}. Run the build before this test.`,
+  ).toBe(true);
+
+  await render(
+    "detail",
+    () => import("../src/pages/opportunities/[slug].astro"),
+    { slug: "worst-case-1" },
+    "https://example.invalid/opportunities/worst-case-1",
+  );
+  await render(
+    "list",
+    () => import("../src/pages/opportunities/index.astro"),
+    {},
+    "https://example.invalid/opportunities?country=ZW&mode=online&cost=free",
+  );
+  await render(
+    "organisation",
+    () => import("../src/pages/organisations/[slug].astro"),
+    { slug: "example-org" },
+    "https://example.invalid/organisations/example-org",
+  );
+
+  const pct = (n: number, of: number) => `${Math.round((n / of) * 100)}%`;
+  const lines = Object.entries(BUDGETS).map(([key, budget]) => {
+    const m = measured[key]!;
+    return (
+      `  ${budget.label.padEnd(28)} total ${fmt(m.total).padStart(9)} / ${fmt(budget.total)} (${pct(m.total, budget.total)})` +
+      `   js ${fmt(m.js).padStart(8)} / ${fmt(budget.js)} (${pct(m.js, budget.js)})` +
+      `   html ${fmt(m.htmlBytes)}${m.hydrates ? "" : "   (no island)"}`
     );
   });
+  console.log("\n" + lines.join("\n") + "\n");
+});
 
+describe("byte budgets — on-demand routes (invariant 5)", () => {
   it("actually measured something (guards against a vacuous pass)", () => {
-    // A measurement of zero must fail loudly. This is the specific bug that made
-    // an earlier version of this test pass while measuring nothing at all.
-    expect(assets.modules, "no JS modules found in the build output").toBeGreaterThan(0);
-    expect(assets.js, "measured 0 bytes of JS").toBeGreaterThan(0);
-    expect(assets.css, "measured 0 bytes of CSS").toBeGreaterThan(0);
-    expect(gz(html), "rendered HTML is suspiciously small").toBeGreaterThan(1024);
+    // Zero must fail loudly. This is the specific bug that made an earlier
+    // version of this test pass while measuring nothing at all.
+    for (const [key, m] of Object.entries(measured)) {
+      expect(m.css, `${key}: measured 0 bytes of CSS`).toBeGreaterThan(0);
+      expect(m.htmlBytes, `${key}: rendered HTML is suspiciously small`).toBeGreaterThan(1024);
+      if (m.hydrates) {
+        expect(m.modules, `${key}: hydrates but found no JS modules`).toBeGreaterThan(0);
+        expect(m.js, `${key}: hydrates but measured 0 bytes of JS`).toBeGreaterThan(0);
+      }
+    }
+
+    // At least one route must hydrate, otherwise the JS measurement is vacuous
+    // across the board and the whole check proves nothing.
+    expect(
+      Object.values(measured).some((m) => m.hydrates),
+      "no route hydrates — the JS budget is not being exercised at all",
+    ).toBe(true);
   });
 
-  it("mounts the eligibility island on the page", () => {
-    // If the island stops rendering, the JS budget would trivially pass while the
-    // product lost its core interaction.
-    expect(html).toContain("astro-island");
-    expect(html).toContain("Check if you can apply");
+  for (const [key, budget] of Object.entries(BUDGETS)) {
+    it(`${budget.label} stays within its JS budget`, () => {
+      const m = measured[key]!;
+      expect(m.js, `JS ${fmt(m.js)} of ${fmt(budget.js)} across ${m.modules} modules`).toBeLessThanOrEqual(
+        budget.js,
+      );
+    });
+
+    it(`${budget.label} stays within its total transfer budget`, () => {
+      const m = measured[key]!;
+      expect(
+        m.total,
+        `total ${fmt(m.total)} of ${fmt(budget.total)} (html ${fmt(m.htmlBytes)}, css ${fmt(m.css)}, js ${fmt(m.js)})`,
+      ).toBeLessThanOrEqual(budget.total);
+    });
+
+    it(`${budget.label} ships no third-party script (invariant 12)`, () => {
+      const external = [
+        ...measured[key]!.html.matchAll(/<script[^>]+src=["'](https?:\/\/[^"']+)["']/g),
+      ];
+      expect(external.map((m) => m[1])).toEqual([]);
+    });
+  }
+
+  it("mounts the eligibility island on the detail page", () => {
+    // If the island stops rendering, the JS budget passes trivially while the
+    // product loses its core interaction.
+    expect(measured.detail!.html).toContain("astro-island");
+    expect(measured.detail!.html).toContain("Check if you can apply");
   });
 
-  it("renders the worst-case record with its verdict scaffolding", () => {
-    expect(html).toContain("Pan-African AgriTech");
-    // PRODUCT_SPEC.md §12.4 — the quoted source sentence is always present.
-    expect(html).toContain(LONG_QUOTE.slice(0, 60));
-    // §11.3 — the raw source string is shown when precision is coarse.
-    expect(html).toContain("Applications close 30 December");
+  it("shows the quoted source sentence and the raw deadline string", () => {
+    // PRODUCT_SPEC.md §12.4 and §11.3.
+    expect(measured.detail!.html).toContain(LONG_QUOTE.slice(0, 60));
+    expect(measured.detail!.html).toContain("Applications close 30 December");
   });
 
-  it("stays within the opportunity detail JS budget", () => {
-    const detail = `JS ${fmt(assets.js)} of ${fmt(OPPORTUNITY_DETAIL_BUDGET.js)} across ${assets.modules} modules`;
-    expect(assets.js, detail).toBeLessThanOrEqual(OPPORTUNITY_DETAIL_BUDGET.js);
+  it("offers an explicit 'show more' rather than infinite scroll", () => {
+    // UX_FLOWS.md §3 marks this `[PR]`: infinite scroll on metered data spends
+    // the user's money without asking.
+    expect(measured.list!.html).toContain("Show 20 more");
   });
 
-  it("stays within the opportunity detail total transfer budget", () => {
-    const htmlBytes = gz(html);
-    const total = htmlBytes + assets.css + assets.js;
-    const detail = `total ${fmt(total)} of ${fmt(OPPORTUNITY_DETAIL_BUDGET.total)} (html ${fmt(htmlBytes)}, css ${fmt(assets.css)}, js ${fmt(assets.js)})`;
-    expect(total, detail).toBeLessThanOrEqual(OPPORTUNITY_DETAIL_BUDGET.total);
-  });
-
-  it("ships no third-party script (invariant 12)", () => {
-    const external = [...html.matchAll(/<script[^>]+src=["'](https?:\/\/[^"']+)["']/g)];
-    expect(external.map((m) => m[1])).toEqual([]);
+  it("keeps past opportunities on the organisation page", () => {
+    // OPPORTUNITY_INGESTION.md §5.4 — expired records are never deleted.
+    expect(measured.organisation!.html).toContain("Past opportunities");
   });
 });

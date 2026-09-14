@@ -195,6 +195,144 @@ export async function listOpportunities(
   return { ok: true, data: (data ?? []) as unknown as OpportunityRow[] };
 }
 
+export interface SearchResult {
+  rows: OpportunityRow[];
+  /** Total matching, so the UI can say whether more exist without fetching them. */
+  total: number | null;
+}
+
+/**
+ * Filtered search. PRODUCT_SPEC.md §13.1–13.4.
+ *
+ * Deliberately NOT implemented here: the `eligible_for_me` filter. Eligibility
+ * is per-viewer, and applying it in this query would make the response
+ * uncacheable and leak the viewer's profile into a cache key. It is applied
+ * client-side by the list island against locally-stored inputs, which is what
+ * lets it work logged out (UX_FLOWS.md §3).
+ *
+ * `not_eligible` items are down-ranked but never hidden (SYSTEM_ARCHITECTURE.md
+ * §6.1) — the reader may be checking on someone else's behalf.
+ */
+export async function searchOpportunities(
+  filters: {
+    q?: string | null;
+    country?: string | null;
+    category?: string | null;
+    mode?: string | null;
+    team?: "individual" | "team" | null;
+    cost?: "free" | "paid" | null;
+    hasPrize?: boolean;
+    organisation?: string | null;
+    verification?: string | null;
+    sort?: "urgency" | "relevance" | "newest" | "prize";
+    limit?: number;
+  },
+  env: Env = {},
+): Promise<{ ok: true; data: SearchResult } | { ok: false; reason: "unavailable" }> {
+  const client = getClient(env);
+  if (!client) return { ok: false, reason: "unavailable" };
+
+  let query = client
+    .from("opportunities")
+    .select(OPPORTUNITY_FIELDS, { count: "estimated" })
+    .eq("status", "published")
+    .is("deleted_at", null);
+
+  if (filters.country) {
+    query = query.or(
+      `eligible_countries.cs.{${filters.country}},eligibility_scope.in.(africa_wide,global)`,
+    );
+  }
+  if (filters.mode) query = query.eq("participation_mode", filters.mode);
+  if (filters.cost) query = query.eq("cost", filters.cost);
+  if (filters.verification) query = query.eq("verification", filters.verification);
+  if (filters.hasPrize) query = query.not("prize_amount", "is", null);
+  if (filters.team === "team") query = query.eq("team_required", true);
+  if (filters.team === "individual") query = query.eq("team_required", false);
+
+  // Full-text search over the weighted tsvector maintained by a trigger
+  // (SYSTEM_ARCHITECTURE.md §6.1). Hybrid retrieval with embeddings lands in
+  // Phase 4; until then this is FTS alone, which degrades honestly rather than
+  // pretending to be semantic.
+  if (filters.q) query = query.textSearch("search_vector", filters.q, { type: "websearch" });
+
+  switch (filters.sort) {
+    case "newest":
+      query = query.order("published_at", { ascending: false, nullsFirst: false });
+      break;
+    case "prize":
+      query = query.order("prize_amount", { ascending: false, nullsFirst: false });
+      break;
+    case "urgency":
+    case "relevance":
+    default:
+      query = query.order("deadline_at", { ascending: true, nullsFirst: false });
+      break;
+  }
+
+  const { data, error, count } = await query.limit(Math.min(filters.limit ?? 20, 100));
+  if (error) return { ok: false, reason: "unavailable" };
+
+  return {
+    ok: true,
+    data: { rows: (data ?? []) as unknown as OpportunityRow[], total: count ?? null },
+  };
+}
+
+export interface OrganisationDetail {
+  slug: string;
+  name: string;
+  description: string | null;
+  website_url: string | null;
+  country_iso2: string | null;
+  org_type: string | null;
+  verification: string;
+  verified_at: string | null;
+}
+
+export async function getOrganisation(
+  slug: string,
+  env: Env = {},
+): Promise<
+  | { ok: true; data: { organisation: OrganisationDetail; open: OpportunityRow[]; past: OpportunityRow[] } }
+  | { ok: false; reason: "not_found" | "unavailable" }
+> {
+  const client = getClient(env);
+  if (!client) return { ok: false, reason: "unavailable" };
+
+  const { data: org, error } = await client
+    .from("organisations")
+    .select(
+      "id, slug, name, description, website_url, country_iso2, org_type, verification, verified_at",
+    )
+    .eq("slug", slug)
+    .maybeSingle();
+
+  if (error) return { ok: false, reason: "unavailable" };
+  if (!org) return { ok: false, reason: "not_found" };
+
+  // PRODUCT_SPEC.md §19: organisation pages carry all their opportunities, past
+  // and present. Expired records are never deleted — they preserve inbound links
+  // honestly and are the historical record (OPPORTUNITY_INGESTION.md §5.4).
+  const { data: all } = await client
+    .from("opportunities")
+    .select(OPPORTUNITY_FIELDS)
+    .eq("organisation_id", (org as { id?: string }).id ?? "")
+    .in("status", ["published", "expired", "closed"])
+    .order("deadline_at", { ascending: false, nullsFirst: false })
+    .limit(100);
+
+  const rows = (all ?? []) as unknown as OpportunityRow[];
+  return {
+    ok: true,
+    data: {
+      organisation: org as unknown as OrganisationDetail,
+      open: rows.filter((r) => r.status === "published"),
+      past: rows.filter((r) => r.status !== "published"),
+    },
+  };
+}
+
 /** Live counts for the footer. CONTENT_AND_LAUNCH.md §1: every number shown is true. */
 export async function getPublishedCount(env: Env = {}): Promise<number | null> {
   const client = getClient(env);

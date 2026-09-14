@@ -1,0 +1,165 @@
+---
+// Organisation page. UX_FLOWS.md §12, PRODUCT_SPEC.md §19.
+//
+// "Ecosystem navigation and a trust anchor. Major SEO surface." Carries ALL their
+// opportunities, past and present — expired records are never deleted, because
+// they preserve inbound links honestly and are the historical record that later
+// powers "this runs annually" (OPPORTUNITY_INGESTION.md §5.4).
+
+import Base from "../../layouts/Base.astro";
+import OpportunityRow from "../../components/OpportunityRow.astro";
+import { getOrganisation } from "../../lib/db";
+
+export const prerender = false;
+
+const { slug } = Astro.params;
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+
+const found = await getOrganisation(slug!, env);
+if (!found.ok && found.reason === "not_found") Astro.response.status = 404;
+
+Astro.response.headers.set(
+  "cache-control",
+  found.ok ? "public, s-maxage=21600, stale-while-revalidate=86400" : "public, s-maxage=60",
+);
+
+const org = found.ok ? found.data.organisation : null;
+const open = found.ok ? found.data.open : [];
+const past = found.ok ? found.data.past : [];
+
+const VERIFICATION_COPY: Record<string, string> = {
+  verified: "This organisation has confirmed control of its domain.",
+  claimed_pending: "Someone has claimed this organisation; we are still checking.",
+  unclaimed: "We created this page from public listings. It has not been claimed.",
+  suspended: "This organisation is suspended.",
+  rejected: "A claim on this organisation was rejected.",
+};
+---
+
+{
+  !org ? (
+    <Base title="Organisation not found" noindex>
+      <h1 class="text-display font-bold">
+        {found.ok === false && found.reason === "unavailable"
+          ? "We can't load this right now"
+          : "That organisation isn't here"}
+      </h1>
+      <p class="mt-3 text-body text-ink-2">
+        {found.ok === false && found.reason === "unavailable"
+          ? "Something on our side is unavailable. Try again shortly."
+          : "The link may be out of date."}
+      </p>
+      <p class="mt-4"><a href="/opportunities" class="text-brand">Browse what's open</a></p>
+    </Base>
+  ) : (
+    <Base
+      title={`${org.name} — opportunities and programmes`}
+      description={org.description ?? `Opportunities and programmes run by ${org.name}.`}
+      canonical={`/organisations/${org.slug}`}
+    >
+      <h1 class="text-display font-bold leading-[--text-display--line-height]">{org.name}</h1>
+
+      <p class="mt-2 text-meta text-ink-2">
+        <span class="rounded-[2px] bg-sunken px-[6px] py-[2px] text-micro font-semibold">
+          {org.verification}
+        </span>
+        {
+          org.verified_at && (
+            <span>
+              {" "}since{" "}
+              <time datetime={org.verified_at}>
+                {new Date(org.verified_at).toLocaleDateString("en-GB", {
+                  month: "long",
+                  year: "numeric",
+                })}
+              </time>
+            </span>
+          )
+        }
+      </p>
+
+      <p class="mt-1 text-meta text-ink-2">
+        {VERIFICATION_COPY[org.verification] ?? ""}
+      </p>
+
+      {org.description && <p class="prose-measure mt-4 text-body">{org.description}</p>}
+
+      {
+        org.website_url && (
+          <p class="mt-3 text-dense">
+            <a
+              href={org.website_url}
+              rel="noopener noreferrer nofollow ugc"
+              target="_blank"
+              class="text-brand">Official website</a
+            >
+          </p>
+        )
+      }
+
+      <!-- Counts are computed live and are true. CONTENT_AND_LAUNCH.md §1. -->
+      <dl class="mt-6 grid grid-cols-2 border-t border-line md:grid-cols-3">
+        <div class="border-b border-r border-line px-3 py-2">
+          <dt class="text-micro font-semibold text-ink-2">Open now</dt>
+          <dd class="text-dense">{open.length}</dd>
+        </div>
+        <div class="border-b border-r border-line px-3 py-2">
+          <dt class="text-micro font-semibold text-ink-2">Past</dt>
+          <dd class="text-dense">{past.length}</dd>
+        </div>
+        <div class="border-b border-r border-line px-3 py-2">
+          <dt class="text-micro font-semibold text-ink-2">Country</dt>
+          <dd class="text-dense">{org.country_iso2 ?? "Not stated"}</dd>
+        </div>
+      </dl>
+
+      <h2 class="mt-8 text-subtitle font-semibold">Open opportunities</h2>
+      {
+        open.length > 0 ? (
+          <div class="mt-3 border-t border-line">
+            {open.map((o) => (
+              <OpportunityRow opportunity={o} />
+            ))}
+          </div>
+        ) : (
+          <p class="mt-2 text-dense text-ink-2">
+            Nothing from {org.name} is open right now.
+            {past.length > 0 && " Their past programmes are below — several run annually."}
+          </p>
+        )
+      }
+
+      {
+        past.length > 0 && (
+          <>
+            <h2 class="mt-8 text-subtitle font-semibold">Past opportunities</h2>
+            <p class="mt-1 text-meta text-ink-2">
+              Kept for reference. These are closed — check the organisation's own site for the
+              next round.
+            </p>
+            <details class="mt-3">
+              <summary class="cursor-pointer text-dense font-semibold">
+                Show {past.length} past {past.length === 1 ? "opportunity" : "opportunities"}
+              </summary>
+              <div class="mt-2 border-t border-line">
+                {past.map((o) => (
+                  <OpportunityRow opportunity={o} />
+                ))}
+              </div>
+            </details>
+          </>
+        )
+      }
+
+      {
+        org.verification === "unclaimed" && (
+          <p class="mt-8 text-meta text-ink-2">
+            Is this your organisation?{" "}
+            <a href={`/organisations/${org.slug}/claim`} class="text-brand">Claim this page</a> to
+            publish and correct your own listings.
+          </p>
+        )
+      }
+    </Base>
+  )
+}

@@ -1,0 +1,215 @@
+---
+// Opportunity discovery. UX_FLOWS.md §3.
+//
+// Filters are URL state and nothing else, so the view is shareable, the back
+// button is correct, and the server can render it (PRODUCT_SPEC.md §13.1).
+//
+// No infinite scroll. UX_FLOWS.md §3 is explicit and marks it `[PR]`: an explicit
+// "Show more" button, because infinite scroll on metered data spends the user's
+// money without asking.
+
+import Base from "../../layouts/Base.astro";
+import OpportunityRow from "../../components/OpportunityRow.astro";
+import { searchOpportunities } from "../../lib/db";
+import { activeChips, hasAnyFilter, parseFilters, toSearchParams } from "../../lib/filters";
+
+export const prerender = false;
+
+const filters = parseFilters(Astro.url);
+const result = await searchOpportunities(
+  {
+    q: filters.q,
+    country: filters.country,
+    category: filters.category,
+    mode: filters.mode,
+    team: filters.team,
+    cost: filters.cost,
+    hasPrize: filters.hasPrize,
+    organisation: filters.organisation,
+    verification: filters.verification,
+    sort: filters.sort,
+    limit: filters.limit,
+  },
+  (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {},
+);
+
+// SEO.md §1: filtered and paginated views are `noindex, follow` — they are user
+// tools, not content, and indexing them creates thin-content duplication at scale.
+const isFiltered = hasAnyFilter(filters);
+
+const rows = result.ok ? result.data.rows : [];
+const total = result.ok ? result.data.total : null;
+const chips = activeChips(filters);
+const degraded = !result.ok;
+
+const moreHref = (() => {
+  const params = toSearchParams({ ...filters, limit: filters.limit + 20 });
+  return `/opportunities?${params}`;
+})();
+
+const hasMore = rows.length >= filters.limit;
+
+Astro.response.headers.set(
+  "cache-control",
+  degraded ? "public, s-maxage=30" : "public, s-maxage=300, stale-while-revalidate=600",
+);
+
+const SORT_LABELS: [string, string][] = [
+  ["urgency", "Closing soonest"],
+  ["newest", "Newest"],
+  ["prize", "Largest prize"],
+];
+---
+
+<Base
+  title="Open opportunities"
+  description="Hackathons, grants, fellowships and scholarships open to builders across Africa, with an eligibility verdict for your country."
+  noindex={isFiltered}
+>
+  <h1 class="text-title font-semibold">Open opportunities</h1>
+
+  <form method="get" action="/opportunities" class="mt-4">
+    <label class="block">
+      <span class="sr-only">Search opportunities</span>
+      <input
+        type="search"
+        name="q"
+        value={filters.q ?? ""}
+        placeholder="remote AI hackathons open to Zimbabwe"
+        class="h-11 w-full rounded-row border border-line bg-surface px-3"
+      />
+    </label>
+
+    <!-- Filters that survive without JavaScript. UX_FLOWS.md §1: no page needs
+         JS to display its content, and these are plain form controls. -->
+    <div class="mt-2 flex flex-wrap gap-2">
+      <label class="text-meta">
+        <span class="sr-only">Country</span>
+        <input
+          name="country"
+          value={filters.country ?? ""}
+          maxlength="2"
+          placeholder="Country"
+          class="h-11 w-24 rounded-row border border-line px-2 uppercase"
+        />
+      </label>
+      <label class="text-meta">
+        <span class="sr-only">Format</span>
+        <select name="mode" class="h-11 rounded-row border border-line bg-surface px-2">
+          <option value="">Any format</option>
+          <option value="online" selected={filters.mode === "online"}>Remote</option>
+          <option value="in_person" selected={filters.mode === "in_person"}>In person</option>
+          <option value="hybrid" selected={filters.mode === "hybrid"}>Hybrid</option>
+        </select>
+      </label>
+      <label class="text-meta">
+        <span class="sr-only">Cost</span>
+        <select name="cost" class="h-11 rounded-row border border-line bg-surface px-2">
+          <option value="">Any cost</option>
+          <option value="free" selected={filters.cost === "free"}>Free to enter</option>
+        </select>
+      </label>
+      <label class="text-meta">
+        <span class="sr-only">Sort by</span>
+        <select name="sort" class="h-11 rounded-row border border-line bg-surface px-2">
+          {
+            SORT_LABELS.map(([value, label]) => (
+              <option {value} selected={filters.sort === value}>
+                {label}
+              </option>
+            ))
+          }
+        </select>
+      </label>
+      <button type="submit" class="h-11 rounded-row bg-brand px-4 font-semibold text-surface">
+        Apply
+      </button>
+    </div>
+  </form>
+
+  {
+    chips.length > 0 && (
+      <div class="mt-3 flex flex-wrap items-center gap-2">
+        {chips.map((chip) => (
+          <a
+            href={chip.removeHref}
+            class="inline-flex items-center gap-1 rounded-row bg-brand-wash px-2 py-1 text-meta text-brand no-underline"
+          >
+            {chip.label}
+            <span aria-hidden="true">×</span>
+            <span class="sr-only">Remove this filter</span>
+          </a>
+        ))}
+        <a href="/opportunities" class="text-meta text-brand">Clear all</a>
+      </div>
+    )
+  }
+
+  <p class="mt-4 text-meta text-ink-2" aria-live="polite">
+    {
+      degraded
+        ? "Showing what we can right now."
+        : total !== null
+          ? `${total} open ${total === 1 ? "opportunity" : "opportunities"}`
+          : `${rows.length} shown`
+    }
+    {
+      /* UX_FLOWS.md §3: degradation is a quiet note, never an error page. */
+      degraded && <span> Search is limited at the moment.</span>
+    }
+  </p>
+
+  {
+    rows.length > 0 ? (
+      <>
+        <div class="mt-3 border-t border-line">
+          {rows.map((o) => (
+            <OpportunityRow opportunity={o} />
+          ))}
+        </div>
+
+        {hasMore && (
+          <p class="mt-4">
+            <a
+              href={moreHref}
+              rel="nofollow"
+              class="inline-flex min-h-11 items-center rounded-row border border-line-strong bg-surface px-4 font-semibold no-underline"
+              >Show 20 more</a
+            >
+          </p>
+        )}
+      </>
+    ) : (
+      /* Empty states: one sentence naming the situation, one action
+         (DESIGN_SYSTEM.md §6.4). Never an illustration, never "Nothing here yet!". */
+      <div class="mt-6 border border-line bg-surface p-4">
+        {degraded ? (
+          <>
+            <p class="font-semibold">We can't search right now.</p>
+            <p class="mt-1 text-dense text-ink-2">
+              Nothing is wrong with what you typed. Try again shortly.
+            </p>
+          </>
+        ) : isFiltered ? (
+          <>
+            <p class="font-semibold">No open opportunities match these filters.</p>
+            <p class="mt-2 flex flex-wrap gap-3 text-dense">
+              <a href="/opportunities" class="text-brand">Clear filters</a>
+              <a href="/opportunities?region=africa_wide" class="text-brand"
+                >Search all of Africa</a
+              >
+            </p>
+          </>
+        ) : (
+          <>
+            <p class="font-semibold">Nothing is published yet.</p>
+            <p class="mt-1 text-dense text-ink-2">
+              The catalogue is still being built. We would rather show you an empty page than
+              pad it with listings we cannot stand behind.
+            </p>
+          </>
+        )}
+      </div>
+    )
+  }
+</Base>

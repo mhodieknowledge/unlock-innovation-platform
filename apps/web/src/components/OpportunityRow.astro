@@ -1,0 +1,111 @@
+---
+// The primary object. DESIGN_SYSTEM.md §5.1.
+//
+// Deliberately: no image, no logo, no shadow, no hover lift. Rows are separated
+// by hairlines — shadows on a list of 40 rows are visual noise and a rendering
+// cost on low-end GPUs (§4.3). Hover changes background to --sunken only.
+//
+// The status rail carries the eligibility colour and is the ONLY colour in the
+// row. Server-side it renders NEUTRAL, because the page is cached identically for
+// every viewer and we genuinely do not know who is reading. Colouring it from a
+// guess would be worse than leaving it grey: DESIGN_SYSTEM.md §1.2 says colour
+// appearing means something has been determined about *you*.
+
+import type { OpportunityRow as Row } from "../lib/db";
+import { countdownLabel, countdownWeight, deadlineFacts, freshnessLabel } from "../lib/deadline";
+import { VERDICTS } from "../lib/verdict";
+
+interface Props {
+  opportunity: Row;
+}
+
+const { opportunity: o } = Astro.props;
+
+const facts = deadlineFacts({
+  deadline_at: o.deadline_at,
+  deadline_precision: o.deadline_precision as never,
+  opens_at: o.opens_at,
+  is_rolling: o.is_rolling,
+});
+
+const closed = facts.state === "closed" || o.status === "expired";
+
+const prize =
+  o.prize_amount && o.prize_currency
+    ? `${o.prize_currency} ${Number(o.prize_amount).toLocaleString("en")}`
+    : null;
+
+const team =
+  o.team_size_min && o.team_size_max
+    ? `${o.team_size_min}–${o.team_size_max}`
+    : o.team_required === false
+      ? "Individual"
+      : null;
+
+// Collapses to the two most important facts on the narrowest viewports and in
+// low-data mode (DESIGN_SYSTEM.md §10): the countdown and eligibility.
+const cells: [string, string][] = [
+  ["Closes", countdownLabel(facts)],
+  ["Format", o.participation_mode === "unknown" ? "—" : o.participation_mode.replace(/_/g, " ")],
+  ...((team ? [["Team", team]] : []) as [string, string][]),
+  ...((prize ? [["Prize", prize]] : []) as [string, string][]),
+];
+---
+
+<article
+  class={`relative flex gap-0 border-b border-line bg-surface transition-colors hover:bg-sunken ${closed ? "opacity-60" : ""}`}
+>
+  <!-- Status rail: 3px, full height. Neutral until a verdict exists for the
+       reader (see the note at the top of this file). -->
+  <span class={`w-[3px] shrink-0 ${VERDICTS.unknown.rail}`} aria-hidden="true"></span>
+
+  <div class="min-h-[88px] flex-1 px-3 py-3">
+    <h3 class="text-dense font-semibold">
+      <!-- Whole row is the link; the save control below has its own hit area. -->
+      <a href={`/opportunities/${o.slug}`} class="text-ink no-underline hover:underline">
+        {o.title}
+      </a>
+    </h3>
+
+    <p class="mt-[2px] text-meta text-ink-2">
+      {o.organisations?.name ?? "Organisation not identified"}
+      <span aria-hidden="true"> · </span>
+      <span>{o.verification}</span>
+    </p>
+
+    <!-- Countdown: black, tabular, weight by urgency. Not a badge — urgency is
+         typographic, never a coloured pill (DESIGN_SYSTEM.md §5.5). -->
+    <p
+      class={`mt-2 text-countdown-sm ${closed ? "text-ink-3 line-through" : "text-absolute"}`}
+      style={`font-weight:${countdownWeight(facts.daysRemaining)}`}
+    >
+      {closed ? "Closed" : countdownLabel(facts)}
+    </p>
+
+    <!-- Fact grid: labelled cells with hairlines, never a middle-dot string. -->
+    <dl class="mt-2 grid grid-cols-2 border-t border-line md:grid-cols-4">
+      {
+        cells.map(([label, value]) => (
+          <div class="border-b border-r border-line px-2 py-1 last:border-r-0">
+            <dt class="text-micro font-semibold text-ink-2">{label}</dt>
+            <dd class="text-dense capitalize">{value}</dd>
+          </div>
+        ))
+      }
+    </dl>
+
+    <p class="mt-2 flex items-center justify-between gap-3 text-meta text-ink-2">
+      <!-- Freshness: monochrome, always present, deliberately quiet. -->
+      <span>{freshnessLabel(o.last_verified_at)}</span>
+      {
+        !closed && (
+          <a
+            href={`/tracker?add=${o.slug}`}
+            class="inline-flex min-h-11 items-center rounded-row border border-line-strong bg-surface px-3 font-semibold text-ink no-underline"
+            >Save</a
+          >
+        )
+      }
+    </p>
+  </div>
+</article>
