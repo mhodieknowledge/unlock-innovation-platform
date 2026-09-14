@@ -133,8 +133,8 @@ jobs:
       # mean one verdict on the web and another in Telegram, which is exactly the
       # inconsistency that destroys trust in a verdict. So the whole golden corpus
       # runs through both.
-      - name: Engine parity (TypeScript vs the SQL mirror)
-        run: npm run parity
+      - name: Database-backed tests (engine parity, the ingestion pipeline)
+        run: npm run test:db
 
       - name: Roll back every migration
         run: npm run db:rollback -- --all

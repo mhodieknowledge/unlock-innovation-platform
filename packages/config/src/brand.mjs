@@ -8,13 +8,20 @@
  * Adjacent names known to be taken: Jenga (game trademark, and a Kenyan
  * fintech), Anzisha (the Anzisha Prize), Ubuntu (Canonical).
  * Documented alternates, in order: Njia, Jengo, Kesho, Sasa.
+ *
+ * WHY .mjs: the batch tier's crawler reads CRAWLER_USER_AGENT from here and runs as
+ * plain Node with no build step, so this file has to be importable by both Node and
+ * the web app's bundler. §2.1 rule 3 requires the User-Agent to point at a page
+ * explaining the crawler, which means the string in every outbound request and the
+ * string rendered on /bot have to be the same string — two copies would drift, and
+ * the drift would be a crawler identifying itself with a URL that 404s.
  */
-export const BRAND = {
+export const BRAND = /** @type {const} */ ({
   /** Swahili *mbele* — "forward / ahead". Provisional. */
   name: process.env["BRAND_NAME"] ?? "Mbele",
   domain: process.env["BRAND_DOMAIN"] ?? "example.invalid",
   handle: process.env["BRAND_HANDLE"] ?? "mbele",
-} as const;
+});
 
 /**
  * Published contact addresses. PRIVACY_AND_COMPLIANCE.md §7 item 4 requires "a
@@ -23,12 +30,12 @@ export const BRAND = {
  * a 48-hour SLA. Separate addresses so each can be routed and monitored on its own
  * — a single catch-all is how a 48-hour SLA quietly becomes a fortnight.
  */
-export const CONTACT = {
+export const CONTACT = /** @type {const} */ ({
   privacy: `privacy@${BRAND.domain}`,
   takedown: `takedown@${BRAND.domain}`,
   security: `security@${BRAND.domain}`,
   support: `hello@${BRAND.domain}`,
-} as const;
+});
 
 /** OPPORTUNITY_INGESTION.md §2.1 rule 3 — identify the crawler honestly. */
 export const CRAWLER_USER_AGENT = `${BRAND.name}Bot/1.0 (+https://${BRAND.domain}/bot)`;

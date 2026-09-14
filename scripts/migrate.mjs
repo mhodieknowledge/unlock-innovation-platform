@@ -138,7 +138,7 @@ async function apply(migration, direction) {
     await client.query("COMMIT");
     console.log(`  ${direction === "up" ? "▲" : "▼"} ${migration.version}`);
     return true;
-  } catch (err) {
+  } catch (/** @type {any} */ err) {
     await client.query("ROLLBACK");
     console.error(`  ✗ ${migration.version} (${direction}) failed: ${err.message}`);
     return false;
@@ -193,7 +193,7 @@ async function seed() {
       await client.query(sql);
       await client.query("COMMIT");
       console.log(`  ✓ ${f}`);
-    } catch (err) {
+    } catch (/** @type {any} */ err) {
       await client.query("ROLLBACK");
       console.error(`  ✗ ${f}: ${err.message}`);
       return false;

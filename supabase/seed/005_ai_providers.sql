@@ -1,0 +1,65 @@
+-- AI provider chain. AI_SYSTEM.md §3.1.
+--
+-- These are CONFIGURATION, seeded here so a fresh database has a working chain, and
+-- editable afterwards without a deploy. §2 guardrail 6 `[PR]` is the reason: "Free
+-- catalogues change without notice (Cerebras has dropped models silently; Gemini
+-- removed Pro from the free tier)." When that happens the fix is an UPDATE.
+--
+-- The quotas are the free-tier ceilings §3.1 records. They are deliberately set a
+-- little under the published figures: the accountant stops before the limit rather
+-- than learning it as a 429, and a 429 costs a retry plus a fifteen-minute breaker.
+--
+-- Routing is BY TASK (§3.1's second table), not one global order:
+--   extraction (long HTML) -> Gemini Flash first, for the large context
+--   rule derivation        -> Groq 8B first, short structured high volume
+--   brief decoder          -> Gemini Flash, long rules documents
+--   query compiler         -> Groq, latency-sensitive
+--   dedupe adjudication    -> Groq, one short question
+--   moderation pre-screen   -> Workers AI, edge-local and tiny
+
+INSERT INTO ai_providers
+  (provider, task, model, priority, daily_request_limit, requests_per_minute,
+   trains_on_input, endpoint, api_key_env, notes)
+VALUES
+  -- ── Extraction: long documents, so context size decides the order ─────────
+  ('gemini', 'extract', 'gemini-2.5-flash', 10, 1400, 15, true,
+   'https://generativelanguage.googleapis.com/v1beta/models', 'GEMINI_API_KEY',
+   'Large context handles a full page without chunking. TRAINS ON INPUT: public web content only, never user data (§2 guardrail 5).'),
+  ('groq', 'extract', 'llama-3.1-8b-instant', 20, 14000, 30, false,
+   'https://api.groq.com/openai/v1/chat/completions', 'GROQ_API_KEY',
+   'Fallback when Gemini is exhausted. TPM binds before RPD on long inputs.'),
+  ('cerebras', 'extract', 'llama3.1-8b', 30, 14000, 30, false,
+   'https://api.cerebras.ai/v1/chat/completions', 'CEREBRAS_API_KEY',
+   'Third in the chain. Volatile catalogue — check the model name when this starts failing.'),
+
+  -- ── Rule derivation: the most constrained task in the system ──────────────
+  ('groq', 'rules', 'llama-3.1-8b-instant', 10, 14000, 30, false,
+   'https://api.groq.com/openai/v1/chat/completions', 'GROQ_API_KEY',
+   'Short, structured, high volume. Output is verbatim-quote validated regardless of model.'),
+  ('cerebras', 'rules', 'llama3.1-8b', 20, 14000, 30, false,
+   'https://api.cerebras.ai/v1/chat/completions', 'CEREBRAS_API_KEY', NULL),
+  ('gemini', 'rules', 'gemini-2.5-flash', 30, 1400, 15, true,
+   'https://generativelanguage.googleapis.com/v1beta/models', 'GEMINI_API_KEY',
+   'Last resort for rules: the task is small and Gemini quota is better spent on long extractions.'),
+
+  -- ── Brief decoder: long rules documents and PDFs ──────────────────────────
+  ('gemini', 'brief', 'gemini-2.5-flash', 10, 1400, 15, true,
+   'https://generativelanguage.googleapis.com/v1beta/models', 'GEMINI_API_KEY', NULL),
+  ('groq', 'brief', 'llama-3.1-8b-instant', 20, 14000, 30, false,
+   'https://api.groq.com/openai/v1/chat/completions', 'GROQ_API_KEY', NULL),
+
+  -- ── Query compiler: latency matters, it runs in a request ─────────────────
+  ('groq', 'query', 'llama-3.1-8b-instant', 10, 14000, 30, false,
+   'https://api.groq.com/openai/v1/chat/completions', 'GROQ_API_KEY',
+   'The ONE LLM call permitted in a request handler, and only because it is KV-cached for 7 days.'),
+
+  -- ── Dedupe adjudication: one short question ───────────────────────────────
+  ('groq', 'dedupe', 'llama-3.1-8b-instant', 10, 14000, 30, false,
+   'https://api.groq.com/openai/v1/chat/completions', 'GROQ_API_KEY',
+   'Only ever asked about a pair a deterministic check already flagged (§9 step 4).'),
+
+  -- ── Moderation pre-screen: edge-local, tiny ───────────────────────────────
+  ('workers_ai', 'moderate', '@cf/meta/llama-3.1-8b-instruct', 10, 9000, 60, false,
+   NULL, NULL,
+   'A Worker binding, not an HTTP key. Deterministic checks run first and are never skipped (§10 [PR]).')
+ON CONFLICT (provider, task, model) DO NOTHING;

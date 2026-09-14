@@ -15,7 +15,7 @@
     "dev": "npm run dev --workspace @mbele/web",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p tsconfig.tools.json",
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p tsconfig.tools.json && tsc -p tsconfig.scripts.json",
     "budget": "node scripts/byte-budget.mjs",
     "budget:selftest": "node scripts/byte-budget.mjs --selftest",
     "db:migrate": "node scripts/migrate.mjs up",
@@ -25,7 +25,8 @@
     "verify": "npm run typecheck && npm run secretscan && npm run budget:selftest && npm run build && npm test && npm run budget",
     "secretscan": "bash scripts/secret-scan.sh",
     "db:test": "bash scripts/db-test.sh",
-    "parity": "vitest run --config vitest.parity.config.ts",
+    "parity": "vitest run --config vitest.db.config.ts test/engine-parity.test.ts",
+    "test:db": "vitest run --config vitest.db.config.ts",
     "secret:set": "node scripts/set-service-secret.mjs",
     "notify": "node scripts/notify.mjs"
   },

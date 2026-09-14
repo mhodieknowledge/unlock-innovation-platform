@@ -7,7 +7,10 @@
     "declarationMap": false,
     "sourceMap": false,
     "types": ["node"],
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    // Imports from scripts/*.mjs are allowed but not checked here — tsconfig.scripts.json
+    // checks those, with settings suited to orchestration code.
+    "allowJs": true
   },
-  "include": ["test/**/*.ts", "vitest.config.ts", "vitest.parity.config.ts"]
+  "include": ["test/**/*.ts", "vitest.config.ts", "vitest.db.config.ts"]
 }

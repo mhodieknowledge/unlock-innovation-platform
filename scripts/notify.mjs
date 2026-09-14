@@ -437,7 +437,7 @@ async function runDispatch() {
        ON CONFLICT (kind, day) DO NOTHING`,
       [alert[0].msg],
     );
-    if (rowCount > 0) {
+    if ((rowCount ?? 0) > 0) {
       console.log(`OPERATOR ALERT: ${alert[0].msg}`);
       if (OPERATOR_CHAT && !dryRun) {
         const res = await sendTelegram(OPERATOR_CHAT, `${BRAND} operator alert\n\n${alert[0].msg}`);
@@ -456,6 +456,7 @@ async function runDispatch() {
 // ── Run ─────────────────────────────────────────────────────────────────────
 
 await client.connect();
+/** @type {Error | null} */
 let failure = null;
 try {
   // A dry run must be able to claim deliveries to render them, and must leave no
@@ -482,7 +483,7 @@ try {
     console.log("\n(dry run — nothing was sent and nothing was written)");
   }
 } catch (err) {
-  failure = err;
+  failure = err instanceof Error ? err : new Error(String(err));
   if (dryRun) await client.query("ROLLBACK").catch(() => {});
 } finally {
   await client.end();

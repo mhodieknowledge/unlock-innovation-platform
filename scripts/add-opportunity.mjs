@@ -306,7 +306,7 @@ try {
   console.log(`    ${rules.length} eligibility rule(s), each with a verified verbatim quote`);
   if (!shouldPublish) console.log("    Re-run with --publish when you are satisfied.\n");
   else console.log("");
-} catch (err) {
+} catch (/** @type {any} */ err) {
   await client.query("ROLLBACK");
   console.error(`\n  ✗ ${err.message}\n`);
   process.exitCode = 1;

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "types": ["node"],
+    "allowJs": true,
+    "checkJs": true,
+    // The batch tier is where the catalogue gets written, so it is checked. But it
+    // is checked for the errors that are actually bugs — a property that does not
+    // exist, a value that may be undefined, an argument of the wrong type — and not
+    // for missing annotations on every callback parameter. Turning noImplicitAny on
+    // here would mean eighty-odd annotations on orchestration code that the
+    // end-to-end test in test/ingestion-pipeline.test.ts already exercises, and the
+    // likely outcome of that trade is `any` sprinkled to silence it.
+    "noImplicitAny": false,
+    "noUncheckedIndexedAccess": false
+  },
+  "include": ["scripts/**/*.mjs"]
+}

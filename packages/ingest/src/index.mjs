@@ -42,3 +42,7 @@ export {
 } from "./validate.mjs";
 
 export { extractJsonLd, findOpportunityNode, recordFromJsonLd } from "./jsonld.mjs";
+
+export { BREAKER_MS, Breakers, MAX_INPUT_CHARS, callProvider, parseJsonLoose, runTask } from "./providers.mjs";
+export { delayFor, isAllowed, parseRobots } from "./robots.mjs";
+export { itemsSince, parseFeed, parseSitemap } from "./feeds.mjs";

@@ -1,5 +1,16 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "rootDir": ".", "outDir": "./dist", "types": ["node"] },
-  "include": ["src/**/*.ts"]
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "types": ["node"],
+    // brand.mjs is JavaScript so the batch tier can import it without a build step
+    // — see the note at the top of that file. checkJs keeps it typechecked anyway.
+    "allowJs": true,
+    "checkJs": true
+  },
+  "include": ["src/**/*.ts", "src/**/*.mjs"]
 }
