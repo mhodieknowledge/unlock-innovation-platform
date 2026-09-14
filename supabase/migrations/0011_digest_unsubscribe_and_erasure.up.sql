@@ -46,7 +46,8 @@ BEGIN
   -- 32 bytes of urlsafe randomness. Guessing one is not a realistic attack, and
   -- the worst outcome of a guess is that someone receives fewer messages.
   INSERT INTO unsubscribe_tokens (user_id, type, token)
-  VALUES (p_user_id, p_type, replace(replace(encode(gen_random_bytes(32),'base64'),'+','-'),'/','_'))
+  VALUES (p_user_id, p_type,
+          rtrim(replace(replace(encode(gen_random_bytes(32),'base64'),'+','-'),'/','_'), '='))
   ON CONFLICT (user_id, type) DO UPDATE SET user_id = EXCLUDED.user_id
   RETURNING token INTO v_token;
   RETURN v_token;

@@ -31,6 +31,13 @@ const BUDGETS = {
   list: { label: "Opportunity list / search", total: 150 * KB, js: 40 * KB },
   organisation: { label: "Organisation page", total: 120 * KB, js: 25 * KB },
   tracker: { label: "Authenticated dashboard", total: 200 * KB, js: 70 * KB },
+  notifications: { label: "Notification settings", total: 200 * KB, js: 70 * KB },
+  account: { label: "Account settings", total: 200 * KB, js: 70 * KB },
+  // Not an authenticated route: someone reaches it from an email, often on the
+  // worst connection they have. §25.1's "any route" ceiling is 250 KB, but a page
+  // with two buttons on it has no business anywhere near that, so it is held to
+  // the tightest budget in the table.
+  unsubscribe: { label: "Unsubscribe", total: 100 * KB, js: 15 * KB },
 } as const;
 
 const LONG_QUOTE =
@@ -156,18 +163,71 @@ const SESSION_USER = {
   low_data_mode: false,
 };
 
-// The tracker redirects without a session, so the budget could never be measured
-// on the real page. Mocking auth is what lets the authenticated route be measured
-// at all -- an unmeasured route is an unenforced budget.
+/**
+ * Per-table fixtures for the authenticated pages, at their WORST plausible size:
+ * every notification preference row written, Telegram linked, quiet hours set. A
+ * settings page measured against an empty account would flatter its budget.
+ */
+const TABLE_ROWS: Record<string, unknown[]> = {
+  tracker_entries: TRACKER_ROWS,
+  notification_preferences: [
+    "deadline_reminder", "opportunity_changed", "opportunity_closed", "digest",
+    "request_received", "team_update", "moderation_outcome",
+  ].flatMap((type) =>
+    ["telegram", "email"].map((channel) => ({ type, channel, enabled: true })),
+  ),
+  user_notification_settings: [
+    { digest_frequency: "daily", quiet_hours_start: 21, quiet_hours_end: 7, paused_until: null },
+  ],
+  notification_channels: [
+    { address: "555000111", verified_at: "2026-09-01T00:00:00Z", is_active: true, paused_until: null },
+  ],
+  eligibility_profiles: [{ user_id: SESSION_USER.id, country_of_residence: "ZW", birth_year: 1998 }],
+  users: [
+    {
+      email: SESSION_USER.email,
+      auth_provider: "github",
+      timezone: SESSION_USER.timezone,
+      low_data_mode: false,
+      account_state: "active",
+      deleted_at: null,
+      created_at: "2026-06-01T00:00:00Z",
+    },
+  ],
+};
+
+/**
+ * A chainable stub shaped like supabase-js, because the settings pages chain
+ * differently from the tracker (.eq().eq().maybeSingle(), .upsert(), .delete()).
+ *
+ * Deliberately permissive about the ORDER of calls and strict about what comes
+ * back: any chain resolves to the fixture rows for the table it started from, so a
+ * page cannot accidentally render an empty state and pass its budget on nothing.
+ */
+function tableStub(table: string) {
+  const rows = TABLE_ROWS[table] ?? [];
+  const result = { data: rows, error: null };
+  const single = { data: rows[0] ?? null, error: null };
+
+  const chain: Record<string, unknown> = {
+    then: (resolve: (v: unknown) => unknown) => Promise.resolve(result).then(resolve),
+    maybeSingle: async () => single,
+    single: async () => single,
+  };
+  for (const method of ["select", "eq", "is", "in", "order", "limit", "update", "upsert", "delete", "insert"]) {
+    chain[method] = () => chain;
+  }
+  return chain;
+}
+
+// The authenticated pages redirect without a session, so their budgets could never
+// be measured on the real page. Mocking auth is what lets them be measured at all
+// -- an unmeasured route is an unenforced budget.
 vi.mock("../src/lib/auth", () => ({
   getSessionUser: vi.fn(async () => SESSION_USER),
   createAuthClient: vi.fn(() => ({
-    from: () => ({
-      select: () => ({
-        order: () => ({ data: TRACKER_ROWS, error: null }),
-        eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }),
-      }),
-    }),
+    from: (table: string) => tableStub(table),
+    rpc: async () => ({ data: null, error: null }),
   })),
   personalWritesAllowed: vi.fn(() => true),
   socialWritesAllowed: vi.fn(() => ({ allowed: true, reason: null })),
@@ -187,7 +247,14 @@ vi.mock("../src/lib/db", () => ({
   allowedTrackerTransitions: vi.fn(async () => ["applied"]),
   getPublishedCount: vi.fn(async () => 312),
   isFlagEnabled: vi.fn(async () => false),
-  getClient: vi.fn(() => null),
+  // The unsubscribe page reads through this. Returning a real-looking token means
+  // the page renders its decision state, which is the state with content in it.
+  getClient: vi.fn(() => ({
+    rpc: async (fn: string) =>
+      fn === "describe_unsubscribe_token"
+        ? { data: [{ type: "digest", already_used: false, digest_frequency: "daily" }], error: null }
+        : { data: null, error: null },
+  })),
 }));
 
 const gz = (s: string | Buffer) => gzipSync(Buffer.from(s), { level: 9 }).length;
@@ -314,6 +381,24 @@ beforeAll(async () => {
     { slug: "example-org" },
     "https://example.invalid/organisations/example-org",
   );
+  await render(
+    "notifications",
+    () => import("../src/pages/you/notifications.astro"),
+    {},
+    "https://example.invalid/you/notifications",
+  );
+  await render(
+    "account",
+    () => import("../src/pages/you/account.astro"),
+    {},
+    "https://example.invalid/you/account",
+  );
+  await render(
+    "unsubscribe",
+    () => import("../src/pages/unsubscribe.astro"),
+    {},
+    "https://example.invalid/unsubscribe?t=budget-fixture-token",
+  );
 
   const pct = (n: number, of: number) => `${Math.round((n / of) * 100)}%`;
   const lines = Object.entries(BUDGETS).map(([key, budget]) => {
@@ -377,6 +462,44 @@ describe("byte budgets — on-demand routes (invariant 5)", () => {
     // product loses its core interaction.
     expect(measured.detail!.html).toContain("astro-island");
     expect(measured.detail!.html).toContain("Check if you can apply");
+  });
+
+  it("renders the real settings pages, not an error or empty state", () => {
+    // Same discipline as the tracker assertion below: a page that fell back to an
+    // error state would sail under its budget and prove nothing.
+    const notifications = measured.notifications!.html;
+    // NOTIFICATIONS.md §8 requires the caps stated visibly on this page.
+    expect(notifications).toContain("one digest a day");
+    expect(notifications).toContain("three other messages");
+    expect(notifications).toContain("When something I saved is about to close");
+    // The fixture has Telegram linked, so the unlink control must be the one shown.
+    expect(notifications).toContain("Unlink Telegram");
+    // §9: no switch for security messages.
+    expect(notifications).not.toContain('name="pref:security:email"');
+
+    const account = measured.account!.html;
+    expect(account).toContain("Download everything");
+    expect(account).toContain("Type DELETE to confirm");
+    // PRIVACY_AND_COMPLIANCE.md §5: the 30-day timeline stated in advance.
+    expect(account).toContain("destroyed 30 days later");
+    // §8: the eligibility profile goes immediately, and the page says so.
+    expect(account).toContain("destroyed immediately, not in 30 days");
+  });
+
+  it("offers reducing frequency as an equal-weight option on unsubscribe", () => {
+    // NOTIFICATIONS.md §9: "The unsubscribe confirmation page offers 'reduce
+    // frequency instead' as an EQUAL-WEIGHT option." Both are the same button.
+    const html = measured.unsubscribe!.html;
+    expect(html).toContain("Send it weekly instead");
+    expect(html).toContain("Stop the digest");
+    const primaryButtons = [...html.matchAll(/bg-brand[^"]*"[^>]*>\s*(?:Stop|Send)/g)];
+    expect(primaryButtons.length).toBe(2);
+  });
+
+  it("never unsubscribes on a GET (mail scanners follow links)", () => {
+    // The page must be a decision, not an action: it renders forms that POST.
+    expect(measured.unsubscribe!.html).toContain('method="post"');
+    expect(measured.unsubscribe!.html).not.toContain("no more the digest");
   });
 
   it("shows the quoted source sentence and the raw deadline string", () => {

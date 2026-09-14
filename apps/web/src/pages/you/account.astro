@@ -1,0 +1,347 @@
+---
+// Account settings, export and deletion. UX_FLOWS.md §14 and
+// PRIVACY_AND_COMPLIANCE.md §5 — every right on that table is self-serve, with no
+// support ticket.
+//
+// The deletion copy states the timeline and what survives, in advance, rather than
+// after the fact. §5's list of what survives deletion is "justified rather than
+// merely listed", and the same standard applies to how it is explained here.
+
+import Base from "../../layouts/Base.astro";
+import { createAuthClient, getSessionUser, personalWritesAllowed } from "../../lib/auth";
+import { reportError } from "../../lib/errors";
+
+export const prerender = false;
+
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const user = await getSessionUser(Astro.cookies, env);
+
+if (!user) {
+  return Astro.redirect(`/signin?returnTo=${encodeURIComponent(Astro.url.pathname)}`, 302);
+}
+
+const client = createAuthClient(Astro.cookies, env);
+let flash = "";
+let flashKind: "ok" | "error" = "ok";
+let purgeAt: string | null = null;
+
+// A short list, because these are the timezones the audience actually sits in.
+// UTC is offered so nobody is forced into a wrong guess.
+const TIMEZONES = [
+  "Africa/Abidjan",
+  "Africa/Accra",
+  "Africa/Addis_Ababa",
+  "Africa/Cairo",
+  "Africa/Casablanca",
+  "Africa/Dar_es_Salaam",
+  "Africa/Harare",
+  "Africa/Johannesburg",
+  "Africa/Kampala",
+  "Africa/Khartoum",
+  "Africa/Kigali",
+  "Africa/Lagos",
+  "Africa/Lusaka",
+  "Africa/Nairobi",
+  "Africa/Windhoek",
+  "Europe/London",
+  "UTC",
+];
+
+if (client && Astro.request.method === "POST") {
+  try {
+    const form = await Astro.request.formData();
+    const action = String(form.get("action") ?? "");
+
+    if (action === "preferences" && personalWritesAllowed(user)) {
+      const tz = String(form.get("timezone") ?? "UTC");
+      const { error } = await client
+        .from("users")
+        .update({
+          timezone: TIMEZONES.includes(tz) ? tz : "UTC",
+          low_data_mode: form.get("low_data_mode") === "on",
+        })
+        .eq("id", user.id);
+      if (error) throw new Error(error.message);
+      flash = "Saved.";
+    } else if (action === "delete_eligibility") {
+      // §8: the eligibility profile is "deleted immediately on request,
+      // independently of the account". This is that path, and it is separate
+      // because someone may want the verdicts to stop without losing the account.
+      const { error } = await client
+        .from("eligibility_profiles")
+        .delete()
+        .eq("user_id", user.id);
+      if (error) throw new Error(error.message);
+      flash =
+        "Your eligibility details are deleted. Verdicts will read 'unclear' until you fill them in again.";
+    } else if (action === "delete_account") {
+      // The confirmation is typed, not a checkbox. This is irreversible after 30
+      // days and a mis-click should not be able to start it.
+      if (String(form.get("confirm") ?? "").trim().toUpperCase() !== "DELETE") {
+        flashKind = "error";
+        flash = "Type DELETE to confirm. Nothing was changed.";
+      } else {
+        const { data, error } = await client.rpc("request_account_deletion", {
+          p_anonymise: form.get("public_content") !== "remove",
+        });
+        if (error) throw new Error(error.message);
+        purgeAt = typeof data === "string" ? data : null;
+        flash = "Your account is deactivated and will be deleted. You can still change your mind.";
+      }
+    } else if (action === "cancel_deletion") {
+      const { data, error } = await client.rpc("cancel_account_deletion");
+      if (error) throw new Error(error.message);
+      if (data === true) {
+        flash = "Deletion cancelled. Your account is active again.";
+      } else {
+        flashKind = "error";
+        flash = "That could not be undone — the grace period has passed.";
+      }
+    }
+  } catch (err) {
+    await reportError(err, { route: "/you/account" }, env);
+    flashKind = "error";
+    flash = "We couldn't do that. Nothing was changed — try again.";
+  }
+}
+
+// Re-read after any write, so the page never shows what it just replaced.
+const { data: fresh } = client
+  ? await client
+      .from("users")
+      .select("email, auth_provider, timezone, low_data_mode, account_state, deleted_at, created_at")
+      .eq("id", user.id)
+      .maybeSingle()
+  : { data: null };
+
+const account = (fresh ?? user) as unknown as {
+  email?: string | null;
+  auth_provider?: string | null;
+  timezone?: string;
+  low_data_mode?: boolean;
+  account_state?: string;
+  deleted_at?: string | null;
+  created_at?: string;
+};
+
+const { data: profileRow } = client
+  ? await client.from("eligibility_profiles").select("user_id").eq("user_id", user.id).maybeSingle()
+  : { data: null };
+const hasEligibilityProfile = profileRow !== null;
+
+const deletionRequestedAt = account.deleted_at ? new Date(account.deleted_at) : null;
+const pendingDeletion = account.account_state === "deleted" && deletionRequestedAt !== null;
+const deletesOn =
+  purgeAt !== null
+    ? new Date(purgeAt)
+    : deletionRequestedAt
+      ? new Date(deletionRequestedAt.getTime() + 30 * 86_400_000)
+      : null;
+const longDate = (d: Date) => d.toLocaleDateString("en-GB", { dateStyle: "long" });
+---
+
+<Base title="Your account" noindex>
+  <h1 class="text-title font-semibold">Your account</h1>
+
+  {
+    flash && (
+      <p
+        class={`mt-3 max-w-prose border-l-[3px] p-3 text-dense ${
+          flashKind === "ok"
+            ? "border-eligible bg-eligible-wash text-eligible"
+            : "border-danger bg-noteligible-wash text-danger"
+        }`}
+        role="status"
+      >
+        {flash}
+      </p>
+    )
+  }
+
+  {
+    pendingDeletion && (
+      <section class="mt-4 max-w-prose border-l-[3px] border-danger bg-noteligible-wash p-3">
+        <h2 class="text-dense font-semibold text-danger">This account is scheduled for deletion</h2>
+        <p class="mt-1 text-dense">
+          It was deactivated on {longDate(deletionRequestedAt!)} and everything left will be
+          destroyed on {deletesOn ? longDate(deletesOn) : "the scheduled date"}. Your eligibility
+          details were deleted straight away and cannot be restored.
+        </p>
+        <form method="post" class="mt-3">
+          <input type="hidden" name="action" value="cancel_deletion" />
+          <button type="submit" class="min-h-11 rounded-row bg-brand px-4 font-semibold text-surface">
+            Keep my account
+          </button>
+        </form>
+      </section>
+    )
+  }
+
+  <section class="mt-8 max-w-prose" aria-labelledby="identity">
+    <h2 id="identity" class="text-subtitle font-semibold">Sign-in</h2>
+    <dl class="mt-2 space-y-1 text-dense">
+      <div class="flex gap-2">
+        <dt class="text-ink-2">Email</dt>
+        <dd>{account.email ?? "Not set"}</dd>
+      </div>
+      <div class="flex gap-2">
+        <dt class="text-ink-2">Connected with</dt>
+        <dd>{account.auth_provider ?? "A one-time email code"}</dd>
+      </div>
+      <div class="flex gap-2">
+        <dt class="text-ink-2">Member since</dt>
+        <dd>{account.created_at ? longDate(new Date(account.created_at)) : "—"}</dd>
+      </div>
+    </dl>
+    <p class="mt-2 text-micro text-ink-2">
+      No password is stored for this account, by design — there is nothing here to be stolen and
+      reused elsewhere.
+    </p>
+  </section>
+
+  <form method="post" class="mt-8 max-w-prose space-y-5">
+    <input type="hidden" name="action" value="preferences" />
+    <h2 class="text-subtitle font-semibold">Preferences</h2>
+
+    <label class="block">
+      <span class="block text-micro font-semibold text-ink-2">Timezone</span>
+      <select
+        name="timezone"
+        class="mt-1 h-11 w-full rounded-row border border-line bg-surface px-3 text-dense"
+      >
+        {
+          TIMEZONES.map((tz) => (
+            <option value={tz} selected={(account.timezone ?? "UTC") === tz}>
+              {tz.replace("_", " ")}
+            </option>
+          ))
+        }
+      </select>
+      <span class="mt-1 block text-micro text-ink-2">
+        Deadlines, quiet hours and the digest hour are all worked out in your own time.
+      </span>
+    </label>
+
+    <label class="flex items-start gap-2">
+      <input type="checkbox" name="low_data_mode" checked={account.low_data_mode === true} class="mt-1" />
+      <span class="text-dense">
+        Low-data mode
+        <span class="block text-micro text-ink-2">
+          Skips anything optional over the wire. Nothing that matters is hidden — the site is built
+          to be small first, so this is a further step rather than a different product.
+        </span>
+      </span>
+    </label>
+
+    <button type="submit" class="min-h-11 rounded-row bg-brand px-4 font-semibold text-surface">
+      Save preferences
+    </button>
+  </form>
+
+  <!-- ── Export ──────────────────────────────────────────────────────────── -->
+  <section class="mt-10 max-w-prose" aria-labelledby="export">
+    <h2 id="export" class="text-subtitle font-semibold">Export my data</h2>
+    <p class="mt-1 text-dense text-ink-2">
+      Everything held about your account as JSON — your profile, eligibility details, tracker with
+      your private notes, notification settings and message history. It downloads straight away; no
+      request, no waiting.
+    </p>
+    <p class="mt-3 flex flex-wrap gap-3">
+      <a
+        href="/api/v1/account/export"
+        class="min-h-11 rounded-row border border-line px-4 text-dense"
+        download
+      >
+        Download everything (JSON)
+      </a>
+      <a
+        href="/api/v1/tracker/export?format=csv"
+        class="min-h-11 rounded-row border border-line px-4 text-dense"
+        download
+      >
+        Just my tracker (CSV)
+      </a>
+    </p>
+  </section>
+
+  <!-- ── Eligibility details, deletable on their own ─────────────────────── -->
+  {
+    hasEligibilityProfile && (
+      <form method="post" class="mt-10 max-w-prose">
+        <input type="hidden" name="action" value="delete_eligibility" />
+        <h2 class="text-subtitle font-semibold">Delete my eligibility details</h2>
+        <p class="mt-1 text-dense text-ink-2">
+          Deletes your country, age, student status and the rest immediately, and keeps your account.
+          Verdicts go back to reading "unclear" until you fill them in again. Nothing else is
+          affected.
+        </p>
+        <button type="submit" class="mt-3 min-h-11 rounded-row border border-danger px-4 text-dense text-danger">
+          Delete my eligibility details
+        </button>
+      </form>
+    )
+  }
+
+  <!-- ── Deletion ────────────────────────────────────────────────────────── -->
+  {
+    !pendingDeletion && (
+      <section class="mt-10 max-w-prose border-t border-line pt-6" aria-labelledby="delete">
+        <h2 id="delete" class="text-subtitle font-semibold">Delete my account</h2>
+        <p class="mt-2 text-dense">Here is exactly what happens:</p>
+        <ul class="mt-2 list-disc space-y-1 pl-5 text-dense text-ink-2">
+          <li>Your account stops working immediately. No sign-in, no messages, nothing public.</li>
+          <li>Your eligibility details are destroyed immediately, not in 30 days.</li>
+          <li>Everything else is destroyed 30 days later. Until then you can change your mind.</li>
+          <li>
+            What survives, and why: anonymous counts that identify nobody; moderation records where
+            a safety violation was confirmed, kept 24 months to protect other people; and messages
+            already delivered to someone else's inbox, which are that person's data too.
+          </li>
+        </ul>
+
+        <form method="post" class="mt-4 space-y-4">
+          <input type="hidden" name="action" value="delete_account" />
+
+          <fieldset>
+            <legend class="text-micro font-semibold text-ink-2">
+              Anything you posted publicly
+            </legend>
+            <label class="mt-1 flex items-start gap-2 text-dense">
+              <input type="radio" name="public_content" value="anonymise" checked class="mt-1" />
+              <span>
+                Keep it, without my name
+                <span class="block text-micro text-ink-2">
+                  Threads other people are part of keep their shape.
+                </span>
+              </span>
+            </label>
+            <label class="mt-2 flex items-start gap-2 text-dense">
+              <input type="radio" name="public_content" value="remove" class="mt-1" />
+              <span>Remove it entirely</span>
+            </label>
+          </fieldset>
+
+          <label class="block">
+            <span class="block text-micro font-semibold text-ink-2">
+              Type DELETE to confirm
+            </span>
+            <input
+              type="text"
+              name="confirm"
+              autocomplete="off"
+              class="mt-1 w-40 h-11 rounded-row border border-line bg-surface px-3 text-dense"
+            />
+          </label>
+
+          <button type="submit" class="min-h-11 rounded-row bg-danger px-4 font-semibold text-surface">
+            Delete my account
+          </button>
+        </form>
+      </section>
+    )
+  }
+
+  <p class="mt-8 text-micro text-ink-2">
+    <a href="/you/notifications" class="underline">Notification settings →</a>
+  </p>
+</Base>

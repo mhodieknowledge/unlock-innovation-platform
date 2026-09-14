@@ -1,0 +1,236 @@
+---
+// Sessionless unsubscribe. NOTIFICATIONS.md §9.
+//
+// "The in-message link works without a session, via a signed token, and
+// unsubscribes from THAT TYPE ONLY — never from everything, and never silently from
+// security messages."
+//
+// Three properties this page has to get right:
+//
+//   1. A GET never changes anything. Mail scanners and link previewers follow
+//      links; an unsubscribe that happened on page load would fire for people who
+//      never clicked.
+//   2. "Reduce frequency instead" is offered as an EQUAL-WEIGHT option, not as a
+//      smaller link under the real button.
+//   3. No "are you sure?" follow-up email afterwards. §9 forbids it outright.
+//
+// Anonymous callers only ever reach two functions, both of which take the token and
+// nothing else, so knowing a token is the whole of the authorisation.
+
+import Base from "../layouts/Base.astro";
+import { getClient } from "../lib/db";
+import { reportError } from "../lib/errors";
+
+export const prerender = false;
+
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const client = getClient(env);
+
+const token = (Astro.url.searchParams.get("t") ?? "").slice(0, 200);
+
+const LABELS: Record<string, string> = {
+  deadline_reminder: "reminders about deadlines on things you saved",
+  digest: "the digest",
+  opportunity_changed: "notices when a deadline or the rules change",
+  opportunity_closed: "notices when something you saved closes",
+  request_received: "messages when someone asks to join something with you",
+  request_accepted: "messages when someone accepts your request",
+  request_declined: "messages when someone declines your request",
+  team_update: "updates about teams you are in",
+  project_match: "new matches for your projects",
+  moderation_outcome: "the outcome of something you reported",
+  system: "service messages",
+  security: "security messages",
+};
+
+let state:
+  | "no_token"
+  | "unknown"
+  | "ready"
+  | "unsubscribed"
+  | "reduced"
+  | "security"
+  | "failed" = "ready";
+let type: string | null = null;
+let frequency = "weekly";
+
+if (!token) {
+  state = "no_token";
+} else if (!client) {
+  state = "failed";
+} else {
+  try {
+    const { data: described, error } = await client.rpc("describe_unsubscribe_token", {
+      p_token: token,
+    });
+    if (error) throw new Error(error.message);
+
+    const row = (Array.isArray(described) ? described[0] : described) as
+      | { type?: string; digest_frequency?: string }
+      | undefined;
+
+    if (!row?.type) {
+      state = "unknown";
+    } else {
+      type = row.type;
+      frequency = row.digest_frequency ?? "weekly";
+
+      if (Astro.request.method === "POST") {
+        const form = await Astro.request.formData();
+        const action = String(form.get("action") ?? "off") === "reduce" ? "reduce" : "off";
+        const { data: result, error: redeemError } = await client.rpc("redeem_unsubscribe_token", {
+          p_token: token,
+          p_action: action,
+        });
+        if (redeemError) throw new Error(redeemError.message);
+
+        state =
+          result === "unsubscribed"
+            ? "unsubscribed"
+            : result === "reduced"
+              ? "reduced"
+              : result === "security_cannot_be_disabled"
+                ? "security"
+                : "unknown";
+      }
+    }
+  } catch (err) {
+    await reportError(err, { route: "/unsubscribe" }, env);
+    state = "failed";
+  }
+}
+
+const what = type ? (LABELS[type] ?? "these messages") : "these messages";
+const canReduce = type === "digest" && frequency === "daily";
+---
+
+<Base title="Unsubscribe" noindex>
+  {
+    state === "no_token" && (
+      <div class="max-w-prose">
+        <h1 class="text-title font-semibold">This link is incomplete</h1>
+        <p class="mt-2 text-dense text-ink-2">
+          Open the link from the message again, or change everything at once in your settings.
+        </p>
+        <p class="mt-3">
+          <a href="/you/notifications" class="underline">Notification settings</a>
+        </p>
+      </div>
+    )
+  }
+
+  {
+    state === "unknown" && (
+      <div class="max-w-prose">
+        <h1 class="text-title font-semibold">This link has expired</h1>
+        <p class="mt-2 text-dense text-ink-2">
+          It may already have been used. You can change any of this in your settings — and if you
+          cannot sign in, replying to the message reaches a person.
+        </p>
+        <p class="mt-3">
+          <a href="/you/notifications" class="underline">Notification settings</a>
+        </p>
+      </div>
+    )
+  }
+
+  {
+    state === "failed" && (
+      <div class="max-w-prose">
+        <h1 class="text-title font-semibold">We couldn't do that just now</h1>
+        <p class="mt-2 text-dense text-ink-2">
+          Nothing was changed. Try the link again in a minute, or turn it off in your settings.
+        </p>
+        <p class="mt-3">
+          <a href="/you/notifications" class="underline">Notification settings</a>
+        </p>
+      </div>
+    )
+  }
+
+  {
+    state === "security" && (
+      <div class="max-w-prose">
+        <h1 class="text-title font-semibold">Security messages stay on</h1>
+        <p class="mt-2 text-dense">
+          These are only sent when something changes about your account — a new sign-in, a changed
+          email address. Turning them off would mean you could not be told when someone else does
+          something to your account, so there is no switch for them.
+        </p>
+        <p class="mt-2 text-dense text-ink-2">Everything else can be turned off.</p>
+        <p class="mt-3">
+          <a href="/you/notifications" class="underline">Notification settings</a>
+        </p>
+      </div>
+    )
+  }
+
+  {
+    state === "unsubscribed" && (
+      <div class="max-w-prose">
+        <h1 class="text-title font-semibold">Done — no more {what}</h1>
+        <p class="mt-2 text-dense">
+          That took effect immediately, including anything already queued. Nothing else changed, and
+          we will not email to ask whether you meant it.
+        </p>
+        <p class="mt-2 text-dense text-ink-2">
+          You will still see everything in the app when you open it. Nothing is lost.
+        </p>
+        <p class="mt-3">
+          <a href="/you/notifications" class="underline">Change any of this</a>
+        </p>
+      </div>
+    )
+  }
+
+  {
+    state === "reduced" && (
+      <div class="max-w-prose">
+        <h1 class="text-title font-semibold">Changed to weekly</h1>
+        <p class="mt-2 text-dense">
+          One digest a week instead of one a day. It is the default for a reason — a weekly one that
+          is always worth reading beats a daily one that sometimes is not.
+        </p>
+        <p class="mt-3">
+          <a href="/you/notifications" class="underline">Change any of this</a>
+        </p>
+      </div>
+    )
+  }
+
+  {
+    state === "ready" && type && (
+      <div class="max-w-prose">
+        <h1 class="text-title font-semibold">Stop {what}?</h1>
+        <p class="mt-2 text-dense text-ink-2">
+          You do not need to sign in. This affects {what} only — everything else stays exactly as it
+          is, and you will still see it all in the app.
+        </p>
+
+        <div class="mt-5 flex flex-wrap gap-3">
+          <form method="post">
+            <input type="hidden" name="action" value="off" />
+            <button type="submit" class="min-h-11 rounded-row bg-brand px-4 font-semibold text-surface">
+              Stop {what}
+            </button>
+          </form>
+
+          {canReduce && (
+            <form method="post">
+              <input type="hidden" name="action" value="reduce" />
+              <button type="submit" class="min-h-11 rounded-row bg-brand px-4 font-semibold text-surface">
+                Send it weekly instead
+              </button>
+            </form>
+          )}
+        </div>
+
+        {type === "digest" && !canReduce && (
+          <p class="mt-3 text-dense text-ink-2">
+            Your digest is already weekly. Stopping it means no digest at all.
+          </p>
+        )}
+      </div>
+    )
+  }
+</Base>

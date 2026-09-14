@@ -26,7 +26,8 @@
     "secretscan": "bash scripts/secret-scan.sh",
     "db:test": "bash scripts/db-test.sh",
     "parity": "vitest run --config vitest.parity.config.ts",
-    "secret:set": "node scripts/set-service-secret.mjs"
+    "secret:set": "node scripts/set-service-secret.mjs",
+    "notify": "node scripts/notify.mjs"
   },
   "devDependencies": {
     "@types/pg": "^8.23.1",

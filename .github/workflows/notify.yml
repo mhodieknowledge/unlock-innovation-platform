@@ -1,0 +1,89 @@
+name: Notifications
+
+# The batch tier. FREE_INFRASTRUCTURE.md §2: GitHub Actions has unlimited minutes
+# on a public repository, which is what makes a scheduled tier free at all.
+#
+# Four schedules, because the jobs have genuinely different cadences:
+#   dispatch   every 15 minutes  — NOTIFICATIONS.md §4's dispatcher interval
+#   reminders  hourly            — §6, so a reminder window is never missed by more
+#                                  than an hour
+#   digest     hourly            — §5 delivers at 06:00 LOCAL, and "local" spans
+#                                  every timezone, so the job runs hourly and only
+#                                  acts on the users for whom it is currently 06:00
+#   retention  daily             — PRIVACY_AND_COMPLIANCE.md §8
+#
+# OUTSTANDING — SECURITY.md §8 wants actions pinned to commit SHAs. See the note in
+# ci.yml: this session's GitHub access is scoped to this repository, so the SHAs for
+# actions/* could not be resolved, and a wrong-but-plausible SHA fails opaquely.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # dispatch
+    - cron: "7 * * * *"      # reminders and digest, off the hour to avoid the pile-up
+    - cron: "23 2 * * *"     # retention
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Which job to run
+        required: true
+        default: dispatch
+        type: choice
+        options: [dispatch, reminders, digest, retention]
+      dry_run:
+        description: Render without sending
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  # Never two dispatchers at once. The claim state makes a double-send impossible
+  # anyway, but a queue drained by one process is far easier to reason about.
+  group: notify-${{ github.event.inputs.mode || github.event.schedule }}
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
+      BREVO_SENDER_EMAIL: ${{ vars.BREVO_SENDER_EMAIL }}
+      OPERATOR_TELEGRAM_CHAT_ID: ${{ secrets.OPERATOR_TELEGRAM_CHAT_ID }}
+      BRAND_NAME: ${{ vars.BRAND_NAME }}
+      BRAND_DOMAIN: ${{ vars.BRAND_DOMAIN }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Guard against an unconfigured run
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::SUPABASE_DB_URL is not set. The job would silently do nothing."
+            exit 1
+          fi
+
+      - name: Dispatch queued notifications
+        if: github.event.schedule == '*/15 * * * *'
+        run: npm run notify -- dispatch
+
+      - name: Schedule deadline reminders, then assemble digests
+        if: github.event.schedule == '7 * * * *'
+        run: |
+          npm run notify -- reminders
+          npm run notify -- digest
+
+      - name: Enforce retention
+        if: github.event.schedule == '23 2 * * *'
+        run: npm run notify -- retention
+
+      - name: Manual run
+        if: github.event_name == 'workflow_dispatch'
+        run: npm run notify -- ${{ github.event.inputs.mode }} ${{ github.event.inputs.dry_run == 'true' && '--dry-run' || '' }}
