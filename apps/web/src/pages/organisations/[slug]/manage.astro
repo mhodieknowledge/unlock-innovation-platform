@@ -1,0 +1,395 @@
+---
+// An organisation's own listings. PRODUCT_SPEC.md §19, UX_FLOWS.md §12.
+//
+// The page states the consequence of an edit before anyone makes one: a change to a
+// deadline, an eligibility rule or the cost sends a published record back into review
+// and tells everyone tracking it. §19 makes that a `[PR]`, and the reason is on the
+// page rather than in a policy: those three things are exactly what people planned
+// around.
+//
+// The number of people tracking each listing is shown for the same reason. It is the
+// one piece of audience data an organisation sees here, and it is shown because it is
+// the fact that makes an edit consequential — not as a vanity metric. There is no view
+// count anywhere (PRODUCT_SPEC.md §27 forbids it).
+
+import Base from "../../../layouts/Base.astro";
+import { createAuthClient, getSessionUser } from "../../../lib/auth";
+import { getOrganisation } from "../../../lib/db";
+import { countdownLabel, deadlineFacts } from "../../../lib/deadline";
+import { reportError } from "../../../lib/errors";
+import {
+  getOrgOpportunities,
+  submitAsOrganisation,
+  type OrgOpportunity,
+} from "../../../lib/orgs";
+
+export const prerender = false;
+
+const { slug } = Astro.params;
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+
+const user = await getSessionUser(Astro.cookies, env);
+if (!user) {
+  return Astro.redirect(`/signin?returnTo=${encodeURIComponent(Astro.url.pathname)}`, 302);
+}
+
+const client = createAuthClient(Astro.cookies, env);
+Astro.response.headers.set("cache-control", "private, no-store");
+
+const found = await getOrganisation(slug!, env);
+const org = found.ok ? found.data.organisation : null;
+
+interface Category {
+  code: string;
+  name: string;
+}
+
+let listings: OrgOpportunity[] = [];
+let categories: Category[] = [];
+let isMember = false;
+let problem: string | null = null;
+let notice: string | null = null;
+let failed = false;
+
+if (org && client) {
+  try {
+    if (Astro.request.method === "POST") {
+      const form = await Astro.request.formData();
+      const deadline = String(form.get("deadline_at") ?? "").trim();
+
+      const result = await submitAsOrganisation(client, slug!, {
+        title: String(form.get("title") ?? "").trim().slice(0, 200),
+        categoryCode: String(form.get("category") ?? ""),
+        summary: String(form.get("summary") ?? "").trim().slice(0, 400) || null,
+        descriptionMd: String(form.get("description") ?? "").trim().slice(0, 8000) || null,
+        applyUrl: String(form.get("apply_url") ?? "").trim().slice(0, 500) || null,
+        // A date input gives a local date with no time. Treated as the end of that day in
+        // UTC, and the precision recorded as date_only so the page never claims an hour the
+        // organisation did not give (PRODUCT_SPEC.md §11.3).
+        deadlineAt: deadline === "" ? null : `${deadline}T23:59:59Z`,
+        deadlinePrecision: "date_only",
+        cost: String(form.get("cost") ?? "free"),
+        eligibilityScope: String(form.get("scope") ?? "unclear"),
+        eligibleCountries: [],
+        teamRequired:
+          form.get("team") === "team" ? true : form.get("team") === "individual" ? false : null,
+        teamSizeMin: null,
+        teamSizeMax: null,
+      });
+
+      if (result.ok) {
+        notice =
+          result.status === "published"
+            ? "Published. It shows as coming from you, not from our crawler."
+            : "Saved for review. Anything with an entry fee is read by a person first, whoever sends it.";
+      } else {
+        problem = result.message;
+      }
+    }
+
+    listings = await getOrgOpportunities(client, slug!);
+    isMember = listings.length > 0;
+
+    // org_opportunities returns nothing to a non-member, which is also how an organisation
+    // with no listings yet reads. Ask the membership question directly rather than inferring
+    // it from an empty list.
+    const { count } = await client
+      .from("organisation_members")
+      .select("user_id", { count: "exact", head: true })
+      .eq("user_id", user.id);
+    isMember = isMember || (count ?? 0) > 0;
+
+    const { data: cats } = await client
+      .from("categories")
+      .select("code, name")
+      .order("name");
+    categories = (cats ?? []) as unknown as Category[];
+  } catch (err) {
+    await reportError(err, { route: "/organisations/[slug]/manage", tags: { slug: slug ?? "" } }, env);
+    failed = true;
+  }
+}
+
+if (!org) Astro.response.status = 404;
+
+const verified = org?.verification === "verified";
+
+const STATUS_WORD: Record<string, string> = {
+  published: "Live",
+  in_review: "In review",
+  draft: "Draft",
+  expired: "Closed",
+  closed: "Closed",
+  rejected: "Not published",
+  merged: "Merged into another listing",
+  cancelled: "Cancelled",
+};
+---
+
+{
+  !org ? (
+    <Base title="Not found" noindex user={user}>
+      <h1 class="text-title font-semibold">That organisation isn't here</h1>
+      <p class="mt-4"><a href="/opportunities" class="text-brand">Browse what's open →</a></p>
+    </Base>
+  ) : (
+    <Base title={`Manage ${org.name}`} noindex user={user}>
+      <p class="text-micro uppercase tracking-wide text-ink-2">Managing</p>
+      <h1 class="mt-1 text-title font-semibold">
+        <a href={`/organisations/${org.slug}`} class="text-ink no-underline">{org.name}</a>
+      </h1>
+
+      {
+        failed && (
+          <p class="mt-4 max-w-prose border-l-[3px] border-danger bg-noteligible-wash p-3 text-dense">
+            We couldn't load this just now. Nothing has changed.
+          </p>
+        )
+      }
+
+      {
+        notice && (
+          <p class="mt-4 max-w-prose border-l-[3px] border-success bg-eligible-wash p-3 text-dense">
+            {notice}
+          </p>
+        )
+      }
+
+      {
+        problem && (
+          <p class="mt-4 max-w-prose border-l-[3px] border-danger bg-noteligible-wash p-3 text-dense">
+            {problem}
+          </p>
+        )
+      }
+
+      {
+        !isMember ? (
+          <div class="mt-6 max-w-prose rounded-sheet border border-line bg-surface p-4">
+            <p class="text-dense font-semibold">This isn't yours to manage.</p>
+            <p class="mt-1 text-dense text-ink-2">
+              If you work at {org.name}, you can claim it with an email address at their own
+              domain.
+            </p>
+            <p class="mt-3">
+              <a href={`/organisations/${org.slug}/claim`} class="text-brand">Claim it →</a>
+            </p>
+          </div>
+        ) : !verified ? (
+          <div class="mt-6 max-w-prose rounded-sheet border border-line bg-surface p-4">
+            <p class="text-dense font-semibold">Waiting on verification.</p>
+            <p class="mt-1 text-dense text-ink-2">
+              Once the claim is confirmed you can publish here. Until then you can still correct
+              existing listings, and every correction goes through review.
+            </p>
+          </div>
+        ) : (
+          <>
+            <section class="mt-6">
+              <h2 class="text-subtitle font-semibold">Your listings</h2>
+              {listings.length === 0 ? (
+                <p class="mt-2 max-w-prose text-dense text-ink-2">
+                  Nothing yet. What you publish here appears as coming from {org.name}.
+                </p>
+              ) : (
+                <ul class="mt-3 divide-y divide-line border-y border-line">
+                  {listings.map((row) => {
+                    const facts = deadlineFacts({
+                      deadline_at: row.deadline_at,
+                      deadline_precision: "date_only" as never,
+                      opens_at: null,
+                      is_rolling: false,
+                    });
+                    return (
+                      <li class="py-3">
+                        <p class="text-dense font-semibold">
+                          <a href={`/opportunities/${row.slug}`} class="text-ink">{row.title}</a>
+                        </p>
+                        <p class="text-micro text-ink-2">
+                          {STATUS_WORD[row.status] ?? row.status}
+                          <span aria-hidden="true"> · </span>
+                          {row.verification}
+                          <span aria-hidden="true"> · </span>
+                          {row.deadline_at ? countdownLabel(facts) : "no deadline given"}
+                          {row.tracked_by > 0 && (
+                            <span>
+                              <span aria-hidden="true"> · </span>
+                              {row.tracked_by} {row.tracked_by === 1 ? "person is" : "people are"}{" "}
+                              tracking it
+                            </span>
+                          )}
+                          {row.in_review && (
+                            <span>
+                              <span aria-hidden="true"> · </span>a reviewer is looking at it
+                            </span>
+                          )}
+                        </p>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+
+              <p class="mt-3 max-w-prose text-micro text-ink-2">
+                Correcting a deadline, an eligibility rule or the cost on a live listing sends it
+                back into review and tells everyone tracking it. Everything else — a better
+                summary, a fixed link, a clearer description — publishes straight away.
+              </p>
+            </section>
+
+            <section class="mt-10 max-w-prose">
+              <h2 class="text-subtitle font-semibold">Publish something new</h2>
+              <p class="mt-1 text-dense text-ink-2">
+                Only the things a reader needs to decide. We don't ask for a logo, a banner or a
+                pitch — none of them helps anyone work out whether they can enter.
+              </p>
+
+              <form method="post" class="mt-4">
+                <p>
+                  <label for="title" class="block text-dense font-semibold">Title</label>
+                  <input
+                    id="title"
+                    name="title"
+                    type="text"
+                    required
+                    minlength="8"
+                    maxlength="200"
+                    class="mt-2 min-h-11 w-full rounded-row border border-line-strong px-3"
+                  />
+                </p>
+
+                <p class="mt-5">
+                  <label for="category" class="block text-dense font-semibold">What kind of thing is it?</label>
+                  <select
+                    id="category"
+                    name="category"
+                    required
+                    class="mt-2 min-h-11 w-full rounded-row border border-line-strong px-3">
+                    {categories.map((c) => (
+                      <option value={c.code}>{c.name}</option>
+                    ))}
+                  </select>
+                </p>
+
+                <p class="mt-5">
+                  <label for="summary" class="block text-dense font-semibold">
+                    Summary <span class="font-normal text-ink-2">(up to 400 characters)</span>
+                  </label>
+                  <textarea
+                    id="summary"
+                    name="summary"
+                    rows="3"
+                    maxlength="400"
+                    class="mt-2 w-full rounded-row border border-line-strong p-3"></textarea>
+                </p>
+
+                <p class="mt-5">
+                  <label for="description" class="block text-dense font-semibold">
+                    The details <span class="font-normal text-ink-2">(optional)</span>
+                  </label>
+                  <textarea
+                    id="description"
+                    name="description"
+                    rows="6"
+                    maxlength="8000"
+                    class="mt-2 w-full rounded-row border border-line-strong p-3"></textarea>
+                </p>
+
+                <p class="mt-5">
+                  <label for="apply_url" class="block text-dense font-semibold">Where people apply</label>
+                  <input
+                    id="apply_url"
+                    name="apply_url"
+                    type="url"
+                    maxlength="500"
+                    placeholder="https://"
+                    class="mt-2 min-h-11 w-full rounded-row border border-line-strong px-3"
+                  />
+                </p>
+
+                <p class="mt-5">
+                  <label for="deadline_at" class="block text-dense font-semibold">Closing date</label>
+                  <span class="mt-1 block text-micro text-ink-2">
+                    We show the date you give and nothing more precise. If it closes at a
+                    particular hour, say so in the details.
+                  </span>
+                  <input
+                    id="deadline_at"
+                    name="deadline_at"
+                    type="date"
+                    class="mt-2 min-h-11 w-full rounded-row border border-line-strong px-3"
+                  />
+                </p>
+
+                <fieldset class="mt-5 border-0 p-0">
+                  <legend class="text-dense font-semibold">Does it cost anything to enter?</legend>
+                  <span class="mt-1 block text-micro text-ink-2">
+                    Anything with a fee is read by a person before it appears. That rule applies
+                    to everyone, including verified organisations.
+                  </span>
+                  <span class="mt-2 flex flex-wrap gap-4">
+                    {[
+                      ["free", "Free to enter"],
+                      ["paid", "There is a fee"],
+                      ["unknown", "Not stated"],
+                    ].map(([value, label]) => (
+                      <label class="flex min-h-11 items-center gap-2 text-dense">
+                        <input type="radio" name="cost" value={value} checked={value === "free"} />
+                        {label}
+                      </label>
+                    ))}
+                  </span>
+                </fieldset>
+
+                <fieldset class="mt-5 border-0 p-0">
+                  <legend class="text-dense font-semibold">Who can enter?</legend>
+                  <span class="mt-2 flex flex-wrap gap-4">
+                    {[
+                      ["africa_wide", "Anyone in Africa"],
+                      ["global", "Anyone, anywhere"],
+                      ["unclear", "I'll put it in the details"],
+                    ].map(([value, label]) => (
+                      <label class="flex min-h-11 items-center gap-2 text-dense">
+                        <input type="radio" name="scope" value={value} checked={value === "unclear"} />
+                        {label}
+                      </label>
+                    ))}
+                  </span>
+                </fieldset>
+
+                <fieldset class="mt-5 border-0 p-0">
+                  <legend class="text-dense font-semibold">Teams or individuals?</legend>
+                  <span class="mt-2 flex flex-wrap gap-4">
+                    {[
+                      ["either", "Either"],
+                      ["team", "Teams"],
+                      ["individual", "Individuals"],
+                    ].map(([value, label]) => (
+                      <label class="flex min-h-11 items-center gap-2 text-dense">
+                        <input type="radio" name="team" value={value} checked={value === "either"} />
+                        {label}
+                      </label>
+                    ))}
+                  </span>
+                </fieldset>
+
+                <p class="mt-6">
+                  <button
+                    type="submit"
+                    class="inline-flex min-h-11 items-center rounded-row bg-brand px-4 font-semibold text-surface"
+                    >Publish it</button
+                  >
+                </p>
+
+                <p class="mt-4 text-micro text-ink-2">
+                  Twenty listings a day. Past that we ask a person to look, which is a limit on
+                  bulk posting rather than on you.
+                </p>
+              </form>
+            </section>
+          </>
+        )
+      }
+    </Base>
+  )
+}

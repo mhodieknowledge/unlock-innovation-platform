@@ -45,8 +45,11 @@ describe("CSP stays enforceable", () => {
     expect(csp).not.toContain("unsafe-inline");
     expect(csp).not.toContain("unsafe-eval");
     // Invariant 12: no third-party script origin is permitted, so there is nothing to
-    // allowlist beyond 'self'.
+    // allowlist beyond 'self'. Named explicitly because Turnstile is the one that will be
+    // proposed — ADR 0002 resolved that conflict in favour of the invariant, and a
+    // resolution nobody asserts is a resolution somebody undoes.
     expect(csp).not.toMatch(/script-src[^;]*https?:\/\//);
+    expect(csp).not.toContain("challenges.cloudflare.com");
   });
 
   it("the build inlines no script into the HTML", () => {

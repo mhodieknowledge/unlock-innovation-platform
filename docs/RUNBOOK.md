@@ -289,7 +289,59 @@ someone deleted it, and the `deleted_at` column says when.
 
 ---
 
-## 11. What has NOT been exercised
+## 11. Organisation claims
+
+A claim from an address at the organisation's own domain needs no operator at all: the
+confirmation email is issued by the dispatcher on its next run, and following the link
+verifies the organisation. Everything else lands in the `org_claim` review queue at
+priority 3, with a 48-hour SLA (`MODERATION_AND_TRUST.md` §7).
+
+```sql
+-- What is waiting, and what evidence came with it.
+SELECT c.id, o.name, o.slug, c.claim_email, c.email_domain, o.website_domain,
+       c.evidence_url, c.created_at
+  FROM organisation_claims c
+  JOIN organisations o ON o.id = c.organisation_id
+ WHERE c.status = 'awaiting_review'
+ ORDER BY c.created_at;
+```
+
+Decide as an admin (the function checks `is_admin()` and writes the audit row):
+
+```sql
+SELECT review_org_claim('<claim-id>', true,  'Checked the staff page.');
+SELECT review_org_claim('<claim-id>', false, 'No public evidence of the affiliation.');
+```
+
+Approving runs the same code path a domain-matched confirmation does, so there is one
+implementation of "this organisation is now verified". Rejecting returns the organisation to
+`unclaimed` — not `rejected` — so somebody with a work address can still claim it later; one
+person's bad claim must not mark the organisation permanently.
+
+What to check before approving a non-matching claim, in order of how often it matters:
+
+1. Does the evidence page name this person AND this organisation? A staff listing is the
+   usual proof; a LinkedIn profile is not, because anybody can write one.
+2. Does the organisation's website actually belong to the organisation? A claim on a page we
+   created from a directory listing may be a claim on the wrong entity entirely.
+3. Is the address a personal one at a shared provider? That is not disqualifying — plenty of
+   real programme officers use one — but it is the case where evidence has to carry the whole
+   weight.
+
+The confirmation email carries the only copy of the token a claimant can reach. If somebody
+loses it, they start a new claim; there is no way to resend, deliberately — resending would
+be a way to re-issue a token to whoever asks.
+
+**Turnstile.** `ADR 0002` records why no Turnstile widget is in any page: invariant 12
+forbids a third-party script on a public page, and the invariant wins. If automated
+submissions or claims ever become a problem, turn on a Cloudflare **managed challenge** for
+`/submit` and `/report` at the edge (Security → WAF → custom rule, action *Managed
+Challenge*). That issues the same token, the code already checks it once
+`TURNSTILE_SECRET_KEY` is set, and no page changes.
+
+---
+
+## 12. What has NOT been exercised
 
 Stated because a runbook that implies more coverage than it has is worse than a short
 one.
@@ -305,4 +357,6 @@ one.
 | Team rooms with real people in them | Never. Every rule is asserted in `supabase/tests/collaboration.sql` (109 assertions) and the route behaviour in `apps/web/test/room-route.test.ts`, but no two humans have used a room to form a team, and the flags are off. The first real room will teach us something the tests cannot. |
 | The thread poller against a real browser | The endpoint's 304 path is not covered by a test that drives a browser; the handler is straightforward and the page degrades to "reload to see replies" if the script never runs. |
 | Project matching against a real catalogue | The scorer is unit-tested and the whole path was run end to end against fixture rows in a local Postgres (two opportunities, one project, embeddings from the local model). What has never happened is a match over a real catalogue with real eligibility rules, which is the only thing that will show whether the weights in §1.5 are right. |
+| An organisation claim by a real organisation | The whole flow was exercised against real rows in a local Postgres — claim, dispatcher render, confirm, publish as `official`, edit a deadline, re-review — but no real organisation has ever claimed a page, and the confirmation email has never left the machine (no Brevo sending domain). |
+| A Turnstile token | Never seen one. `verifyTurnstile()` is written and called; no key is configured and no widget is in any page (ADR 0002). |
 | Workers AI embedding in the request tier | Never called. `PROJECT_EMBEDDING_MODEL` is unset, so project creation stores no vector and the first-pass match ranks on tags and urgency — a supported degraded state, and the batch embedder fills the vector in overnight. |

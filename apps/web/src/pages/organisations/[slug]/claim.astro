@@ -1,0 +1,243 @@
+---
+// Claiming an organisation. PRODUCT_SPEC.md §19, MODERATION_AND_TRUST.md §9,
+// UX_FLOWS.md §12's claim control.
+//
+// The page has one job beyond collecting an address: telling the truth about what
+// happens next, and that depends on the address. A domain-matched claim is confirmed
+// by email and nobody reviews it; anything else waits for a person. §9 is explicit —
+// "Organisation claims require a domain-matched email. Non-matching claims require
+// evidence and human review" — and the difference is worth saying BEFORE someone
+// types, so they can use their work address if they have one.
+
+import Base from "../../../layouts/Base.astro";
+import { createAuthClient, getSessionUser } from "../../../lib/auth";
+import { getOrganisation } from "../../../lib/db";
+import { reportError } from "../../../lib/errors";
+import { ORG_STATE_LABEL, getMyClaims, startClaim, type MyClaim } from "../../../lib/orgs";
+
+export const prerender = false;
+
+const { slug } = Astro.params;
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+
+const user = await getSessionUser(Astro.cookies, env);
+if (!user) {
+  return Astro.redirect(`/signin?returnTo=${encodeURIComponent(Astro.url.pathname)}`, 302);
+}
+
+const client = createAuthClient(Astro.cookies, env);
+Astro.response.headers.set("cache-control", "private, no-store");
+
+const found = await getOrganisation(slug!, env);
+const org = found.ok ? found.data.organisation : null;
+
+let problem: string | null = null;
+let started: { domainMatches: boolean; email: string } | null = null;
+let claims: MyClaim[] = [];
+
+if (org && client) {
+  try {
+    if (Astro.request.method === "POST") {
+      const form = await Astro.request.formData();
+      const email = String(form.get("claim_email") ?? "").trim().slice(0, 200);
+      const evidence = String(form.get("evidence_url") ?? "").trim().slice(0, 500);
+
+      const result = await startClaim(client, slug!, email, evidence === "" ? null : evidence);
+      if (result.ok) {
+        started = { domainMatches: result.data.domain_matches, email };
+      } else {
+        problem = result.message;
+      }
+    }
+
+    claims = await getMyClaims(client);
+  } catch (err) {
+    await reportError(err, { route: "/organisations/[slug]/claim", tags: { slug: slug ?? "" } }, env);
+    problem = "Something on our side failed. Nothing has been sent.";
+  }
+}
+
+if (!org) Astro.response.status = 404;
+
+const domain = org?.website_domain ?? null;
+const mine = claims.filter((c) => c.organisation_slug === slug);
+const pending = mine.find((c) => c.status === "pending" || c.status === "awaiting_review") ?? null;
+---
+
+{
+  !org ? (
+    <Base title="Not found" noindex user={user}>
+      <h1 class="text-title font-semibold">That organisation isn't here</h1>
+      <p class="mt-4"><a href="/opportunities" class="text-brand">Browse what's open →</a></p>
+    </Base>
+  ) : (
+    <Base title={`Claim ${org.name}`} noindex user={user}>
+      <p class="text-micro uppercase tracking-wide text-ink-2">
+        {ORG_STATE_LABEL[org.verification] ?? org.verification}
+      </p>
+      <h1 class="mt-1 text-title font-semibold">
+        Is <a href={`/organisations/${org.slug}`} class="text-ink">{org.name}</a> yours?
+      </h1>
+      <p class="mt-2 max-w-prose text-dense text-ink-2">
+        Claiming an organisation lets you correct its listings and publish your own, which
+        appear as coming from you rather than from our crawler. It does not give you control
+        over anyone else's listing, or over what we say about verification.
+      </p>
+
+      {
+        started && (
+          <div class="mt-4 max-w-prose border-l-[3px] border-success bg-eligible-wash p-4">
+            {started.domainMatches ? (
+              <>
+                <p class="text-dense font-semibold">
+                  Check {started.email} for a confirmation link.
+                </p>
+                <p class="mt-1 text-dense">
+                  The link works once and lasts 24 hours. Following it verifies the
+                  organisation straight away — nobody here has to approve it, because the
+                  address is at {domain}.
+                </p>
+                <p class="mt-1 text-dense text-ink-2">
+                  We send it in batches, so it may take a few minutes to arrive.
+                </p>
+              </>
+            ) : (
+              <>
+                <p class="text-dense font-semibold">A person will look at this.</p>
+                <p class="mt-1 text-dense">
+                  {started.email} isn't at {domain ?? "the organisation's own domain"}, so we
+                  can't confirm it automatically. Someone will check the evidence you gave —
+                  usually within two days. You'll get a message either way.
+                </p>
+              </>
+            )}
+          </div>
+        )
+      }
+
+      {
+        problem && (
+          <p class="mt-4 max-w-prose border-l-[3px] border-danger bg-noteligible-wash p-3 text-dense">
+            {problem}
+          </p>
+        )
+      }
+
+      {
+        !started && pending && (
+          <p class="mt-4 max-w-prose border-l-[3px] border-line-strong bg-sunken p-3 text-dense">
+            You already have a claim on this one{pending.status === "awaiting_review"
+              ? " waiting for a person to look at it."
+              : " waiting to be confirmed by email."}
+          </p>
+        )
+      }
+
+      {
+        !started && !pending && org.verification === "verified" ? (
+          <p class="prose-measure mt-6 text-body text-ink-2">
+            This organisation is already verified. If you work there and need access, ask
+            whoever claimed it to add you — we can't transfer it for you, because we have no way
+            to tell which of you should have it.
+          </p>
+        ) : !started && !pending && org.verification === "suspended" ? (
+          <p class="prose-measure mt-6 text-body text-ink-2">
+            This organisation can't be claimed at the moment.
+          </p>
+        ) : (
+          !started &&
+          !pending && (
+            <form method="post" class="mt-6 max-w-prose">
+              <p>
+                <label for="claim_email" class="block text-dense font-semibold">
+                  Your email at the organisation
+                </label>
+                <span class="mt-1 block text-micro text-ink-2">
+                  {domain
+                    ? `An address at ${domain} is confirmed by email and needs no review. Anything else goes to a person.`
+                    : "We don't have a website on file for this organisation, so every claim here is checked by a person."}
+                </span>
+                <input
+                  id="claim_email"
+                  name="claim_email"
+                  type="email"
+                  required
+                  maxlength="200"
+                  autocomplete="email"
+                  placeholder={domain ? `you@${domain}` : "you@example.org"}
+                  class="mt-2 min-h-11 w-full rounded-row border border-line-strong px-3"
+                />
+              </p>
+
+              <p class="mt-5">
+                <label for="evidence_url" class="block text-dense font-semibold">
+                  A page that shows you work there <span class="font-normal text-ink-2">(if you can't use a work address)</span>
+                </label>
+                <span class="mt-1 block text-micro text-ink-2">
+                  A staff page, an announcement, anything public. We read it; we don't publish it.
+                </span>
+                <input
+                  id="evidence_url"
+                  name="evidence_url"
+                  type="url"
+                  maxlength="500"
+                  class="mt-2 min-h-11 w-full rounded-row border border-line-strong px-3"
+                />
+              </p>
+
+              <p class="mt-6 flex flex-wrap gap-3">
+                <button
+                  type="submit"
+                  class="inline-flex min-h-11 items-center rounded-row bg-brand px-4 font-semibold text-surface"
+                  >Start the claim</button
+                >
+                <a
+                  href={`/organisations/${org.slug}`}
+                  class="inline-flex min-h-11 items-center rounded-row border border-line-strong bg-surface px-4 font-semibold"
+                  >Cancel</a
+                >
+              </p>
+
+              <p class="mt-5 text-micro text-ink-2">
+                Three claims a day, across all organisations. The confirmation goes to the
+                address you give here and nowhere else — we don't use it for anything else and
+                we don't add it to your account.
+              </p>
+            </form>
+          )
+        )
+      }
+
+      {
+        mine.length > 0 && (
+          <section class="mt-10 max-w-prose border-t border-line pt-4">
+            <h2 class="text-subtitle font-semibold">Your claims</h2>
+            <ul class="mt-2 divide-y divide-line">
+              {mine.map((claim) => (
+                <li class="py-2 text-dense">
+                  <span class="font-semibold">{claim.claim_email}</span>
+                  <span class="text-ink-2">
+                    {" "}
+                    ·{" "}
+                    {claim.status === "pending"
+                      ? "waiting for you to confirm by email"
+                      : claim.status === "awaiting_review"
+                        ? "waiting for a person"
+                        : claim.status === "approved"
+                          ? "approved"
+                          : claim.status === "rejected"
+                            ? "not approved"
+                            : claim.status}
+                  </span>
+                  {claim.review_note && (
+                    <span class="block text-micro text-ink-2">{claim.review_note}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )
+      }
+    </Base>
+  )
+}

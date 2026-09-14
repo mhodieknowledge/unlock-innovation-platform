@@ -57,6 +57,11 @@ const BUDGETS = {
   projectDetail: { label: "Project detail", total: 150 * KB, js: 40 * KB },
   projectEdit: { label: "Project edit", total: 150 * KB, js: 40 * KB },
   myProjects: { label: "Your projects", total: 200 * KB, js: 70 * KB },
+  // Phase 7. The manage page is measured with 200 listings, which is the cap
+  // org_opportunities enforces, and the whole category vocabulary in its form.
+  orgClaim: { label: "Organisation claim", total: 100 * KB, js: 15 * KB },
+  orgManage: { label: "Organisation manage", total: 150 * KB, js: 40 * KB },
+  submitPublic: { label: "Public submission", total: 100 * KB, js: 15 * KB },
 } as const;
 
 const LONG_QUOTE =
@@ -387,6 +392,36 @@ const COUNTRY_LIST = Array.from({ length: 54 }, (_, i) => ({
   name: `Country number ${i + 1} with a long name`,
 }));
 
+/** Phase 7 fixtures: an organisation at the cap org_opportunities allows. */
+const ORG_LISTINGS = Array.from({ length: 200 }, (_, i) => ({
+  id: `listing-${i}`,
+  slug: `worst-case-${(i % 20) + 1}`,
+  title: worstCaseOpportunity((i % 20) + 1).title,
+  status: ["published", "in_review", "expired", "draft"][i % 4]!,
+  verification: ["official", "auto", "verified", "stale"][i % 4]!,
+  deadline_at: worstCaseOpportunity((i % 20) + 1).deadline_at,
+  tracked_by: i % 7,
+  in_review: i % 4 === 1,
+  created_at: "2026-08-01T00:00:00Z",
+}));
+
+const MY_CLAIMS = Array.from({ length: 5 }, (_, i) => ({
+  claim_id: `claim-${i}`,
+  organisation_slug: "example-org",
+  organisation_name: "Example Foundation for African Innovation",
+  claim_email: `programme.officer.${i}@example.org`,
+  domain_matches: i % 2 === 0,
+  status: ["pending", "awaiting_review", "approved", "rejected", "expired"][i]!,
+  review_note: i === 3 ? "The staff page did not mention this person." : null,
+  created_at: "2026-09-10T00:00:00Z",
+  email_sent_at: i === 0 ? "2026-09-10T00:05:00Z" : null,
+}));
+
+const CATEGORY_VOCABULARY = Array.from({ length: 14 }, (_, i) => ({
+  code: `category-${i}`,
+  name: `${SUBJECTS[i % SUBJECTS.length]} ${KINDS[i % KINDS.length]}`,
+}));
+
 /** Every RPC the Phase 5 pages call, with a filled-to-the-cap answer for each. */
 const ROOM_RPC: Record<string, unknown> = {
   room_state: [{ state: "open", intent_count: 14, team_count: 6, reason: "room is open" }],
@@ -403,6 +438,10 @@ const ROOM_RPC: Record<string, unknown> = {
   project_browse_state: [{ state: "open", public_projects: 47, floor: 40 }],
   projects_for_opportunity: RELATED_PROJECTS,
   project_interest_target: [],
+  org_opportunities: ORG_LISTINGS,
+  my_org_claims: MY_CLAIMS,
+  submit_opportunity_public: [{ ok: true, message: "Thank you." }],
+  confirm_org_claim: [{ ok: true, organisation_slug: "example-org", organisation_name: "Example Foundation for African Innovation" }],
 };
 
 /**
@@ -442,6 +481,8 @@ const TABLE_ROWS: Record<string, unknown[]> = {
     opportunities: { slug: `worst-case-${i + 1}`, title: worstCaseOpportunity(i + 1).title },
   })),
   tags: TAG_VOCABULARY,
+  categories: CATEGORY_VOCABULARY,
+  organisation_members: [{ user_id: SESSION_USER.id, role: "owner" }],
   countries: COUNTRY_LIST,
   notification_preferences: [
     "deadline_reminder", "opportunity_changed", "opportunity_closed", "digest",
@@ -865,6 +906,24 @@ beforeAll(async () => {
     () => import("../src/pages/you/projects.astro"),
     {},
     "https://example.invalid/you/projects",
+  );
+  await render(
+    "orgClaim",
+    () => import("../src/pages/organisations/[slug]/claim.astro"),
+    { slug: "example-org" },
+    "https://example.invalid/organisations/example-org/claim",
+  );
+  await render(
+    "orgManage",
+    () => import("../src/pages/organisations/[slug]/manage.astro"),
+    { slug: "example-org" },
+    "https://example.invalid/organisations/example-org/manage",
+  );
+  await render(
+    "submitPublic",
+    () => import("../src/pages/submit.astro"),
+    {},
+    "https://example.invalid/submit",
   );
   await render(
     "unsubscribe",

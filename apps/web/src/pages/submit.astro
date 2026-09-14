@@ -1,0 +1,247 @@
+---
+// Public submission. API_SPEC.md §12, MODERATION_AND_TRUST.md §2.
+//
+// "Public submission by anyone; Turnstile required; lands in the review queue as
+// `draft`." Anyone means anyone — no account, because the point is to catch the
+// opportunity somebody saw on a noticeboard, and requiring sign-in first would lose
+// most of those.
+//
+// Nothing here publishes. A draft appears on no surface at all, so the worst a bad
+// submission costs is a reviewer's minute — which is exactly why the form can be open.
+// The rate limit is per hashed IP (SECURITY.md §3: never store a raw address).
+//
+// NO TURNSTILE WIDGET ON THIS PAGE, and the reason is a conflict in the specification
+// rather than an omission. SECURITY.md §3 asks for "Turnstile on every unauthenticated
+// write", and invariant 12 says "never add a third-party script to a public page". The
+// invariant wins — that is what non-negotiable means — and the report form resolved the
+// same conflict the same way in Phase 1. See docs/decisions/0002-turnstile-vs-invariant-12.md.
+//
+// The verification code stays and is still called: Cloudflare can issue a Turnstile token
+// from a managed challenge configured at the edge, with no script in the page at all, and
+// the moment TURNSTILE_SECRET_KEY is set those tokens are checked. Until then the verdict
+// is RECORDED rather than enforced, because a submission that arrives without a token is
+// still worth a reviewer's look and telling them it was unverified beats dropping it
+// silently.
+
+import Base from "../layouts/Base.astro";
+import { getSessionUser } from "../lib/auth";
+import { getClient } from "../lib/db";
+import { reportError } from "../lib/errors";
+import { rateKeyForIp, verifyTurnstile } from "../lib/orgs";
+import { NO_FEE_STATEMENT } from "@mbele/config";
+
+export const prerender = false;
+
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const user = await getSessionUser(Astro.cookies, env);
+const client = getClient(env);
+
+interface Category {
+  code: string;
+  name: string;
+}
+
+let categories: Category[] = [];
+let done: string | null = null;
+let problem: string | null = null;
+
+if (client) {
+  try {
+    if (Astro.request.method === "POST") {
+      const form = await Astro.request.formData();
+
+      // Cloudflare's own header, which the Worker sees and a browser cannot forge.
+      const ip =
+        Astro.request.headers.get("cf-connecting-ip") ??
+        Astro.request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+        null;
+
+      const verified = await verifyTurnstile(
+        String(form.get("cf-turnstile-response") ?? "") || null,
+        env["TURNSTILE_SECRET_KEY"],
+        ip,
+      );
+
+      if (verified === false) {
+        problem = "We couldn't tell whether that came from a person. Try once more.";
+      } else {
+        const { data, error } = await client.rpc("submit_opportunity_public", {
+          p_rate_key: await rateKeyForIp(ip, env["IP_HASH_SALT"]),
+          p_title: String(form.get("title") ?? "").trim().slice(0, 200),
+          p_url: String(form.get("url") ?? "").trim().slice(0, 500),
+          p_category_code: String(form.get("category") ?? "") || null,
+          p_note: String(form.get("note") ?? "").trim().slice(0, 400) || null,
+          p_organisation_name: String(form.get("organisation") ?? "").trim().slice(0, 200) || null,
+          p_deadline_raw: String(form.get("deadline_raw") ?? "").trim().slice(0, 120) || null,
+          // null means Turnstile is not configured here; false would claim it failed.
+          p_turnstile_verified: verified === true,
+        });
+
+        const row = Array.isArray(data) ? data[0] : data;
+        if (error || !row) {
+          problem = "Something on our side failed. Nothing has been lost — try again.";
+        } else if ((row as { ok: boolean }).ok) {
+          done = (row as { message: string }).message;
+        } else {
+          problem = (row as { message: string }).message;
+        }
+      }
+    }
+
+    const { data: cats } = await client.from("categories").select("code, name").order("name");
+    categories = (cats ?? []) as unknown as Category[];
+  } catch (err) {
+    await reportError(err, { route: "/submit" }, env);
+    problem = "Something on our side failed. Nothing has been lost — try again.";
+  }
+}
+
+// Not cached: it is a form, and the response depends on a POST.
+Astro.response.headers.set("cache-control", "private, no-store");
+---
+
+<Base
+  title="Tell us about an opportunity"
+  description="Send us an opportunity we have missed. A person reads every submission."
+  canonical="/submit"
+  user={user}
+>
+  <h1 class="text-title font-semibold">Tell us about something we've missed</h1>
+  <p class="mt-2 max-w-prose text-dense text-ink-2">
+    No account needed. A person reads every submission, and we publish nothing we can't
+    verify against the official page — so the most useful thing you can give us is the link.
+  </p>
+
+  {
+    done && (
+      <div class="mt-4 max-w-prose border-l-[3px] border-success bg-eligible-wash p-4">
+        <p class="text-dense">{done}</p>
+        <p class="mt-2 text-dense">
+          <a href="/submit" class="text-brand">Send another →</a>
+        </p>
+      </div>
+    )
+  }
+
+  {
+    problem && (
+      <p class="mt-4 max-w-prose border-l-[3px] border-danger bg-noteligible-wash p-3 text-dense">
+        {problem}
+      </p>
+    )
+  }
+
+  {
+    !done && (
+      <form method="post" class="mt-6 max-w-prose">
+        <p>
+          <label for="url" class="block text-dense font-semibold">The official page</label>
+          <span class="mt-1 block text-micro text-ink-2">
+            The organiser's own page, not a news article about it. This is the one field that
+            really matters — everything else we can read from it.
+          </span>
+          <input
+            id="url"
+            name="url"
+            type="url"
+            required
+            maxlength="500"
+            placeholder="https://"
+            class="mt-2 min-h-11 w-full rounded-row border border-line-strong px-3"
+          />
+        </p>
+
+        <p class="mt-5">
+          <label for="title" class="block text-dense font-semibold">What is it called?</label>
+          <input
+            id="title"
+            name="title"
+            type="text"
+            required
+            minlength="8"
+            maxlength="200"
+            class="mt-2 min-h-11 w-full rounded-row border border-line-strong px-3"
+          />
+        </p>
+
+        <p class="mt-5">
+          <label for="organisation" class="block text-dense font-semibold">
+            Who is running it? <span class="font-normal text-ink-2">(optional)</span>
+          </label>
+          <input
+            id="organisation"
+            name="organisation"
+            type="text"
+            maxlength="200"
+            class="mt-2 min-h-11 w-full rounded-row border border-line-strong px-3"
+          />
+        </p>
+
+        <p class="mt-5">
+          <label for="category" class="block text-dense font-semibold">
+            What kind of thing is it? <span class="font-normal text-ink-2">(a guess is fine)</span>
+          </label>
+          <select
+            id="category"
+            name="category"
+            class="mt-2 min-h-11 w-full rounded-row border border-line-strong px-3">
+            <option value="">Not sure</option>
+            {categories.map((c) => (
+              <option value={c.code}>{c.name}</option>
+            ))}
+          </select>
+        </p>
+
+        <p class="mt-5">
+          <label for="deadline_raw" class="block text-dense font-semibold">
+            When does it close? <span class="font-normal text-ink-2">(optional)</span>
+          </label>
+          <span class="mt-1 block text-micro text-ink-2">
+            In whatever words the page uses — "end of March", "31 May 2027". We'd rather quote
+            them than guess a date.
+          </span>
+          <input
+            id="deadline_raw"
+            name="deadline_raw"
+            type="text"
+            maxlength="120"
+            class="mt-2 min-h-11 w-full rounded-row border border-line-strong px-3"
+          />
+        </p>
+
+        <p class="mt-5">
+          <label for="note" class="block text-dense font-semibold">
+            Anything else we should know? <span class="font-normal text-ink-2">(optional)</span>
+          </label>
+          <textarea
+            id="note"
+            name="note"
+            rows="3"
+            maxlength="400"
+            class="mt-2 w-full rounded-row border border-line-strong p-3"></textarea>
+        </p>
+
+        <p class="mt-6">
+          <button
+            type="submit"
+            class="inline-flex min-h-11 items-center rounded-row bg-brand px-4 font-semibold text-surface"
+            >Send it</button
+          >
+        </p>
+
+        <p class="mt-5 text-micro text-ink-2">
+          Three a day from one connection. We don't ask for your name or your email, we don't
+          store your IP address, and we don't publish who sent what. There's no captcha here
+          either — this page carries no third-party script at all.
+        </p>
+      </form>
+    )
+  }
+
+  <p class="mt-10 max-w-prose text-meta text-ink-2">{NO_FEE_STATEMENT}</p>
+  <p class="mt-2 max-w-prose text-micro text-ink-2">
+    If something already listed here is wrong or looks like a scam,
+    <a href="/report" class="underline">report it instead</a> — that reaches the same people
+    faster.
+  </p>
+</Base>

@@ -329,6 +329,13 @@ export interface OrganisationDetail {
   name: string;
   description: string | null;
   website_url: string | null;
+  /**
+   * The normalised domain, which the claim flow compares an email address against
+   * (PRODUCT_SPEC.md §19, migration 0021). Shown on the claim page so a person knows
+   * before typing whether their address will be confirmed automatically or wait for a
+   * human — which is the difference between a two-minute flow and a two-day one.
+   */
+  website_domain: string | null;
   country_iso2: string | null;
   org_type: string | null;
   verification: string;
@@ -348,7 +355,7 @@ export async function getOrganisation(
   const { data: org, error } = await client
     .from("organisations")
     .select(
-      "id, slug, name, description, website_url, country_iso2, org_type, verification, verified_at",
+      "id, slug, name, description, website_url, website_domain, country_iso2, org_type, verification, verified_at",
     )
     .eq("slug", slug)
     .maybeSingle();

@@ -1,0 +1,92 @@
+---
+// Confirming an organisation claim from the emailed link. API_SPEC.md §12.
+//
+// Deliberately reachable WITHOUT signing in. The person who controls the
+// organisation's mailbox may not be the person who started the claim — a programme
+// officer forwards it to the person who actually has the @org address — and making
+// them sign in first would break the one flow the token exists for. The token is the
+// credential, it is single-use, and it lasts 24 hours.
+//
+// Every failure says the same thing: unknown, expired and already-used are one
+// message, because three messages would make this an oracle for which tokens exist.
+
+import Base from "../../../layouts/Base.astro";
+import { getSessionUser } from "../../../lib/auth";
+import { getClient } from "../../../lib/db";
+import { reportError } from "../../../lib/errors";
+import { confirmClaim } from "../../../lib/orgs";
+
+export const prerender = false;
+
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const user = await getSessionUser(Astro.cookies, env);
+const client = getClient(env);
+
+const token = Astro.url.searchParams.get("token") ?? "";
+
+let result: { ok: boolean; slug: string | null; name: string | null } = {
+  ok: false,
+  slug: null,
+  name: null,
+};
+let failed = false;
+
+// GET confirms. A token in a link is a capability, and requiring a button press first
+// would strand anyone whose mail client strips the query string on click-through.
+if (client && token) {
+  try {
+    result = await confirmClaim(client, token);
+  } catch (err) {
+    await reportError(err, { route: "/organisations/claims/confirm" }, env);
+    failed = true;
+  }
+}
+
+Astro.response.headers.set("cache-control", "private, no-store");
+if (!result.ok) Astro.response.status = failed ? 503 : 400;
+---
+
+<Base title="Confirm your claim" noindex user={user}>
+  {
+    result.ok ? (
+      <>
+        <h1 class="text-title font-semibold">{result.name} is yours.</h1>
+        <p class="prose-measure mt-3 text-body">
+          The organisation is verified, and you're an owner of it here. You can correct its
+          listings and publish new ones — they'll show as coming from the organisation rather
+          than from our crawler.
+        </p>
+        <p class="mt-4 flex flex-wrap gap-3">
+          <a
+            href={`/organisations/${result.slug}/manage`}
+            class="inline-flex min-h-11 items-center rounded-row bg-brand px-4 font-semibold text-surface"
+            >Manage your listings</a
+          >
+          <a
+            href={`/organisations/${result.slug}`}
+            class="inline-flex min-h-11 items-center rounded-row border border-line-strong bg-surface px-4 font-semibold"
+            >See the public page</a
+          >
+        </p>
+        <p class="mt-6 max-w-prose text-micro text-ink-2">
+          One thing worth knowing now rather than later: if you change a deadline, an
+          eligibility rule or the cost on a listing people have already saved, it goes back
+          into review and everyone tracking it is told. That is deliberate — they planned
+          around the old details.
+        </p>
+      </>
+    ) : (
+      <>
+        <h1 class="text-title font-semibold">
+          {failed ? "We can't check that right now" : "That link didn't work"}
+        </h1>
+        <p class="prose-measure mt-3 text-body text-ink-2">
+          {failed
+            ? "Something on our side is unavailable. The link is probably fine — try again in a few minutes."
+            : "Confirmation links last 24 hours and work once. If yours has expired, or somebody else confirmed the claim first, start again from the organisation's page."}
+        </p>
+        <p class="mt-4"><a href="/opportunities" class="text-brand">Browse what's open →</a></p>
+      </>
+    )
+  }
+</Base>

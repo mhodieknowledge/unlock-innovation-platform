@@ -131,6 +131,57 @@ function renderEmail(row, unsubscribeUrl) {
 }
 
 /**
+ * The organisation-claim confirmation. PRODUCT_SPEC.md §19, MODERATION_AND_TRUST.md §9.
+ *
+ * This is the one message whose content the database deliberately does not carry: the token
+ * lives in organisation_claims, which has no read policy, precisely so the claimant cannot
+ * read it anywhere except the mailbox it is sent to. The batch tier reads it as the table
+ * owner, renders the link, and never writes it anywhere else.
+ *
+ * No unsubscribe line: there is nothing recurring to unsubscribe from, and §9 gives an
+ * access message no switch. A token that expires in 24 hours is its own exit.
+ *
+ * @param {Record<string, any>} row
+ */
+async function renderClaimEmail(row) {
+  const claimId = (row.payload ?? {}).claim_id;
+  const { rows } = await client.query(
+    `SELECT c.token, c.claim_email, c.token_expires_at, o.name AS organisation
+       FROM organisation_claims c
+       JOIN organisations o ON o.id = c.organisation_id
+      WHERE c.id = $1 AND c.status = 'pending' AND c.token IS NOT NULL
+        AND c.token_expires_at > now()`,
+    [claimId],
+  );
+
+  if (rows.length === 0) {
+    // Confirmed, rejected or expired between enqueueing and sending. Not an error: there is
+    // simply nothing left to confirm, and sending a dead link would be worse than nothing.
+    return null;
+  }
+
+  const claim = rows[0];
+  const hours = Math.max(
+    1,
+    Math.round((new Date(claim.token_expires_at).getTime() - Date.now()) / 3_600_000),
+  );
+
+  return {
+    subject: `Confirm your claim on ${claim.organisation}`,
+    text: [
+      `Someone — we think you — asked to manage ${claim.organisation} on ${BRAND}.`,
+      "",
+      "Confirm it here:",
+      `https://${DOMAIN}/organisations/claims/confirm?token=${encodeURIComponent(claim.token)}`,
+      "",
+      `The link works for ${hours} more hour${hours === 1 ? "" : "s"} and once only.`,
+      "",
+      "If this was not you, ignore this message — nothing happens without the link, and we have not changed anything about the organisation's page.",
+    ].join("\n"),
+  };
+}
+
+/**
  * §5.2's plain-text digest. "It must be fully legible as plain text because many
  * recipients read mail on constrained clients" — so the text version is the real
  * one and the HTML is a rendering of it, not the other way round.
@@ -195,9 +246,15 @@ function textToHtml(text, unsubscribeUrl) {
   return [
     '<div style="font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#1a1a1a;max-width:38em">',
     body,
-    `<p style="font-size:12px;color:#555">`,
-    `<a href="${esc(unsubscribeUrl)}" style="color:#0b5cff">Stop these</a>`,
-    `</p>`,
+    // A one-off message has nothing to unsubscribe from, and "Stop these" pointing at
+    // href="null" would be worse than no footer. §9 gives an access message no switch.
+    ...(unsubscribeUrl
+      ? [
+          `<p style="font-size:12px;color:#555">`,
+          `<a href="${esc(unsubscribeUrl)}" style="color:#0b5cff">Stop these</a>`,
+          `</p>`,
+        ]
+      : []),
     "</div>",
   ].join("\n");
 }
@@ -227,7 +284,11 @@ async function sendTelegram(chatId, text) {
   return { ok: false, error: `${res.status} ${body.slice(0, 200)}`, permanent: res.status === 403 || res.status === 400 };
 }
 
-async function sendEmail({ to, subject, text, html, unsubscribeUrl }) {
+/**
+ * @param {{ to: string, subject: string, text: string, html: string,
+ *           unsubscribeUrl?: string | null }} message
+ */
+async function sendEmail({ to, subject, text, html, unsubscribeUrl = null }) {
   if (!BREVO_KEY) return { ok: false, error: "BREVO_API_KEY not set", permanent: true };
 
   const res = await fetch("https://api.brevo.com/v3/smtp/email", {
@@ -243,11 +304,17 @@ async function sendEmail({ to, subject, text, html, unsubscribeUrl }) {
       subject,
       textContent: text,
       htmlContent: html,
-      // §9: one-click unsubscribe in the mail client itself, not only in the body.
-      headers: {
-        "List-Unsubscribe": `<${unsubscribeUrl}>`,
-        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-      },
+      // §9: one-click unsubscribe in the mail client itself, not only in the body. Omitted
+      // for a one-off message, where a List-Unsubscribe header would advertise an
+      // unsubscribe endpoint that does not exist for it.
+      ...(unsubscribeUrl
+        ? {
+            headers: {
+              "List-Unsubscribe": `<${unsubscribeUrl}>`,
+              "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+            },
+          }
+        : {}),
     }),
   });
 
@@ -394,6 +461,32 @@ async function dispatchChannel(channel, limit) {
         continue;
       }
       result = await sendTelegram(row.address, text);
+    } else if ((row.payload ?? {}).kind === "org_claim") {
+      const claim = await renderClaimEmail(row);
+      if (claim === null) {
+        await client.query("SELECT record_delivery_result($1,false,$2,true)", [
+          row.delivery_id,
+          "claim no longer pending",
+        ]);
+        failed += 1;
+        continue;
+      }
+      if (dryRun) {
+        console.log(`\n--- email to ${row.address} — ${claim.subject} ---\n${claim.text}`);
+        continue;
+      }
+      result = await sendEmail({
+        to: row.address,
+        subject: claim.subject,
+        text: claim.text,
+        html: textToHtml(claim.text, null),
+      });
+      if (result.ok) {
+        await client.query(
+          "UPDATE organisation_claims SET email_sent_at = now() WHERE id = $1",
+          [(row.payload ?? {}).claim_id],
+        );
+      }
     } else {
       const { rows: tok } = await client.query("SELECT issue_unsubscribe_token($1,$2) AS t", [
         row.user_id,

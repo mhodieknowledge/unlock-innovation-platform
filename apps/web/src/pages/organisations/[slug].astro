@@ -152,13 +152,30 @@ const VERIFICATION_COPY: Record<string, string> = {
       }
 
       {
-        org.verification === "unclaimed" && (
+        /* UX_FLOWS.md §12's claim control, one line per state. `claimed_pending` says a
+           claim is in progress rather than inviting a second one, and `verified` invites
+           nobody — a verified organisation is transferred by the people who hold it, not by
+           us (there is no way for us to tell which of two colleagues should have it). */
+        org.verification === "unclaimed" || org.verification === "rejected" ? (
           <p class="mt-8 text-meta text-ink-2">
             Is this your organisation?{" "}
             <a href={`/organisations/${org.slug}/claim`} class="text-brand">Claim this page</a> to
             publish and correct your own listings.
           </p>
-        )
+        ) : org.verification === "claimed_pending" ? (
+          <p class="mt-8 text-meta text-ink-2">
+            Somebody has claimed this page and we are confirming it. If that was you, the
+            confirmation is in your inbox;{" "}
+            <a href={`/organisations/${org.slug}/claim`} class="text-brand">check the claim</a>.
+          </p>
+        ) : org.verification === "verified" ? (
+          <p class="mt-8 text-meta text-ink-2">
+            Claimed and verified{org.verified_at
+              ? ` on ${new Date(org.verified_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}`
+              : ""}. If you work here,{" "}
+            <a href={`/organisations/${org.slug}/manage`} class="text-brand">manage the listings</a>.
+          </p>
+        ) : null
       }
     </Base>
   )
