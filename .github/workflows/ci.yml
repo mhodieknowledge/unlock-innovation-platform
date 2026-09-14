@@ -40,16 +40,20 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Unit tests (includes the 60-case eligibility golden corpus)
-        run: npm test
-
       # Phase 0 acceptance: "CI fails a deliberately oversized bundle."
       # This proves the gate itself works before trusting it on real output.
       - name: Byte-budget gate self-test
         run: npm run budget:selftest
 
+      # Build BEFORE the tests. The on-demand byte-budget test measures the real
+      # built client bundle, and it fails loudly rather than reporting 0 KB when
+      # there is no build output — so the order here is load-bearing, not
+      # cosmetic.
       - name: Build
         run: npm run build
+
+      - name: Unit tests (eligibility golden corpus, and byte budgets for on-demand routes)
+        run: npm test
 
       # Invariant 5. There is no override flag.
       - name: Byte budgets
