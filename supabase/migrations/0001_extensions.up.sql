@@ -31,6 +31,25 @@ BEGIN
 END
 $$;
 
+-- Supabase role shim.
+--
+-- Supabase ships `anon`, `authenticated` and `service_role`, and migrations GRANT
+-- to them. Plain Postgres has none of them, so a GRANT fails with
+-- 'role "anon" does not exist' and the migration aborts.
+--
+-- Created ONLY when absent, as NOLOGIN so they cannot be used to connect. On
+-- Supabase every branch is a no-op and the platform's own roles are untouched.
+DO $$
+DECLARE r text;
+BEGIN
+  FOREACH r IN ARRAY ARRAY['anon', 'authenticated', 'service_role'] LOOP
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
+      EXECUTE format('CREATE ROLE %I NOLOGIN', r);
+    END IF;
+  END LOOP;
+END
+$$;
+
 -- auth.uid() compatibility shim.
 --
 -- Every RLS policy in this schema is written against auth.uid(), which Supabase

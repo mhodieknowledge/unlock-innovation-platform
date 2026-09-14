@@ -22,7 +22,8 @@
     "db:rollback": "node scripts/migrate.mjs down",
     "db:status": "node scripts/migrate.mjs status",
     "db:seed": "node scripts/migrate.mjs seed",
-    "verify": "npm run typecheck && npm run budget:selftest && npm run build && npm test && npm run budget"
+    "verify": "npm run typecheck && npm run secretscan && npm run budget:selftest && npm run build && npm test && npm run budget",
+    "secretscan": "bash scripts/secret-scan.sh"
   },
   "devDependencies": {
     "pg": "8.23.0",

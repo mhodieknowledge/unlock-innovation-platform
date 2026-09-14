@@ -170,26 +170,6 @@ jobs:
         run: npm audit --audit-level=high
 
       # Invariant 11: never commit a secret; this repository is public.
-      # A cheap grep for the credential shapes this project actually handles,
-      # so the check needs no third-party action or token to run.
+      # Shares one script with local use so the patterns cannot drift.
       - name: Secret scan
-        run: |
-          set -euo pipefail
-          patterns='eyJhbGciOi|cfut_[A-Za-z0-9]{20}|gsk_[A-Za-z0-9]{20}|csk-[a-z0-9]{20}|xkeysib-[a-f0-9]{32}|GOCSPX-|AIzaSy[A-Za-z0-9_-]{20}|postgres(ql)?://[^:]+:[^@]+@|-----BEGIN [A-Z ]*PRIVATE KEY-----'
-          if git grep -nIE "$patterns" -- \
-               ':!*.lock' ':!package-lock.json' ':!.github/workflows/ci.yml'; then
-            echo "::error::Possible secret committed. Rotate it immediately and treat it as compromised (SECURITY.md 6)."
-            exit 1
-          fi
-          echo "No secret material found."
-
-      # A filled-in .env must never be committed. The template is the only
-      # permitted .env* file in the tree.
-      - name: Assert no env files are tracked
-        run: |
-          set -euo pipefail
-          if git ls-files --error-unmatch '.env' '.env.local' '.env.production' 2>/dev/null; then
-            echo "::error::A .env file is tracked. Remove it and rotate everything it contained."
-            exit 1
-          fi
-          echo "No tracked env files."
+        run: scripts/secret-scan.sh
