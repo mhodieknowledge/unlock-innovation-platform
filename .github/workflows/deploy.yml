@@ -72,6 +72,27 @@ jobs:
       # Reference data is idempotent (every seed is ON CONFLICT DO NOTHING), so
       # it is safe to re-run on every deploy and keeps a new environment correct
       # without a manual step.
+      # AI_SYSTEM.md §12: changing a prompt "writes a row to the admin audit log".
+      # Written on DEPLOY rather than on push, because the audit log is a record of what
+      # is actually serving users, and a prompt that changed on a branch is not.
+      - name: Record a prompt change in the admin audit log
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SHA: ${{ github.sha }}
+        run: |
+          changed=$(git diff --name-only "${{ github.event.before || 'HEAD~1' }}" HEAD -- prompts/ 2>/dev/null || true)
+          if [ -z "$changed" ]; then
+            echo "No prompt changed in this deploy."
+            exit 0
+          fi
+          echo "Prompt files changed: $changed"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<SQL
+          INSERT INTO admin_audit_log (action, subject_type, after)
+          VALUES ('prompt_version_deployed', 'prompt',
+                  jsonb_build_object('commit', '$SHA',
+                                     'files', '$(echo $changed | tr '\n' ' ')'));
+          SQL
+
       - name: Seed reference data
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}

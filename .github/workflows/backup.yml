@@ -65,13 +65,19 @@ jobs:
       # the situation a real recovery would be in: a dump file and an empty server.
       - name: Restore the production dump into a local Postgres
         run: |
-          docker run -d --name restore-target -e POSTGRES_PASSWORD=ci -p 5433:5432 pgvector/pgvector:pg16
+          # The password is generated and never written down: a literal one here would
+          # both look like a credential to the secret scanner and be one, however
+          # short-lived the container is.
+          PGPASSWORD=$(openssl rand -hex 16)
+          export PGPASSWORD
+          docker run -d --name restore-target -e POSTGRES_PASSWORD="$PGPASSWORD" \
+            -p 5433:5432 pgvector/pgvector:pg16
           for i in $(seq 1 30); do
             docker exec restore-target pg_isready -U postgres && break
             sleep 2
           done
           BACKUP_FILE=$(ls -t "${BACKUP_DIR:-/tmp/mbele-backups}"/*.dump | head -1) \
-          DATABASE_URL='postgresql://postgres:ci@localhost:5433/postgres' \
+          DATABASE_URL='postgresql://postgres@localhost:5433/postgres' \
             npm run backup -- restore-test
 
       - name: Upload to R2

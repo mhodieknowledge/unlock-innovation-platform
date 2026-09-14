@@ -1,0 +1,191 @@
+{
+  "_comment": [
+    "SYNTHETIC fixtures. Not the 60 hand-labelled real opportunities AI_SYSTEM.md §12",
+    "requires — see README.md in this directory for what is outstanding and why.",
+    "",
+    "Each case sets one trap the deterministic validators exist to catch. The recorded",
+    "model replies are hand-written to represent what a small model plausibly returns,",
+    "including its characteristic mistakes."
+  ],
+  "cases": [
+    {
+      "id": "G01",
+      "synthetic": true,
+      "note": "The clean case. Everything stated plainly; the model gets it right. If this one fails, the harness itself is broken.",
+      "document": "Southern Africa Climate Innovation Grant 2027\n\nThe Kariba Climate Foundation is funding early-stage climate ventures.\n\nEligibility\n\nApplicants must be resident in Zimbabwe, Zambia or Malawi at the time of application.\nApplicants must be aged between 18 and 30 on 1 January 2027.\n\nApplications close on 15 March 2027 at 23:59 CAT. There is no fee to apply.",
+      "profile": { "country_of_residence": "ZW", "birth_year": 2000 },
+      "expected": {
+        "deadline_at": "2027-03-15T21:59:00.000Z",
+        "deadline_precision": "exact_time",
+        "eligibility_scope": "country_list",
+        "eligible_countries": ["ZW", "ZM", "MW"],
+        "cost": "free",
+        "verdict": "eligible",
+        "rules": [
+          { "rule_type": "country_in", "countries": ["ZW", "ZM", "MW"] },
+          { "rule_type": "age_between" }
+        ]
+      },
+      "recorded": {
+        "prompt_version": "extract.v1",
+        "extract_reply": "{\"title\":\"Southern Africa Climate Innovation Grant 2027\",\"organisation_name\":\"Kariba Climate Foundation\",\"summary\":\"Funding for new climate ventures led by young people in three southern African countries.\",\"category_code\":\"grant\",\"deadline\":{\"value\":\"2027-03-15T23:59:00+02:00\",\"precision\":\"exact_time\",\"timezone\":\"Africa/Harare\",\"raw_string\":\"Applications close on 15 March 2027 at 23:59 CAT.\"},\"eligibility_scope\":\"country_list\",\"eligible_countries\":[\"ZW\",\"ZM\",\"MW\"],\"participation_mode\":\"unknown\",\"team\":{\"required\":null,\"min\":null,\"max\":null},\"prize\":{\"amount\":null,\"currency\":null},\"cost\":\"free\",\"apply_url\":null,\"official_url\":null,\"tags\":[\"climate\"],\"field_confidence\":{\"title\":0.98,\"organisation_name\":0.95,\"summary\":0.9,\"deadline\":0.95,\"eligible_countries\":0.94,\"cost\":0.97,\"prize\":0.5},\"confidence\":0.94}",
+        "rules_reply": "{\"rules\":[{\"rule_type\":\"country_in\",\"params\":{\"countries\":[\"ZW\",\"ZM\",\"MW\"]},\"source_quote\":\"Applicants must be resident in Zimbabwe, Zambia or Malawi at the time of application.\",\"confidence\":0.94},{\"rule_type\":\"age_between\",\"params\":{\"min\":18,\"max\":30},\"source_quote\":\"Applicants must be aged between 18 and 30 on 1 January 2027.\",\"confidence\":0.92}]}"
+      }
+    },
+    {
+      "id": "G02",
+      "synthetic": true,
+      "traps": ["non_verbatim_quote"],
+      "note": "The trap that matters most: the model returns a rule whose quote is a PARAPHRASE. It must be discarded, and the discard must not take the good rule with it. NOTE what this case revealed: discarding a rule makes the verdict MORE permissive — the derived verdict here is `eligible` while the truth is `unclear`, because the student-status requirement really is in the document and could not be captured. Nobody was lied to about a rule and the verdict was still wrong in the expensive direction, which is why a rejected rule candidate now blocks auto-publication (scripts/ingest.mjs).",
+      "document": "Innovation Fellowship 2027\n\nWho can apply\n\nThe fellowship is open to citizens of Kenya and Nigeria.\nApplicants should hold an undergraduate degree.\n\nThe closing date is 30 June 2027.",
+      "profile": { "nationalities": ["KE"], "student_status": "recent_graduate" },
+      "expected": {
+        "deadline_at": "2027-06-30T00:00:00.000Z",
+        "deadline_precision": "date_only",
+        "eligibility_scope": "country_list",
+        "eligible_countries": ["KE", "NG"],
+        "cost": "unknown",
+        "verdict": "unclear",
+        "rules": [{ "rule_type": "nationality_in", "countries": ["KE", "NG"] }]
+      },
+      "recorded": {
+        "prompt_version": "extract.v1",
+        "extract_reply": "{\"title\":\"Innovation Fellowship 2027\",\"organisation_name\":null,\"summary\":\"A fellowship for graduates from two east and west African countries.\",\"category_code\":\"fellowship\",\"deadline\":{\"value\":\"2027-06-30\",\"precision\":\"date_only\",\"timezone\":null,\"raw_string\":\"The closing date is 30 June 2027.\"},\"eligibility_scope\":\"country_list\",\"eligible_countries\":[\"KE\",\"NG\"],\"participation_mode\":\"unknown\",\"team\":{\"required\":null,\"min\":null,\"max\":null},\"prize\":{\"amount\":null,\"currency\":null},\"cost\":\"unknown\",\"apply_url\":null,\"official_url\":null,\"tags\":[],\"field_confidence\":{\"title\":0.96,\"summary\":0.85,\"deadline\":0.93,\"eligible_countries\":0.9,\"cost\":0.6},\"confidence\":0.88}",
+        "rules_reply": "{\"rules\":[{\"rule_type\":\"nationality_in\",\"params\":{\"countries\":[\"KE\",\"NG\"]},\"source_quote\":\"The fellowship is open to citizens of Kenya and Nigeria.\",\"confidence\":0.93},{\"rule_type\":\"student_status_in\",\"params\":{\"statuses\":[\"undergraduate\",\"recent_graduate\"]},\"source_quote\":\"Applicants must hold an undergraduate degree from a recognised institution.\",\"confidence\":0.88}]}"
+      }
+    },
+    {
+      "id": "G03",
+      "synthetic": true,
+      "traps": ["invented_country_list"],
+      "note": "The model invents a country list from the phrase 'across Africa'. Expansion must come from our regions table, 'AF' is not a country code, and a list under an africa_wide scope must be dropped rather than narrowed to five countries.",
+      "document": "Pan-African Data Challenge\n\nOpen to participants across Africa.\n\nEntries must be submitted by 1 September 2027.",
+      "profile": { "country_of_residence": "MZ" },
+      "expected": {
+        "deadline_at": "2027-09-01T00:00:00.000Z",
+        "deadline_precision": "date_only",
+        "eligibility_scope": "africa_wide",
+        "eligible_countries": [],
+        "cost": "unknown",
+        "verdict": "eligible",
+        "rules": [{ "rule_type": "country_in", "region": "africa_wide", "expect_country_count": 54 }]
+      },
+      "recorded": {
+        "prompt_version": "extract.v1",
+        "extract_reply": "{\"title\":\"Pan-African Data Challenge\",\"organisation_name\":null,\"summary\":\"A continent-wide data competition closing in September.\",\"category_code\":\"competition\",\"deadline\":{\"value\":\"2027-09-01\",\"precision\":\"date_only\",\"timezone\":null,\"raw_string\":\"Entries must be submitted by 1 September 2027.\"},\"eligibility_scope\":\"africa_wide\",\"eligible_countries\":[\"AF\",\"ZA\",\"NG\",\"KE\",\"EG\"],\"participation_mode\":\"online\",\"team\":{\"required\":null,\"min\":null,\"max\":null},\"prize\":{\"amount\":null,\"currency\":null},\"cost\":\"unknown\",\"apply_url\":null,\"official_url\":null,\"tags\":[],\"field_confidence\":{\"title\":0.95,\"deadline\":0.9,\"eligible_countries\":0.7,\"cost\":0.5},\"confidence\":0.85}",
+        "rules_reply": "{\"rules\":[{\"rule_type\":\"country_in\",\"params\":{\"regions\":[\"africa_wide\"]},\"source_quote\":\"Open to participants across Africa.\",\"confidence\":0.9}]}"
+      }
+    },
+    {
+      "id": "G04",
+      "synthetic": true,
+      "traps": ["ambiguous_date"],
+      "note": "A locale-ambiguous date. '03/04/2027' must be refused, not guessed — a deadline wrong by a month is the worst defect this product can ship.",
+      "document": "Founders Programme\n\nApplications are accepted until 03/04/2027.\n\nOpen to residents of Botswana.",
+      "profile": { "country_of_residence": "BW" },
+      "expected": {
+        "deadline_at": null,
+        "deadline_precision": null,
+        "eligibility_scope": "country_list",
+        "eligible_countries": ["BW"],
+        "cost": "unknown",
+        "verdict": "eligible",
+        "rules": [{ "rule_type": "country_in", "countries": ["BW"] }]
+      },
+      "recorded": {
+        "prompt_version": "extract.v1",
+        "extract_reply": "{\"title\":\"Founders Programme\",\"organisation_name\":null,\"summary\":\"A programme for founders based in Botswana.\",\"category_code\":\"accelerator\",\"deadline\":{\"value\":\"03/04/2027\",\"precision\":\"date_only\",\"timezone\":null,\"raw_string\":\"Applications are accepted until 03/04/2027.\"},\"eligibility_scope\":\"country_list\",\"eligible_countries\":[\"BW\"],\"participation_mode\":\"unknown\",\"team\":{\"required\":null,\"min\":null,\"max\":null},\"prize\":{\"amount\":null,\"currency\":null},\"cost\":\"unknown\",\"apply_url\":null,\"official_url\":null,\"tags\":[],\"field_confidence\":{\"title\":0.94,\"deadline\":0.75,\"eligible_countries\":0.92,\"cost\":0.5},\"confidence\":0.82}",
+        "rules_reply": "{\"rules\":[{\"rule_type\":\"country_in\",\"params\":{\"countries\":[\"BW\"]},\"source_quote\":\"Open to residents of Botswana.\",\"confidence\":0.93}]}"
+      }
+    },
+    {
+      "id": "G05",
+      "synthetic": true,
+      "traps": ["fee_missed_by_model"],
+      "note": "A fee to apply, and the model reads it as free. The deterministic check must override the model — invariant 13 turns on this.",
+      "document": "Africa Startup Prize\n\nOpen to startups registered in any African country.\n\nA non-refundable application fee of USD 30 is payable on submission.\n\nDeadline: 15 October 2027.",
+      "profile": { "country_of_residence": "NA" },
+      "expected": {
+        "deadline_at": "2027-10-15T00:00:00.000Z",
+        "deadline_precision": "date_only",
+        "eligibility_scope": "africa_wide",
+        "eligible_countries": [],
+        "cost": "paid",
+        "fee_expected": true,
+        "verdict": "eligible",
+        "rules": [{ "rule_type": "country_in", "region": "africa_wide", "expect_country_count": 54 }]
+      },
+      "recorded": {
+        "prompt_version": "extract.v1",
+        "extract_reply": "{\"title\":\"Africa Startup Prize\",\"organisation_name\":null,\"summary\":\"A prize for startups registered anywhere on the continent.\",\"category_code\":\"award\",\"deadline\":{\"value\":\"2027-10-15\",\"precision\":\"date_only\",\"timezone\":null,\"raw_string\":\"Deadline: 15 October 2027.\"},\"eligibility_scope\":\"africa_wide\",\"eligible_countries\":[],\"participation_mode\":\"unknown\",\"team\":{\"required\":null,\"min\":null,\"max\":null},\"prize\":{\"amount\":null,\"currency\":null},\"cost\":\"free\",\"apply_url\":null,\"official_url\":null,\"tags\":[],\"field_confidence\":{\"title\":0.95,\"deadline\":0.92,\"eligible_countries\":0.88,\"cost\":0.8},\"confidence\":0.89}",
+        "rules_reply": "{\"rules\":[{\"rule_type\":\"country_in\",\"params\":{\"regions\":[\"africa_wide\"]},\"source_quote\":\"Open to startups registered in any African country.\",\"confidence\":0.9}]}"
+      }
+    },
+    {
+      "id": "G06",
+      "synthetic": true,
+      "traps": ["copied_summary"],
+      "note": "The summary lifts a sentence from the page. §2.1 rule 6: the summary is dropped, the record survives.",
+      "document": "Women in Engineering Scholarship\n\nThe scholarship supports women studying engineering at universities in Ghana, and covers full tuition for the duration of the programme.\n\nApplications close 20 May 2027.",
+      "profile": { "country_of_residence": "GH", "gender": "woman", "institution_type": "university" },
+      "expected": {
+        "deadline_at": "2027-05-20T00:00:00.000Z",
+        "deadline_precision": "date_only",
+        "eligibility_scope": "country_list",
+        "eligible_countries": ["GH"],
+        "cost": "unknown",
+        "summary_expected": null,
+        "verdict": "eligible",
+        "rules": [{ "rule_type": "gender_restricted" }]
+      },
+      "recorded": {
+        "prompt_version": "extract.v1",
+        "extract_reply": "{\"title\":\"Women in Engineering Scholarship\",\"organisation_name\":null,\"summary\":\"The scholarship supports women studying engineering at universities in Ghana, and covers full tuition for the duration of the programme.\",\"category_code\":\"scholarship\",\"deadline\":{\"value\":\"2027-05-20\",\"precision\":\"date_only\",\"timezone\":null,\"raw_string\":\"Applications close 20 May 2027.\"},\"eligibility_scope\":\"country_list\",\"eligible_countries\":[\"GH\"],\"participation_mode\":\"unknown\",\"team\":{\"required\":null,\"min\":null,\"max\":null},\"prize\":{\"amount\":null,\"currency\":null},\"cost\":\"unknown\",\"apply_url\":null,\"official_url\":null,\"tags\":[],\"field_confidence\":{\"title\":0.97,\"summary\":0.95,\"deadline\":0.93,\"eligible_countries\":0.94,\"cost\":0.5},\"confidence\":0.91}",
+        "rules_reply": "{\"rules\":[{\"rule_type\":\"gender_restricted\",\"params\":{\"genders\":[\"woman\"]},\"source_quote\":\"The scholarship supports women studying engineering at universities in Ghana, and covers full tuition for the duration of the programme.\",\"confidence\":0.88}]}"
+      }
+    },
+    {
+      "id": "G07",
+      "synthetic": true,
+      "traps": ["model_refusal"],
+      "note": "The model refuses. Schema-invalid: nothing is stored, and the document waits.",
+      "document": "Youth Leadership Summit\n\nApplications from across the continent are welcome. Closes 12 December 2027.",
+      "expected": {
+        "schema_invalid_expected": true,
+        "deadline_at": null,
+        "eligible_countries": [],
+        "rules": []
+      },
+      "recorded": {
+        "prompt_version": "extract.v1",
+        "extract_reply": "I'm sorry, but I can't help with extracting structured data from this page.",
+        "rules_reply": "I cannot determine the eligibility rules from the text provided."
+      }
+    },
+    {
+      "id": "G08",
+      "synthetic": true,
+      "note": "Contradictory rules: included and excluded countries overlap. Both are stored with their quotes, and the contradiction forces review (§5 rule 3).",
+      "document": "Regional Research Fund\n\nOpen to researchers based in Zambia, Zimbabwe and Malawi.\nApplicants based in Zimbabwe are not eligible for this round.\n\nClosing date: 28 February 2027.",
+      "profile": { "country_of_residence": "ZW" },
+      "expected": {
+        "deadline_at": "2027-02-28T00:00:00.000Z",
+        "deadline_precision": "date_only",
+        "eligibility_scope": "country_list",
+        "eligible_countries": ["ZM", "ZW", "MW"],
+        "cost": "unknown",
+        "contradiction_expected": true,
+        "verdict": "not_eligible",
+        "rules": [
+          { "rule_type": "country_in", "countries": ["ZM", "ZW", "MW"] },
+          { "rule_type": "country_not_in", "countries": ["ZW"] }
+        ]
+      },
+      "recorded": {
+        "prompt_version": "extract.v1",
+        "extract_reply": "{\"title\":\"Regional Research Fund\",\"organisation_name\":null,\"summary\":\"A research fund for three southern African countries, with one excluded this round.\",\"category_code\":\"grant\",\"deadline\":{\"value\":\"2027-02-28\",\"precision\":\"date_only\",\"timezone\":null,\"raw_string\":\"Closing date: 28 February 2027.\"},\"eligibility_scope\":\"country_list\",\"eligible_countries\":[\"ZM\",\"ZW\",\"MW\"],\"participation_mode\":\"unknown\",\"team\":{\"required\":null,\"min\":null,\"max\":null},\"prize\":{\"amount\":null,\"currency\":null},\"cost\":\"unknown\",\"apply_url\":null,\"official_url\":null,\"tags\":[],\"field_confidence\":{\"title\":0.96,\"deadline\":0.94,\"eligible_countries\":0.89,\"cost\":0.5},\"confidence\":0.9}",
+        "rules_reply": "{\"rules\":[{\"rule_type\":\"country_in\",\"params\":{\"countries\":[\"ZM\",\"ZW\",\"MW\"]},\"source_quote\":\"Open to researchers based in Zambia, Zimbabwe and Malawi.\",\"confidence\":0.92},{\"rule_type\":\"country_not_in\",\"params\":{\"countries\":[\"ZW\"]},\"source_quote\":\"Applicants based in Zimbabwe are not eligible for this round.\",\"confidence\":0.91}]}"
+      }
+    }
+  ]
+}

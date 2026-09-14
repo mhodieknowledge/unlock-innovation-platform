@@ -35,13 +35,18 @@ PATTERNS=(
 JOINED=$(IFS='|'; echo "${PATTERNS[*]}")
 
 # Excluded because they legitimately CONTAIN the patterns:
-#   this script and the CI workflow define them
+#   this script defines them
 #   package-lock.json carries base64 integrity hashes that can look like keys
+#
+# .github/workflows/ci.yml USED to be excluded wholesale, which was a hole: a real
+# credential pasted into the one file CI runs would have been the one place the scan
+# could not see. The workflows now pass a throwaway database password through
+# PGPASSWORD instead of inlining it in a DSN, so nothing there matches and nothing
+# needs excluding.
 EXCLUDES=(
   ':!package-lock.json'
   ':!*.lock'
   ':!scripts/secret-scan.sh'
-  ':!.github/workflows/ci.yml'
 )
 
 if [ "$MODE" = "--staged" ]; then

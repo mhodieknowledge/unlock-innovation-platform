@@ -37,6 +37,32 @@ jobs:
       # SECURITY.md §8: npm ci only, lockfile committed.
       - run: npm ci
 
+      # AI_SYSTEM.md §12: "Prompts are versioned files in the repo. Changing one
+      # requires the golden set to pass and writes a row to the admin audit log."
+      #
+      # The gate measures RECORDED model replies, which is what makes it deterministic
+      # — and also means a prompt change alone would not move it. So a prompt change
+      # that arrives without refreshed recordings is refused here, because otherwise
+      # the gate would keep measuring the previous prompt's output and report a pass
+      # that means nothing.
+      - name: A prompt change must bring refreshed recordings
+        if: github.event_name == 'pull_request'
+        run: |
+          base="origin/${{ github.base_ref }}"
+          git fetch --quiet origin "${{ github.base_ref }}"
+          changed=$(git diff --name-only "$base"...HEAD)
+          if echo "$changed" | grep -q '^prompts/'; then
+            if ! echo "$changed" | grep -q '^eval/golden/'; then
+              echo "::error::A prompt changed but the golden recordings did not."
+              echo "The quality gate measures recorded model replies, so it cannot see a prompt"
+              echo "change. Re-record before shipping it:"
+              echo "  DATABASE_URL=... GROQ_API_KEY=... npm run golden:record"
+              echo "  npm test    # then read the §12 metrics"
+              exit 1
+            fi
+            echo "Prompt change with refreshed recordings — the gate below measures the new prompt."
+          fi
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -77,7 +103,11 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      DATABASE_URL: postgresql://postgres:ci@localhost:5432/mbele_ci
+      # No password in the URL. node-postgres and psql both fall back to PGPASSWORD,
+      # which keeps this file free of anything shaped like a credential — and lets the
+      # secret scanner cover this workflow instead of excluding it wholesale.
+      DATABASE_URL: postgresql://postgres@localhost:5432/mbele_ci
+      PGPASSWORD: ci
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5

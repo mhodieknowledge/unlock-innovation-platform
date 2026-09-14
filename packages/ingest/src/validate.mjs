@@ -234,8 +234,29 @@ export function validateExtraction(candidate, context) {
     : "unclear";
 
   const { valid, invalid } = validateCountryCodes(raw["eligible_countries"], context.knownCountries);
-  record["eligible_countries"] = valid;
   confidence["eligible_countries"] = scoreOf("eligible_countries");
+
+  // A country list means nothing under an africa_wide or global scope, and keeping a
+  // partial one is actively harmful: `eligible_countries` is what the country filter
+  // reads, so five countries listed under "open to all of Africa" would hide the
+  // opportunity from the other forty-nine. The scope already says who may apply.
+  //
+  // This is not a hypothetical. Golden case G03 has a model answering africa_wide and
+  // then listing five countries it chose itself, which is exactly the shape of the
+  // failure — and the model was told not to (prompts/extract.v1.md rule 6).
+  if (record["eligibility_scope"] === "africa_wide" || record["eligibility_scope"] === "global") {
+    record["eligible_countries"] = [];
+    if (valid.length > 0) {
+      issues.push({
+        field: "eligible_countries",
+        problem: `scope is ${record["eligibility_scope"]} but a country list was also returned (${valid.join(", ")}); the list was dropped because the scope is broader than it`,
+        effect: "drop_field",
+      });
+    }
+  } else {
+    record["eligible_countries"] = valid;
+  }
+
   if (invalid.length > 0) {
     issues.push({
       field: "eligible_countries",

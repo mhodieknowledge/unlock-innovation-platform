@@ -1,7 +1,9 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": ".",
+    // No rootDir: this package's tests import the eligibility engine to measure the
+    // false-eligible rate, and rootDir would reject a file outside this directory.
+    // Nothing is emitted here anyway.
     "noEmit": true,
     "declaration": false,
     "declarationMap": false,

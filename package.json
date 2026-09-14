@@ -32,7 +32,8 @@
     "ingest": "node scripts/ingest.mjs",
     "reverify": "node scripts/reverify.mjs",
     "sources:check": "node scripts/check-source.mjs",
-    "backup": "node scripts/backup.mjs"
+    "backup": "node scripts/backup.mjs",
+    "golden:record": "node scripts/record-golden.mjs"
   },
   "devDependencies": {
     "@types/pg": "^8.23.1",

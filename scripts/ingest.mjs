@@ -582,7 +582,27 @@ async function writeCandidate({ source, doc, candidate, confidence, rules, rejec
   const decision = routed[0]?.decision ?? "review";
   const reason = routed[0]?.reason ?? "no routing decision";
   const floorsOk = clearsConfidenceFloors(confidence);
-  const publish = decision === "publish" && floorsOk && issues.every((i) => i.effect !== "review");
+
+  // A REJECTED RULE CANDIDATE BLOCKS AUTO-PUBLICATION, and this is not obvious.
+  //
+  // Discarding a rule makes a verdict MORE permissive, not less. The golden set's G02
+  // is the case that showed it: the model found a student-status requirement, quoted it
+  // as a paraphrase, the quote check correctly discarded the rule — and the remaining
+  // rules then produced "eligible" for a profile the document's real requirements may
+  // well exclude. Nobody was lied to about a rule, and the verdict was still wrong in
+  // the expensive direction.
+  //
+  // The clean fix would be a stored rule meaning "there are requirements we could not
+  // confirm", which would force `unclear` through the engine's existing
+  // other_unstructured path. Invariant 2 forbids it: a stored rule must carry the
+  // organiser's own words, and there are none to carry here. So the honest response is
+  // that a person looks at it.
+  const rejectedRule = rejected.length > 0;
+  const publish =
+    decision === "publish" &&
+    floorsOk &&
+    !rejectedRule &&
+    issues.every((i) => i.effect !== "review");
 
   const slug = await uniqueSlug(String(candidate.title ?? ""));
 
@@ -652,9 +672,11 @@ async function writeCandidate({ source, doc, candidate, confidence, rules, rejec
 
   const queueReason = contradictory[0]?.bad
     ? "country_in and country_not_in overlap"
-    : publish
-      ? "awaiting the link check before publication"
-      : reason;
+    : rejectedRule
+      ? `${rejected.length} rule candidate(s) were discarded, so a requirement may be missing and the verdict may be too permissive`
+      : publish
+        ? "awaiting the link check before publication"
+        : reason;
 
   await client.query(
     `INSERT INTO review_queue (queue, subject_type, subject_id, priority)
