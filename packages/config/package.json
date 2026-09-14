@@ -1,0 +1,11 @@
+{
+  "name": "@mbele/config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Brand tokens and tunable constants. The brand name is configuration, never a hard-coded string (PRODUCT_SPEC.md §1).",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc -p tsconfig.json --noEmit" }
+}

@@ -4,18 +4,28 @@
   "version": "0.0.0",
   "description": "Africa-first builder opportunity platform. Brand name is a config token (PRODUCT_SPEC.md §1).",
   "workspaces": [
+    "apps/*",
     "packages/*"
   ],
   "engines": {
     "node": ">=22"
   },
   "scripts": {
+    "build": "npm run build --workspace @mbele/web",
+    "dev": "npm run dev --workspace @mbele/web",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -b --pretty false",
-    "lint": "echo \"(lint wired in Phase 0)\""
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "budget": "node scripts/byte-budget.mjs",
+    "budget:selftest": "node scripts/byte-budget.mjs --selftest",
+    "db:migrate": "node scripts/migrate.mjs up",
+    "db:rollback": "node scripts/migrate.mjs down",
+    "db:status": "node scripts/migrate.mjs status",
+    "db:seed": "node scripts/migrate.mjs seed",
+    "verify": "npm run typecheck && npm run test && npm run build && npm run budget"
   },
   "devDependencies": {
+    "pg": "^8.16.3",
     "typescript": "5.9.3",
     "vitest": "3.2.4"
   }

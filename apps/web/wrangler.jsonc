@@ -1,0 +1,43 @@
+{
+  // Cloudflare Workers deployment. SYSTEM_ARCHITECTURE.md §2: Cloudflare edge is
+  // the request tier. ADR 0001 replaced OpenNext with @astrojs/cloudflare; the
+  // host is unchanged.
+  //
+  // No secrets in this file — it is committed and the repository is public
+  // (invariant 11). Secrets are set with `wrangler secret put`, or in the
+  // dashboard under Settings > Variables and Secrets.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mbele-web",
+  "main": "./dist/_worker.js/index.js",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    // Static-first (SYSTEM_ARCHITECTURE.md §1): serve the prerendered asset when
+    // one exists and only fall through to the Worker otherwise. This is what
+    // keeps us inside the 100k requests/day free tier.
+    "not_found_handling": "404-page",
+    "run_worker_first": false
+  },
+
+  "observability": { "enabled": true },
+
+  "vars": {
+    // Non-secret configuration only. PRODUCT_SPEC.md §1 keeps the brand name a
+    // config token; it is provisional until the checks in README.md §6 item 1.
+    "BRAND_NAME": "Mbele",
+    "ENVIRONMENT": "production"
+  },
+
+  "env": {
+    "preview": {
+      "name": "mbele-web-preview",
+      "vars": {
+        "BRAND_NAME": "Mbele",
+        "ENVIRONMENT": "preview"
+      }
+    }
+  }
+}

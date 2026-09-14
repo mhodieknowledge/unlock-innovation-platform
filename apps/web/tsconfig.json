@@ -1,0 +1,15 @@
+{
+  "extends": "astro/tsconfigs/strict",
+  "include": [".astro-types", "src/**/*", "*.mjs"],
+  "exclude": ["dist", ".astro"],
+  "compilerOptions": {
+    "strictNullChecks": true,
+    "allowJs": true,
+    "types": ["astro/client"],
+    "paths": {
+      "@mbele/eligibility": ["../../packages/eligibility/src/index.ts"],
+      "~/*": ["./src/*"]
+    },
+    "baseUrl": "."
+  }
+}

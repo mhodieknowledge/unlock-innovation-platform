@@ -1,0 +1,139 @@
+@import "tailwindcss";
+
+/* DESIGN_SYSTEM.md §2–4, §7. Tailwind v4 declares the theme in CSS rather than
+ * a tailwind.config file; §12's rule is unchanged in substance — these tokens are
+ * the ONLY permitted values, and arbitrary values are rejected by lint.
+ *
+ * The one opinionated move (§1.2): colour is reserved for eligibility,
+ * typography carries urgency, and neither borrows the other's channel. */
+
+@theme {
+  /* ── Base, monochrome (§3.1) ─────────────────────────────────────────── */
+  --color-paper: #fbfbf9;
+  --color-surface: #ffffff;
+  --color-sunken: #f1f1ee;
+  --color-ink: #101214;
+  --color-ink-2: #4a4f55;
+  --color-ink-3: #787f87;
+  --color-line: #e2e2dd;
+  --color-line-strong: #c7c8c2;
+
+  /* Used in exactly one place in the whole product: countdown numerals.
+   * Pure black is the strongest mark available on a low-quality panel in
+   * sunlight, and it is spent on the single most decision-relevant number. */
+  --color-absolute: #000000;
+
+  /* ── Brand (§3.2) — deep enamel blue from painted institutional signage ── */
+  --color-brand: #1c3f94;
+  --color-brand-ink: #14306f;
+  --color-brand-wash: #eaeff9;
+
+  /* ── Eligibility ramp (§3.3) — the ONLY semantic colour ──────────────── */
+  --color-eligible: #0b6b33;
+  --color-eligible-wash: #e7f2ea;
+  --color-likely: #5a6e13;
+  --color-likely-wash: #f0f2e3;
+  --color-unclear: #8a5a0b;
+  --color-unclear-wash: #f7f0e2;
+  --color-noteligible: #8e2b2b;
+  --color-noteligible-wash: #f7eaea;
+
+  /* ── Feedback (§3.4) — system messages only, never on data ──────────── */
+  --color-danger: #8e2b2b;
+  --color-warning: #8a5a0b;
+  --color-success: #0b6b33;
+
+  /* ── Typography (§2.1) ───────────────────────────────────────────────────
+   * One family. Archivo Variable (SIL OFL) is specified at ≤58 KB woff2, subset
+   * to Latin + Latin Extended-A. The self-hosted file is not yet added, so the
+   * metric-matched fallback stack from §2.1 carries the design for now — it is
+   * chosen precisely so adding the webfont later does not shift layout. */
+  --font-sans:
+    Archivo, "Helvetica Neue", Roboto, "Segoe UI", system-ui, -apple-system, sans-serif;
+
+  /* Scale (§2.2). Base 16px, modular, tightening below because dense rows need
+   * small steps. */
+  --text-display: 2.125rem;
+  --text-display--line-height: 2.375rem;
+  --text-title: 1.5rem;
+  --text-title--line-height: 1.875rem;
+  --text-subtitle: 1.1875rem;
+  --text-subtitle--line-height: 1.625rem;
+  --text-body: 1rem;
+  --text-body--line-height: 1.625rem;
+  --text-dense: 0.875rem;
+  --text-dense--line-height: 1.25rem;
+  --text-meta: 0.8125rem;
+  --text-meta--line-height: 1.125rem;
+  --text-micro: 0.6875rem;
+  --text-micro--line-height: 0.875rem;
+  --text-countdown-lg: 1.875rem;
+  --text-countdown-lg--line-height: 2rem;
+  --text-countdown-sm: 1.0625rem;
+  --text-countdown-sm--line-height: 1.25rem;
+
+  /* ── Spacing (§4.1) — 4px base. Nothing outside this scale. ─────────── */
+  --spacing: 0.25rem;
+
+  /* ── Radius (§4.3) ──────────────────────────────────────────────────── */
+  --radius-none: 0;
+  --radius-row: 4px;
+  --radius-sheet: 8px;
+  --radius-monogram: 999px;
+
+  /* Elevation exists only where something floats above the page. Rows and cards
+   * are separated by hairlines — shadows on a list of 40 rows are visual noise
+   * and a rendering cost on low-end GPUs (§4.3). */
+  --shadow-overlay: 0 8px 24px rgba(16, 18, 20, 0.14);
+
+  /* ── Breakpoints (§4.2) ─────────────────────────────────────────────── */
+  --breakpoint-sm: 381px;
+  --breakpoint-md: 600px;
+  --breakpoint-lg: 900px;
+  --breakpoint-xl: 1200px;
+}
+
+/* Dark mode is deliberately not in Phase 1 (§12): it doubles contrast
+ * verification work, and the primary context — daylight, low-end LCD — favours a
+ * light surface. Tokens are structured so a dark theme is a token swap. */
+
+@layer base {
+  html {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    /* §2.1: tabular figures globally, so columns of deadlines align. */
+    font-variant-numeric: tabular-nums;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+    margin: 0;
+  }
+
+  /* §8: focus is visible on every interactive element and never removed. */
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+  }
+
+  /* Prose line length ≤68ch (§2.3). */
+  .prose-measure {
+    max-width: 68ch;
+  }
+
+  /* §7: prefers-reduced-motion removes all motion, leaving instant state
+   * changes. Declared once, globally, rather than per component. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

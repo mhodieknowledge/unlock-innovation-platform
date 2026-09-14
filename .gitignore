@@ -21,6 +21,8 @@ dist/
 build/
 .open-next/
 .wrangler/
+.astro/
+*.tsbuildinfo
 
 # Testing / coverage
 coverage/

@@ -1,0 +1,181 @@
+name: CI
+
+# SYSTEM_ARCHITECTURE.md §19: migrations are applied in CI before deploy.
+# SECURITY.md §12: CI runs dependency audit, secret scan, and the RLS suite.
+#
+# OUTSTANDING — SECURITY.md §8 requires "CI actions pinned to commit SHAs, not
+# floating tags". The actions below use version tags because this session's
+# GitHub access is scoped to this repository only, so the SHAs for actions/*
+# could not be resolved. Guessing them would be worse than an honest tag: a
+# wrong-but-plausible SHA fails opaquely. Pin these before the first production
+# deploy.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck, test, build, byte budget
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      # SECURITY.md §8: npm ci only, lockfile committed.
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests (includes the 60-case eligibility golden corpus)
+        run: npm test
+
+      # Phase 0 acceptance: "CI fails a deliberately oversized bundle."
+      # This proves the gate itself works before trusting it on real output.
+      - name: Byte-budget gate self-test
+        run: npm run budget:selftest
+
+      - name: Build
+        run: npm run build
+
+      # Invariant 5. There is no override flag.
+      - name: Byte budgets
+        run: npm run budget
+
+  migrations:
+    name: Migrations forward and backward
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # pgvector-enabled image: DATA_MODEL.md requires the vector extension,
+        # which the stock postgres image does not carry.
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: mbele_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:ci@localhost:5432/mbele_ci
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Apply migrations
+        run: npm run db:migrate
+
+      - name: Seed reference data
+        run: npm run db:seed
+
+      # Phase 0 acceptance: "All 54 African countries and the full category set
+      # are in the database", and PRODUCT_SPEC.md §24 requires every
+      # density-gated flag to ship disabled.
+      - name: Assert seeded reference data
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          DECLARE n int;
+          BEGIN
+            SELECT count(*) INTO n FROM countries WHERE is_african;
+            IF n <> 54 THEN RAISE EXCEPTION 'expected 54 African countries, found %', n; END IF;
+
+            SELECT count(*) INTO n FROM categories;
+            IF n <> 21 THEN RAISE EXCEPTION 'expected 21 categories, found %', n; END IF;
+
+            SELECT count(*) INTO n FROM regions;
+            IF n < 8 THEN RAISE EXCEPTION 'expected at least 8 regions, found %', n; END IF;
+
+            SELECT cardinality(member_countries) INTO n FROM regions WHERE code = 'africa_wide';
+            IF n <> 54 THEN RAISE EXCEPTION 'africa_wide must expand to 54 countries, found %', n; END IF;
+
+            SELECT count(*) INTO n FROM feature_flags WHERE enabled;
+            IF n <> 0 THEN RAISE EXCEPTION 'density-gated flags must ship disabled, % enabled', n; END IF;
+
+            SELECT count(*) INTO n FROM countries WHERE priority_tier = 1;
+            IF n <> 6 THEN RAISE EXCEPTION 'expected 6 Tier-1 countries, found %', n; END IF;
+          END $$;
+          SQL
+
+      - name: Roll back every migration
+        run: npm run db:rollback -- --all
+
+      - name: Assert a clean rollback
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          DECLARE n int;
+          BEGIN
+            SELECT count(*) INTO n FROM pg_tables
+             WHERE schemaname = 'public' AND tablename <> 'schema_migrations';
+            IF n <> 0 THEN RAISE EXCEPTION 'rollback left % table(s) behind', n; END IF;
+          END $$;
+          SQL
+
+      - name: Re-apply, to prove the round trip
+        run: npm run db:migrate && npm run db:seed
+
+  security:
+    name: Dependency audit and secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Full history, so the scan sees what was committed rather than only
+          # the tip. SECURITY.md §6: a committed secret is treated as
+          # compromised regardless of how quickly it was removed.
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # SECURITY.md §8: critical advisories patched within 72 hours.
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+
+      # Invariant 11: never commit a secret; this repository is public.
+      # A cheap grep for the credential shapes this project actually handles,
+      # so the check needs no third-party action or token to run.
+      - name: Secret scan
+        run: |
+          set -euo pipefail
+          patterns='eyJhbGciOi|cfut_[A-Za-z0-9]{20}|gsk_[A-Za-z0-9]{20}|csk-[a-z0-9]{20}|xkeysib-[a-f0-9]{32}|GOCSPX-|AIzaSy[A-Za-z0-9_-]{20}|postgres(ql)?://[^:]+:[^@]+@|-----BEGIN [A-Z ]*PRIVATE KEY-----'
+          if git grep -nIE "$patterns" -- \
+               ':!*.lock' ':!package-lock.json' ':!.github/workflows/ci.yml'; then
+            echo "::error::Possible secret committed. Rotate it immediately and treat it as compromised (SECURITY.md 6)."
+            exit 1
+          fi
+          echo "No secret material found."
+
+      # A filled-in .env must never be committed. The template is the only
+      # permitted .env* file in the tree.
+      - name: Assert no env files are tracked
+        run: |
+          set -euo pipefail
+          if git ls-files --error-unmatch '.env' '.env.local' '.env.production' 2>/dev/null; then
+            echo "::error::A .env file is tracked. Remove it and rotate everything it contained."
+            exit 1
+          fi
+          echo "No tracked env files."

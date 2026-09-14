@@ -1,0 +1,131 @@
+name: Deploy
+
+# SYSTEM_ARCHITECTURE.md §19: migrations are versioned SQL applied in CI before
+# deploy. That ordering matters — a Worker referring to a column that does not
+# exist yet is a broken production, so the database moves first and the deploy
+# is gated on it succeeding.
+#
+# Secrets required (repo Settings > Secrets and variables > Actions):
+#   SUPABASE_DB_URL        migrations
+#   CLOUDFLARE_API_TOKEN   deploy
+#   CLOUDFLARE_ACCOUNT_ID  deploy
+# Variables (Variables tab, not Secrets — these are not sensitive and
+# NEXT_PUBLIC-equivalent values must be readable at build time):
+#   SUPABASE_URL, SUPABASE_ANON_KEY
+#
+# The whole workflow no-ops with a clear message when the secrets are absent,
+# so a fork or a fresh clone does not fail confusingly.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Check deploy credentials
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+    steps:
+      - id: check
+        run: |
+          if [ -n "${{ secrets.CLOUDFLARE_API_TOKEN }}" ] \
+             && [ -n "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Cloudflare secrets not set — skipping deploy. Add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID to enable it."
+          fi
+
+  migrate:
+    name: Apply migrations to Supabase
+    needs: gate
+    if: needs.gate.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Migrate
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::SUPABASE_DB_URL is not set; refusing to deploy against an unmigrated database."
+            exit 1
+          fi
+          npm run db:migrate
+
+      # Reference data is idempotent (every seed is ON CONFLICT DO NOTHING), so
+      # it is safe to re-run on every deploy and keeps a new environment correct
+      # without a manual step.
+      - name: Seed reference data
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: npm run db:seed
+
+  deploy:
+    name: Build and deploy to Cloudflare
+    needs: [gate, migrate]
+    if: needs.gate.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Build
+        env:
+          # Public values, inlined into the client bundle at build time.
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+          BRAND_NAME: ${{ vars.BRAND_NAME }}
+          BRAND_DOMAIN: ${{ vars.BRAND_DOMAIN }}
+        run: npm run build
+
+      # Invariant 5 holds on the deploy path too, not only on PRs. A route that
+      # went over budget must never reach production.
+      - name: Byte budgets
+        run: npm run budget
+
+      - name: Deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        working-directory: apps/web
+        run: npx wrangler deploy
+
+      - name: Smoke-test the health endpoint
+        run: |
+          url="${{ vars.PRODUCTION_URL }}"
+          if [ -z "$url" ]; then
+            echo "::notice::PRODUCTION_URL not set — skipping smoke test. Set it to the deployed origin."
+            exit 0
+          fi
+          for i in 1 2 3 4 5; do
+            if curl -fsS "$url/api/health" | grep -q '"status":"ok"'; then
+              echo "Health check passed."
+              exit 0
+            fi
+            echo "Attempt $i failed; retrying in $((i * 4))s"
+            sleep $((i * 4))
+          done
+          echo "::error::Health endpoint did not report ok after the deploy."
+          exit 1

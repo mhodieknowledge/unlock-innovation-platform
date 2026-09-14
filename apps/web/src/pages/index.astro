@@ -1,0 +1,65 @@
+---
+// Phase 0 homepage.
+//
+// UX_FLOWS.md §2 specifies this page as "the board" — 8 opportunity rows,
+// soonest deadline first, server-rendered above the fold. That needs the
+// `opportunities` table, which lands in Phase 1. Until then this page says
+// plainly what the product is and that the catalogue is still being built.
+//
+// It deliberately shows NO counts. CONTENT_AND_LAUNCH.md §1: every number shown
+// is true and computed live. With nothing published yet, the honest number is
+// no number — not "0 opportunities", and certainly not a placeholder.
+//
+// Deliberately absent, per §2: hero image, illustration, gradient, animated
+// statistic, testimonials, fabricated community numbers.
+
+import Base from "../layouts/Base.astro";
+import { BRAND } from "@mbele/config";
+---
+
+<Base
+  title={BRAND.name}
+  description="Find opportunities open to your country, and know whether you can apply before you spend the data finding out."
+>
+  <h1 class="max-w-[28ch] text-display font-bold leading-[--text-display--line-height]">
+    Everything here is open, and we tell you whether you can apply.
+  </h1>
+
+  <p class="prose-measure mt-4 text-body text-ink-2">
+    Hackathons, grants, fellowships and scholarships open to builders across all
+    54 African countries. Every listing shows when we last checked it, and every
+    eligibility answer shows the sentence from the official rules it came from.
+  </p>
+
+  <section class="mt-8 border border-line bg-surface p-4" aria-labelledby="status">
+    <h2 id="status" class="text-subtitle font-semibold">The catalogue is being built</h2>
+    <p class="prose-measure mt-2 text-dense text-ink-2">
+      There is nothing published yet, so there is nothing to show you. We would
+      rather say that than pad this page with a number we cannot stand behind.
+    </p>
+  </section>
+
+  <section class="mt-8" aria-labelledby="what">
+    <h2 id="what" class="text-subtitle font-semibold">What this will answer</h2>
+    <ul class="prose-measure mt-3 space-y-3 text-dense">
+      <li class="border-l-2 border-line pl-3">
+        <strong class="font-semibold">Is it open?</strong> Every record carries the
+        date we last verified it. Stale listings are labelled, not quietly served.
+      </li>
+      <li class="border-l-2 border-line pl-3">
+        <strong class="font-semibold">Can I apply?</strong> A verdict for your
+        country, age and study status — with the quoted sentence behind every
+        part of it, and an honest <em>unclear</em> when the rules do not say.
+      </li>
+      <li class="border-l-2 border-line pl-3">
+        <strong class="font-semibold">What is actually required?</strong> The
+        deliverables, judging criteria and key dates, pulled out of the rules
+        document so you do not have to download it.
+      </li>
+      <li class="border-l-2 border-line pl-3">
+        <strong class="font-semibold">Who else is going for it?</strong> Only once
+        enough people actually are. No empty rooms.
+      </li>
+    </ul>
+  </section>
+</Base>
