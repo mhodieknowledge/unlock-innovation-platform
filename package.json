@@ -28,7 +28,11 @@
     "parity": "vitest run --config vitest.db.config.ts test/engine-parity.test.ts",
     "test:db": "vitest run --config vitest.db.config.ts",
     "secret:set": "node scripts/set-service-secret.mjs",
-    "notify": "node scripts/notify.mjs"
+    "notify": "node scripts/notify.mjs",
+    "ingest": "node scripts/ingest.mjs",
+    "reverify": "node scripts/reverify.mjs",
+    "sources:check": "node scripts/check-source.mjs",
+    "backup": "node scripts/backup.mjs"
   },
   "devDependencies": {
     "@types/pg": "^8.23.1",

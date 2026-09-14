@@ -136,6 +136,13 @@ jobs:
       - name: Database-backed tests (engine parity, the ingestion pipeline)
         run: npm run test:db
 
+      # "Backup restore tested and documented" is a Phase 3 acceptance criterion, and
+      # the only way to keep it true is to test it on every push rather than nightly.
+      # This runs against the CI database, which has CREATEDB — the production role
+      # usually does not, which is why the nightly job restores into a local server.
+      - name: Dump and prove the dump restores
+        run: npm run backup -- restore-test
+
       - name: Roll back every migration
         run: npm run db:rollback -- --all
 

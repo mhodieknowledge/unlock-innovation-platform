@@ -1,0 +1,118 @@
+name: Ingestion
+
+# The batch tier. OPPORTUNITY_INGESTION.md §1: "All stages run in the batch tier
+# (GitHub Actions)." FREE_INFRASTRUCTURE.md §2 is why that is affordable — unlimited
+# minutes on a public repository.
+#
+# §9's budget at 40 active sources on a 3-hourly cadence: ~320 fetches/day, ~60 new
+# documents/day, ~245 LLM calls/day, ~8 Actions minutes/day. The schedules below sit
+# inside that with room to spare, and each job's own cadence is per source
+# (sources.cadence_minutes) rather than per workflow — so adding a slow source does
+# not slow the fast ones.
+#
+# OUTSTANDING — SECURITY.md §8 wants actions pinned to commit SHAs. See ci.yml.
+
+on:
+  schedule:
+    - cron: "40 */3 * * *"   # ingest: every three hours, §9's assumed cadence
+    - cron: "20 */6 * * *"   # link health: §5.2 says every 6 hours
+    - cron: "50 * * * *"     # re-verify: hourly, the per-record cadence does the rest
+    - cron: "10 3 * * *"     # sweep and health: daily
+  workflow_dispatch:
+    inputs:
+      job:
+        description: Which job to run
+        required: true
+        default: ingest
+        type: choice
+        options: [ingest, links, reverify, sweep, health, check-sources]
+      dry_run:
+        description: Render without writing
+        required: false
+        default: false
+        type: boolean
+      no_ai:
+        description: Force the NO_AI path, to prove the fallback still works
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  # One ingestion at a time. The pipeline is idempotent, so an overlap would be safe
+  # rather than harmful — but two runs fetching the same hosts would break the
+  # one-request-per-ten-seconds promise in §2.1 rule 4, which is not ours to break.
+  group: ingest-${{ github.event.inputs.job || github.event.schedule }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+      GOOGLE_SAFE_BROWSING_API_KEY: ${{ secrets.GOOGLE_SAFE_BROWSING_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      OPERATOR_TELEGRAM_CHAT_ID: ${{ secrets.OPERATOR_TELEGRAM_CHAT_ID }}
+      BRAND_NAME: ${{ vars.BRAND_NAME }}
+      BRAND_DOMAIN: ${{ vars.BRAND_DOMAIN }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Guard against an unconfigured run
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::SUPABASE_DB_URL is not set. The job would silently do nothing."
+            exit 1
+          fi
+
+      # The pipeline must keep working with every provider gone (AI_SYSTEM.md §13),
+      # so an absent key is a WARNING here and not a failure. A run that produces
+      # only JSON-LD records is a degraded run, not a broken one.
+      - name: Report which providers are configured
+        run: |
+          for key in GROQ_API_KEY GEMINI_API_KEY CEREBRAS_API_KEY; do
+            if [ -z "${!key}" ]; then
+              echo "::warning::$key is not set — that provider is out of the chain."
+            fi
+          done
+
+      - name: Ingest
+        if: github.event.schedule == '40 */3 * * *'
+        run: npm run ingest
+
+      - name: Link health
+        if: github.event.schedule == '20 */6 * * *'
+        run: npm run reverify -- links
+
+      - name: Re-verify and detect changes
+        if: github.event.schedule == '50 * * * *'
+        run: npm run reverify -- reverify
+
+      - name: Sweep staleness and expiry, then check source health
+        if: github.event.schedule == '10 3 * * *'
+        run: |
+          npm run reverify -- sweep
+          npm run reverify -- health
+
+      - name: Manual run
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          JOB: ${{ github.event.inputs.job }}
+          DRY: ${{ github.event.inputs.dry_run == 'true' && '--dry-run' || '' }}
+          NOAI: ${{ github.event.inputs.no_ai == 'true' && '--no-ai' || '' }}
+        run: |
+          case "$JOB" in
+            ingest)        npm run ingest -- $DRY $NOAI ;;
+            check-sources) npm run sources:check ;;
+            *)             npm run reverify -- "$JOB" $DRY ;;
+          esac

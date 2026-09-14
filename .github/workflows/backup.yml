@@ -1,0 +1,80 @@
+name: Backup
+
+# Nightly full dump, restore-tested before it is uploaded.
+#
+# IMPLEMENTATION_PLAN.md §5 asks for "nightly backup to R2 with a tested restore",
+# and its acceptance criterion is "Backup restore tested and documented". The order
+# of operations in scripts/backup.mjs is what makes that claim true: dump, restore
+# into a scratch database, assert it came back whole, THEN upload. Uploading first
+# would turn a backup strategy into a belief.
+#
+# PRIVACY_AND_COMPLIANCE.md §8: backups are kept 14 days.
+
+on:
+  schedule:
+    - cron: "35 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      R2_BACKUP_BUCKET: ${{ vars.R2_BACKUP_BUCKET }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # The runner's client must be at least the server's major version or pg_dump
+      # refuses. Ubuntu's default is older than Supabase's Postgres.
+      - name: Install a current pg_dump
+        run: |
+          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /usr/share/keyrings/pgdg.gpg
+          sudo sed -i 's|deb |deb [signed-by=/usr/share/keyrings/pgdg.gpg] |' /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+
+      - name: Guard against an unconfigured run
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::SUPABASE_DB_URL is not set. A backup job that silently does nothing is worse than no backup job."
+            exit 1
+          fi
+
+      - name: Dump
+        run: npm run backup -- dump
+
+      # The restore test needs CREATEDB, which a managed database usually withholds
+      # from the application role. So the dump is taken from production and restored
+      # into a local Postgres here — which is also a more honest test, because it is
+      # the situation a real recovery would be in: a dump file and an empty server.
+      - name: Restore the production dump into a local Postgres
+        run: |
+          docker run -d --name restore-target -e POSTGRES_PASSWORD=ci -p 5433:5432 pgvector/pgvector:pg16
+          for i in $(seq 1 30); do
+            docker exec restore-target pg_isready -U postgres && break
+            sleep 2
+          done
+          BACKUP_FILE=$(ls -t "${BACKUP_DIR:-/tmp/mbele-backups}"/*.dump | head -1) \
+          DATABASE_URL='postgresql://postgres:ci@localhost:5433/postgres' \
+            npm run backup -- restore-test
+
+      - name: Upload to R2
+        run: |
+          BACKUP_FILE=$(ls -t "${BACKUP_DIR:-/tmp/mbele-backups}"/*.dump | head -1) \
+            npm run backup -- upload
