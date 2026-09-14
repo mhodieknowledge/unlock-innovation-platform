@@ -177,8 +177,11 @@ function report(rows) {
   );
   console.log("  " + "-".repeat(84));
 
+  const unbudgeted = [];
+
   for (const row of rows) {
     const budget = budgetFor(row.route);
+    if (!budget) unbudgeted.push(row.route);
     const totalCap = budget?.totalBytes ?? ABSOLUTE.totalBytes;
     const jsCap = budget?.jsBytes ?? ABSOLUTE.jsBytes;
 
@@ -204,6 +207,27 @@ function report(rows) {
   }
 
   console.log("");
+
+  if (rows.length === 0) {
+    console.log("No HTML routes found. The build layout probably changed —");
+    console.log("measuring nothing must never look like passing.");
+    return false;
+  }
+
+  // A route with no explicit budget is a failure, not a silent fallback to the
+  // absolute ceiling. This is how a build-layout change gets caught: when the
+  // adapter moved output into dist/client, every route stopped matching its
+  // pattern and the old behaviour reported "within budget" while measuring the
+  // wrong thing entirely.
+  if (unbudgeted.length > 0) {
+    console.log(`${unbudgeted.length} route(s) have NO explicit budget:`);
+    for (const route of unbudgeted) console.log(`  ${route}`);
+    console.log("");
+    console.log("Add a pattern to ROUTE_BUDGETS, or check whether the build");
+    console.log("output layout moved and these route paths are wrong.");
+    return false;
+  }
+
   if (violations.length === 0) {
     console.log(`All ${rows.length} route(s) within budget.`);
     return true;
@@ -289,13 +313,26 @@ if (args.includes("--selftest")) {
   process.exit((await selftest()) ? 0 : 1);
 }
 
-const distDir = resolve(
-  args.find((a) => !a.startsWith("--")) ?? join(dirname(new URL(import.meta.url).pathname), "..", "apps", "web", "dist"),
-);
+const root = join(dirname(new URL(import.meta.url).pathname), "..");
+const explicit = args.find((a) => !a.startsWith("--"));
 
-if (!existsSync(distDir)) {
-  console.error(`No build output at ${distDir}. Run the build first.`);
+// @astrojs/cloudflare emits dist/client (static assets and HTML) alongside
+// dist/server (the worker). Measure the client directory, since that is what a
+// browser actually transfers. Falls back to dist for a flat layout.
+const candidates = explicit
+  ? [explicit]
+  : [
+      join(root, "apps", "web", "dist", "client"),
+      join(root, "apps", "web", "dist"),
+    ];
+
+const distDir = candidates.map((c) => resolve(c)).find((c) => existsSync(c));
+
+if (!distDir) {
+  console.error(`No build output found. Looked in:\n  ${candidates.join("\n  ")}\nRun the build first.`);
   process.exit(1);
 }
+
+console.log(`Measuring ${relative(root, distDir) || distDir}`);
 
 process.exit(report(await measure(distDir)) ? 0 : 1);

@@ -51,6 +51,11 @@ async function ensureTable() {
       applied_at  timestamptz NOT NULL DEFAULT now(),
       checksum    text
     )`);
+  // SECURITY.md §2: RLS on every table, default deny. This one carries no
+  // sensitive data, but "every table" has no exceptions — an exception is how a
+  // table that should have had a policy ends up without one. No policy is
+  // created, so only the service role (which bypasses RLS) can read it.
+  await client.query("ALTER TABLE schema_migrations ENABLE ROW LEVEL SECURITY");
 }
 
 async function listMigrations() {

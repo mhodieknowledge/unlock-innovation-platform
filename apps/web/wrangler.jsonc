@@ -3,24 +3,19 @@
   // the request tier. ADR 0001 replaced OpenNext with @astrojs/cloudflare; the
   // host is unchanged.
   //
-  // No secrets in this file — it is committed and the repository is public
+  // `main` and `assets.directory` are deliberately NOT set here. Since
+  // @astrojs/cloudflare 14 the adapter runs through @cloudflare/vite-plugin,
+  // which validates this file at config-resolution time — pointing `main` at the
+  // build output fails before the build has produced it. The adapter supplies
+  // both.
+  //
+  // No secrets in this file: it is committed and the repository is public
   // (invariant 11). Secrets are set with `wrangler secret put`, or in the
   // dashboard under Settings > Variables and Secrets.
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "mbele-web",
-  "main": "./dist/_worker.js/index.js",
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["nodejs_compat"],
-
-  "assets": {
-    "directory": "./dist",
-    "binding": "ASSETS",
-    // Static-first (SYSTEM_ARCHITECTURE.md §1): serve the prerendered asset when
-    // one exists and only fall through to the Worker otherwise. This is what
-    // keeps us inside the 100k requests/day free tier.
-    "not_found_handling": "404-page",
-    "run_worker_first": false
-  },
 
   "observability": { "enabled": true },
 

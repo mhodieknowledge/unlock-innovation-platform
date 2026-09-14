@@ -10,18 +10,18 @@
     "typecheck": "astro check --minimumSeverity error"
   },
   "dependencies": {
-    "@astrojs/cloudflare": "12.6.10",
-    "@astrojs/svelte": "7.1.0",
+    "@astrojs/cloudflare": "14.3.1",
+    "@astrojs/svelte": "9.0.1",
     "@mbele/eligibility": "*",
-    "@supabase/supabase-js": "2.58.0",
-    "@tailwindcss/vite": "4.1.13",
-    "astro": "5.14.1",
-    "svelte": "5.39.5",
-    "tailwindcss": "4.1.13",
-    "zod": "4.1.11"
+    "@supabase/supabase-js": "2.116.0",
+    "@tailwindcss/vite": "4.3.3",
+    "astro": "7.3.2",
+    "svelte": "5.57.0",
+    "tailwindcss": "4.3.3",
+    "zod": "4.6.5"
   },
   "devDependencies": {
-    "@astrojs/check": "0.9.4",
-    "typescript": "5.9.3"
+    "@astrojs/check": "0.9.10",
+    "typescript": "6.0.3"
   }
 }
