@@ -127,6 +127,15 @@ jobs:
       - name: Schema invariant tests
         run: npm run db:test
 
+      # SYSTEM_ARCHITECTURE.md §7 specifies the engine once in TypeScript and
+      # "mirrored as a Postgres function for batch use". Two implementations of
+      # the product's spine can only be kept honest by a test: a divergence would
+      # mean one verdict on the web and another in Telegram, which is exactly the
+      # inconsistency that destroys trust in a verdict. So the whole golden corpus
+      # runs through both.
+      - name: Engine parity (TypeScript vs the SQL mirror)
+        run: npm run parity
+
       - name: Roll back every migration
         run: npm run db:rollback -- --all
 
