@@ -36,6 +36,7 @@
     "golden:record": "node scripts/record-golden.mjs"
   },
   "devDependencies": {
+    "@huggingface/transformers": "^4.2.0",
     "@types/pg": "^8.23.1",
     "pg": "8.23.0",
     "typescript": "6.0.3",
