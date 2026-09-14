@@ -1,0 +1,208 @@
+---
+// People. ADMIN_SYSTEM.md §6.
+//
+// The important half of §6 is the `[PR]` list of what is NEVER visible to any admin:
+// eligibility profile, tracker contents, saved items, unflagged message bodies, digest
+// history. None of it is reachable from here, and not because this page chooses not to
+// show it — because admin_user_search does not return it and no policy grants it.
+//
+// What is here is counts and state. "3 projects, 11 requests, 2 reports against" tells
+// a moderator whether an account is a person or a spam ring. The titles of those
+// projects would tell them things they have no business reading.
+
+import Admin from "../../layouts/Admin.astro";
+import { createAuthClient, getSessionUser } from "../../lib/auth";
+import { reportError } from "../../lib/errors";
+import { ipHash, searchUsers, type AdminUser } from "../../lib/admin";
+
+export const prerender = false;
+
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const user = await getSessionUser(Astro.cookies, env);
+
+if (!user) {
+  return Astro.redirect(`/signin?returnTo=${encodeURIComponent("/admin/users")}`, 302);
+}
+
+// §1: user accounts are outside a reviewer's reach entirely.
+const allowed = user.is_admin && (user.admin_role === "moderator" || user.admin_role === "superadmin");
+if (!allowed) Astro.response.status = 404;
+
+const client = createAuthClient(Astro.cookies, env);
+Astro.response.headers.set("cache-control", "private, no-store");
+
+const query = Astro.url.searchParams.get("q") ?? "";
+
+let results: AdminUser[] = [];
+let notice: string | null = null;
+let problem: string | null = null;
+
+if (allowed && client) {
+  try {
+    if (Astro.request.method === "POST") {
+      const form = await Astro.request.formData();
+      const hash = await ipHash(
+        Astro.request.headers.get("cf-connecting-ip"),
+        env["IP_HASH_SALT"],
+      );
+      const { error } = await client.rpc("admin_user_action", {
+        p_user_id: String(form.get("user_id") ?? ""),
+        p_action: String(form.get("action") ?? ""),
+        p_reason: String(form.get("reason") ?? ""),
+        p_ip_hash: hash,
+      });
+      if (error) problem = error.message.replace(/^[a-z ]*error:?\s*/i, "");
+      else notice = "Done. The person has been told what happened and why.";
+    }
+
+    results = await searchUsers(client, query);
+  } catch (err) {
+    await reportError(err, { route: "/admin/users" }, env);
+    problem = "The search could not run.";
+  }
+}
+
+const date = (iso: string | null) =>
+  iso
+    ? new Date(iso).toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        timeZone: "UTC",
+      })
+    : "never";
+
+const LADDER: [string, string, string][] = [
+  ["warn", "Warn", "Says something happened. Changes nothing about the account."],
+  ["restrict", "Restrict", "Read-only: no intents, teams, requests or messages."],
+  ["suspend", "Suspend", "The account stops working."],
+  ["reinstate", "Reinstate", "Back to normal."],
+];
+---
+
+{
+  !allowed ? (
+    <Admin title="Not found" user={user} role={null}>
+      <h1 class="text-title font-semibold">Nothing here</h1>
+      <p class="mt-3 text-body text-ink-2">This address doesn't lead anywhere.</p>
+    </Admin>
+  ) : (
+    <Admin title="People" user={user} role={user.admin_role}>
+      <h1 class="text-title font-semibold">People</h1>
+      <p class="mt-2 max-w-prose text-dense text-ink-2">
+        Counts and account state. Eligibility details, tracker contents, saved items and
+        message bodies are not visible here, to anybody — that is enforced in the database,
+        not by this page choosing not to ask.
+      </p>
+
+      {
+        notice && (
+          <p class="mt-4 max-w-prose border-l-[3px] border-success bg-eligible-wash p-3 text-dense">
+            {notice}
+          </p>
+        )
+      }
+      {
+        problem && (
+          <p class="mt-4 max-w-prose border-l-[3px] border-danger bg-noteligible-wash p-3 text-dense">
+            {problem}
+          </p>
+        )
+      }
+
+      <form method="get" class="mt-6 flex max-w-prose flex-wrap gap-2">
+        <input
+          type="search"
+          name="q"
+          value={query}
+          placeholder="Email, handle or name"
+          class="min-h-11 flex-1 rounded-row border border-line-strong px-3 text-dense"
+        />
+        <button
+          type="submit"
+          class="min-h-11 rounded-row border border-line-strong bg-surface px-4 text-dense font-semibold"
+          >Search</button
+        >
+      </form>
+
+      {
+        results.length === 0 ? (
+          <p class="mt-6 text-dense text-ink-2">
+            {query === "" ? "The most recent accounts appear here." : "Nobody matched."}
+          </p>
+        ) : (
+          <ul class="mt-6 space-y-4">
+            {results.map((row) => (
+              <li class="max-w-prose rounded-sheet border border-line bg-surface p-4">
+                <p class="text-dense font-semibold">
+                  {row.display_name ?? "No display name"}
+                  <span class="font-normal text-ink-2">
+                    {" "}
+                    {row.handle ? `@${row.handle}` : ""} · {row.email}
+                  </span>
+                </p>
+                <p class="mt-1 text-micro text-ink-2">
+                  <span
+                    class={
+                      row.account_state === "active" ? "" : "font-semibold text-danger"
+                    }>{row.account_state}</span
+                  >
+                  {row.is_admin && ` · ${row.admin_role}`}
+                  <span aria-hidden="true"> · </span>
+                  joined {date(row.created_at)} · last seen {date(row.last_seen_at)}
+                  <span aria-hidden="true"> · </span>
+                  reporter weight {row.reporter_weight}
+                </p>
+                <p class="mt-1 text-micro text-ink-2">
+                  {row.projects} project{row.projects === 1 ? "" : "s"} · {row.teams} team
+                  {row.teams === 1 ? "" : "s"} · {row.requests_sent} request
+                  {row.requests_sent === 1 ? "" : "s"} sent · {row.reports_filed} report
+                  {row.reports_filed === 1 ? "" : "s"} filed
+                  {row.reports_against > 0 && (
+                    <span class="font-semibold text-danger">
+                      {" "}
+                      · {row.reports_against} report{row.reports_against === 1 ? "" : "s"} against
+                    </span>
+                  )}
+                  {row.moderation_actions > 0 &&
+                    ` · ${row.moderation_actions} previous action${row.moderation_actions === 1 ? "" : "s"}`}
+                </p>
+
+                <form method="post" class="mt-3 space-y-2">
+                  <input type="hidden" name="user_id" value={row.user_id} />
+                  <input
+                    type="text"
+                    name="reason"
+                    required
+                    minlength="10"
+                    placeholder="The reason, in words you would show them"
+                    class="min-h-11 w-full rounded-row border border-line-strong px-3 text-dense"
+                  />
+                  <span class="flex flex-wrap gap-2">
+                    {LADDER.map(([action, label, meaning]) => (
+                      <button
+                        type="submit"
+                        name="action"
+                        value={action}
+                        title={meaning}
+                        class={`min-h-11 rounded-row border px-3 text-micro font-semibold ${
+                          action === "suspend"
+                            ? "border-danger text-danger"
+                            : "border-line-strong"
+                        }`}>{label}</button
+                      >
+                    ))}
+                  </span>
+                  <span class="block text-micro text-ink-2">
+                    Restriction is protection, not punishment: it stops the behaviour and keeps
+                    the account. The reason reaches them with the notice.
+                  </span>
+                </form>
+              </li>
+            ))}
+          </ul>
+        )
+      }
+    </Admin>
+  )
+}

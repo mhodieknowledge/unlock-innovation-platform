@@ -1,0 +1,148 @@
+---
+// Surfaces and their floors. ADMIN_SYSTEM.md §10's last line, PRODUCT_SPEC.md §24.
+//
+// "Density-floor status per surface, so the operator can see what is about to unlock."
+// Both halves of §24 are shown side by side, because a surface renders only when the
+// flag is on AND the condition is met — and the difference between "waiting for people"
+// and "waiting for me to turn it on" is the whole decision this page supports.
+//
+// Turning a flag on is a superadmin's act and it is audited. Nothing here turns itself
+// on when a floor is reached: §24 makes the flag an operator's kill switch, and a switch
+// that flips itself is not one.
+
+import Admin from "../../layouts/Admin.astro";
+import { createAuthClient, getSessionUser } from "../../lib/auth";
+import { reportError } from "../../lib/errors";
+import { getDensityStatus, ipHash, type DensityRow } from "../../lib/admin";
+
+export const prerender = false;
+
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const user = await getSessionUser(Astro.cookies, env);
+
+if (!user) {
+  return Astro.redirect(`/signin?returnTo=${encodeURIComponent("/admin/flags")}`, 302);
+}
+if (!user.is_admin) Astro.response.status = 404;
+
+const client = createAuthClient(Astro.cookies, env);
+Astro.response.headers.set("cache-control", "private, no-store");
+
+const canChange = user.admin_role === "superadmin";
+
+let flags: DensityRow[] = [];
+let notice: string | null = null;
+let problem: string | null = null;
+
+if (user.is_admin && client) {
+  try {
+    if (Astro.request.method === "POST" && canChange) {
+      const form = await Astro.request.formData();
+      const key = String(form.get("flag") ?? "");
+      const enabled = form.get("enable") === "1";
+
+      // One function: it checks for superadmin, changes the flag and writes the audit row in
+      // the same statement. A page cannot write an audit row of its own — an audit row a
+      // page can write is an audit row a page can fabricate.
+      const { error } = await client.rpc("admin_set_flag", {
+        p_key: key,
+        p_enabled: enabled,
+        p_ip_hash: await ipHash(
+          Astro.request.headers.get("cf-connecting-ip"),
+          env["IP_HASH_SALT"],
+        ),
+      });
+
+      if (error) {
+        problem = error.message.replace(/^[a-z ]*error:?\s*/i, "");
+      } else {
+        notice = enabled
+          ? `${key} is on. It renders where its condition is also met.`
+          : `${key} is off. The surface is absent, not empty.`;
+      }
+    }
+
+    flags = await getDensityStatus(client);
+  } catch (err) {
+    await reportError(err, { route: "/admin/flags" }, env);
+    problem = "The flags could not be read.";
+  }
+}
+---
+
+{
+  !user.is_admin ? (
+    <Admin title="Not found" user={user} role={null}>
+      <h1 class="text-title font-semibold">Nothing here</h1>
+    </Admin>
+  ) : (
+    <Admin title="Surfaces" user={user} role={user.admin_role}>
+      <h1 class="text-title font-semibold">Surfaces and their floors</h1>
+      <p class="mt-2 max-w-prose text-dense text-ink-2">
+        A surface renders only when its flag is on <strong>and</strong> its condition is met.
+        Both, never either — an empty room tells a visitor the place is deserted, and tells the
+        next visitor the same thing.
+      </p>
+
+      {
+        notice && (
+          <p class="mt-4 max-w-prose border-l-[3px] border-success bg-eligible-wash p-3 text-dense">
+            {notice}
+          </p>
+        )
+      }
+      {
+        problem && (
+          <p class="mt-4 max-w-prose border-l-[3px] border-danger bg-noteligible-wash p-3 text-dense">
+            {problem}
+          </p>
+        )
+      }
+
+      <ul class="mt-6 max-w-prose divide-y divide-line border-y border-line">
+        {
+          flags.map((flag) => (
+            <li class="py-3">
+              <p class="text-dense font-semibold">{flag.flag}</p>
+              {flag.description && <p class="text-micro text-ink-2">{flag.description}</p>}
+              <p class="mt-1 text-micro">
+                <span class={flag.enabled ? "text-eligible" : "text-ink-2"}>
+                  flag {flag.enabled ? "on" : "off"}
+                </span>
+                {flag.condition_met !== null && (
+                  <>
+                    <span aria-hidden="true"> · </span>
+                    <span class={flag.condition_met ? "text-eligible" : "text-ink-2"}>
+                      condition {flag.condition_met ? "met" : "not met"}
+                    </span>
+                  </>
+                )}
+                {flag.detail && <span class="text-ink-2"> · {flag.detail}</span>}
+                {flag.enabled && flag.condition_met === false && (
+                  <span class="text-ink-2"> — on, and still correctly invisible</span>
+                )}
+              </p>
+
+              {canChange && (
+                <form method="post" class="mt-2">
+                  <input type="hidden" name="flag" value={flag.flag} />
+                  <input type="hidden" name="enable" value={flag.enabled ? "0" : "1"} />
+                  <button
+                    type="submit"
+                    class="min-h-11 rounded-row border border-line-strong bg-surface px-3 text-micro font-semibold"
+                    >{flag.enabled ? "Turn off" : "Turn on"}</button
+                  >
+                </form>
+              )}
+            </li>
+          ))
+        }
+      </ul>
+
+      <p class="mt-8 max-w-prose text-micro text-ink-2">
+        Nothing turns itself on when a floor is reached. The flag is the kill switch, and a
+        switch that flips itself is not one.
+      </p>
+    </Admin>
+  )
+}

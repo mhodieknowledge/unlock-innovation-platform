@@ -41,6 +41,7 @@
     { "pattern": "/projects/*/edit", "label": "Project edit", "totalKb": 150, "jsKb": 40 },
     { "pattern": "/admin", "label": "Admin", "totalKb": 200, "jsKb": 70 },
     { "pattern": "/admin/*", "label": "Admin", "totalKb": 200, "jsKb": 70 },
+    { "pattern": "/admin/*/*", "label": "Admin", "totalKb": 200, "jsKb": 70 },
     { "pattern": "/signin", "label": "Sign in", "totalKb": 100, "jsKb": 15 },
     { "pattern": "/report", "label": "Report form", "totalKb": 100, "jsKb": 15 },
     { "pattern": "/unsubscribe", "label": "Unsubscribe", "totalKb": 100, "jsKb": 15 },

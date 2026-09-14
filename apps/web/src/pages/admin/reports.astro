@@ -1,0 +1,197 @@
+---
+// The report inbox. ADMIN_SYSTEM.md §8.
+//
+// Grouped by subject, and safety separated from data quality — "different urgency,
+// different mindset". The grouping is not presentation: five reports about one
+// listing is ONE decision, and an inbox that shows five invites five partial
+// resolutions and four notifications that contradict each other.
+//
+// Every resolution notifies every reporter and updates reporter weighting, in the
+// database, through one function. There is no way to resolve quietly.
+
+import Admin from "../../layouts/Admin.astro";
+import { createAuthClient, getSessionUser } from "../../lib/auth";
+import { reportError } from "../../lib/errors";
+import { getReportInbox, ipHash, type ReportCard } from "../../lib/admin";
+
+export const prerender = false;
+
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const user = await getSessionUser(Astro.cookies, env);
+
+if (!user) {
+  return Astro.redirect(`/signin?returnTo=${encodeURIComponent("/admin/reports")}`, 302);
+}
+if (!user.is_admin) Astro.response.status = 404;
+
+const client = createAuthClient(Astro.cookies, env);
+Astro.response.headers.set("cache-control", "private, no-store");
+
+let safety: ReportCard[] = [];
+let quality: ReportCard[] = [];
+let notice: string | null = null;
+let problem: string | null = null;
+
+if (user.is_admin && client) {
+  try {
+    if (Astro.request.method === "POST") {
+      const form = await Astro.request.formData();
+      const hash = await ipHash(
+        Astro.request.headers.get("cf-connecting-ip"),
+        env["IP_HASH_SALT"],
+      );
+      const { data, error } = await client.rpc("admin_resolve_subject_reports", {
+        p_subject_type: String(form.get("subject_type") ?? ""),
+        p_subject_id: String(form.get("subject_id") ?? ""),
+        p_upheld: form.get("decision") === "uphold",
+        p_note: String(form.get("note") ?? ""),
+        p_ip_hash: hash,
+      });
+      if (error) problem = error.message.replace(/^[a-z ]*error:?\s*/i, "");
+      else
+        notice = `Resolved ${data} report${data === 1 ? "" : "s"}. Every reporter has been told.`;
+    }
+
+    [safety, quality] = await Promise.all([
+      getReportInbox(client, true),
+      getReportInbox(client, false),
+    ]);
+  } catch (err) {
+    await reportError(err, { route: "/admin/reports" }, env);
+    problem = "The inbox could not be loaded.";
+  }
+}
+
+const when = (iso: string) =>
+  new Date(iso).toLocaleString("en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: user?.timezone ?? "UTC",
+  });
+---
+
+{
+  !user.is_admin ? (
+    <Admin title="Not found" user={user} role={null}>
+      <h1 class="text-title font-semibold">Nothing here</h1>
+    </Admin>
+  ) : (
+    <Admin
+      title="Reports"
+      user={user}
+      role={user.admin_role}
+      waiting={safety.length + quality.length}
+    >
+      <h1 class="text-title font-semibold">Reports</h1>
+      <p class="mt-2 max-w-prose text-dense text-ink-2">
+        Grouped by what they are about. Resolving a group resolves every report in it and tells
+        every person who filed one — there is no way to resolve one quietly.
+      </p>
+
+      {
+        notice && (
+          <p class="mt-4 max-w-prose border-l-[3px] border-success bg-eligible-wash p-3 text-dense">
+            {notice}
+          </p>
+        )
+      }
+      {
+        problem && (
+          <p class="mt-4 max-w-prose border-l-[3px] border-danger bg-noteligible-wash p-3 text-dense">
+            {problem}
+          </p>
+        )
+      }
+
+      {
+        [
+          ["Safety", safety, true],
+          ["Data quality", quality, false],
+        ].map(([heading, cards, isSafety]) => (
+          <section class="mt-8">
+            <h2
+              class={`text-subtitle font-semibold ${isSafety ? "text-danger" : ""}`}>
+              {heading}
+              {(cards as ReportCard[]).length > 0 ? ` (${(cards as ReportCard[]).length})` : ""}
+            </h2>
+            {(cards as ReportCard[]).length === 0 ? (
+              <p class="mt-2 text-dense text-ink-2">
+                {isSafety
+                  ? "Nothing about anyone's safety is waiting."
+                  : "No data-quality reports waiting."}
+              </p>
+            ) : (
+              <ul class="mt-3 space-y-4">
+                {(cards as ReportCard[]).map((card) => (
+                  <li
+                    class={`max-w-prose rounded-sheet border bg-surface p-4 ${
+                      card.breached ? "border-danger" : "border-line"
+                    }`}>
+                    <p class="text-dense font-semibold">
+                      {card.subject_slug ? (
+                        <a
+                          href={`/opportunities/${card.subject_slug}`}
+                          class="text-ink">{card.subject_title}</a
+                        >
+                      ) : (
+                        card.subject_title
+                      )}
+                    </p>
+                    <p class="mt-1 text-micro text-ink-2">
+                      {card.report_count} report{card.report_count === 1 ? "" : "s"} from{" "}
+                      {card.distinct_reporters}{" "}
+                      {card.distinct_reporters === 1 ? "person" : "people"} · weighted{" "}
+                      {card.weighted_score} · {card.reasons.map((r) => r.replace(/_/g, " ")).join(", ")}
+                      <span aria-hidden="true"> · </span>
+                      first {when(card.first_report_at)} ({card.age_hours}h)
+                      {card.breached && (
+                        <span class="font-semibold text-danger"> · past SLA</span>
+                      )}
+                    </p>
+                    {card.latest_detail && (
+                      <p class="mt-2 border-l border-line-strong pl-3 text-dense text-ink-2">
+                        &ldquo;{card.latest_detail}&rdquo;
+                      </p>
+                    )}
+
+                    <form method="post" class="mt-4 space-y-2">
+                      <input type="hidden" name="subject_type" value={card.subject_type} />
+                      <input type="hidden" name="subject_id" value={card.subject_id} />
+                      <input
+                        type="text"
+                        name="note"
+                        required
+                        minlength="3"
+                        placeholder="What you did, or why you did not"
+                        class="min-h-11 w-full rounded-row border border-line-strong px-3 text-dense"
+                      />
+                      <span class="flex flex-wrap gap-2">
+                        <button
+                          type="submit"
+                          name="decision"
+                          value="uphold"
+                          class="min-h-11 flex-1 rounded-row bg-brand px-4 text-dense font-semibold text-surface"
+                          >Upheld — I acted</button
+                        >
+                        <button
+                          type="submit"
+                          name="decision"
+                          value="dismiss"
+                          class="min-h-11 flex-1 rounded-row border border-line-strong bg-surface px-4 text-dense font-semibold"
+                          >Dismissed</button
+                        >
+                      </span>
+                      <span class="block text-micro text-ink-2">
+                        The note goes to everyone who reported it, so write it for them.
+                      </span>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        ))
+      }
+    </Admin>
+  )
+}

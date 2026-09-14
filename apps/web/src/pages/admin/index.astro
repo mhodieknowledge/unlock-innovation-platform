@@ -1,0 +1,230 @@
+---
+// The operator's dashboard. ADMIN_SYSTEM.md §2.
+//
+// "One screen, mobile-first, that answers 'is anything wrong, and what do I do
+// next?'" Three blocks in §2's order: NEEDS YOU, SYSTEM, TODAY. Red only for things
+// that require an action — §2 `[PR]`: "No vanity metrics, no charts that do not drive
+// a decision", which is why there is no chart on this page at all and no number that
+// cannot be acted on.
+//
+// One database call. The page is meant to be openable on a phone on a bad connection,
+// and eleven queries would make that claim false.
+
+import Admin from "../../layouts/Admin.astro";
+import { createAuthClient, getSessionUser } from "../../lib/auth";
+import { reportError } from "../../lib/errors";
+import { getDashboard, queueLabel, type Dashboard } from "../../lib/admin";
+
+export const prerender = false;
+
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const user = await getSessionUser(Astro.cookies, env);
+
+if (!user) {
+  return Astro.redirect(`/signin?returnTo=${encodeURIComponent("/admin")}`, 302);
+}
+
+// Not an admin: 404, not 403. A 403 confirms that an admin area exists at this address.
+if (!user.is_admin) {
+  Astro.response.status = 404;
+}
+
+const client = createAuthClient(Astro.cookies, env);
+Astro.response.headers.set("cache-control", "private, no-store");
+
+let dash: Dashboard | null = null;
+let failed = false;
+
+if (user.is_admin && client) {
+  try {
+    dash = await getDashboard(client);
+  } catch (err) {
+    await reportError(err, { route: "/admin" }, env);
+    failed = true;
+  }
+}
+
+const waiting = dash?.queues.reduce((n, q) => n + q.open, 0) ?? null;
+const emailPct =
+  dash?.email && dash.email.cap > 0 ? Math.round((dash.email.used / dash.email.cap) * 100) : 0;
+
+const when = (iso: string | null) =>
+  iso
+    ? new Date(iso).toLocaleString("en-GB", {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone: user.timezone,
+      })
+    : "never";
+---
+
+{
+  !user.is_admin ? (
+    <Admin title="Not found" user={user} role={null}>
+      <h1 class="text-title font-semibold">Nothing here</h1>
+      <p class="mt-3 text-body text-ink-2">This address doesn't lead anywhere.</p>
+    </Admin>
+  ) : (
+    <Admin title="Dashboard" user={user} role={user.admin_role} waiting={waiting}>
+      {
+        failed || !dash ? (
+          <p class="max-w-prose border-l-[3px] border-danger bg-noteligible-wash p-3 text-dense">
+            The dashboard could not be built. That is itself worth knowing — check the
+            database is reachable.
+          </p>
+        ) : (
+          <>
+            {/* ── NEEDS YOU ── */}
+            <h1 class="text-title font-semibold">Needs you</h1>
+            {dash.queues.length === 0 ? (
+              <p class="mt-2 max-w-prose text-dense text-ink-2">
+                Every queue is empty. Nothing is waiting for a person.
+              </p>
+            ) : (
+              <ul class="mt-3 divide-y divide-line border-y border-line">
+                {dash.queues.map((q) => (
+                  <li class={`py-3 ${q.breached ? "border-l-[3px] border-danger pl-3" : ""}`}>
+                    <p class="text-dense">
+                      <a
+                        href={`/admin/queues/${q.queue}`}
+                        class="font-semibold text-ink no-underline hover:underline"
+                        >{q.open} {queueLabel(q.queue).toLowerCase()}</a
+                      >
+                      {q.claimed > 0 && (
+                        <span class="text-ink-2"> · {q.claimed} claimed</span>
+                      )}
+                    </p>
+                    <p class="text-micro text-ink-2">
+                      oldest {q.oldest_hours}h · SLA {q.sla_hours}h
+                      {q.breached && (
+                        <span class="font-semibold text-danger"> · past SLA</span>
+                      )}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {dash.unnotified_alerts > 0 && (
+              <p class="mt-3 max-w-prose border-l-[3px] border-warning bg-unclear-wash p-3 text-dense">
+                {dash.unnotified_alerts} operator alert
+                {dash.unnotified_alerts === 1 ? "" : "s"} waiting to be sent. If Telegram is
+                configured they go out with the next dispatcher run.
+              </p>
+            )}
+
+            {/* ── SYSTEM ── */}
+            <h2 class="mt-10 text-subtitle font-semibold">System</h2>
+            <dl class="mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-2">
+              <div>
+                <dt class="text-micro uppercase tracking-wide text-ink-2">Sources</dt>
+                <dd class="text-dense">
+                  {dash.sources?.active ?? 0} active of {dash.sources?.total ?? 0}
+                  {(dash.sources?.degraded ?? 0) > 0 && (
+                    <span class="font-semibold text-danger">
+                      {" "}
+                      · {dash.sources!.degraded} degraded
+                    </span>
+                  )}
+                  {(dash.sources?.awaiting_tos ?? 0) > 0 && (
+                    <span class="text-ink-2">
+                      {" "}
+                      · {dash.sources!.awaiting_tos} awaiting a terms-of-service decision
+                    </span>
+                  )}
+                </dd>
+              </div>
+
+              <div>
+                <dt class="text-micro uppercase tracking-wide text-ink-2">Ingestion</dt>
+                <dd class={`text-dense ${dash.ingestion?.silent ? "font-semibold text-danger" : ""}`}>
+                  {dash.ingestion?.minutes_ago === null || dash.ingestion === null
+                    ? "never run"
+                    : `last success ${dash.ingestion.minutes_ago} minutes ago`}
+                  {dash.ingestion?.silent && " · silent for over 8 hours"}
+                </dd>
+              </div>
+
+              <div>
+                <dt class="text-micro uppercase tracking-wide text-ink-2">Email budget</dt>
+                <dd class={`text-dense ${emailPct >= 90 ? "font-semibold text-danger" : ""}`}>
+                  {dash.email?.used ?? 0} of {dash.email?.cap ?? 280} today
+                  {dash.email?.exhausted_at && " · exhausted"}
+                </dd>
+              </div>
+
+              <div>
+                <dt class="text-micro uppercase tracking-wide text-ink-2">Database</dt>
+                <dd class={`text-dense ${dash.database_near_limit ? "font-semibold text-danger" : ""}`}>
+                  {dash.database_mb} MB of 500
+                </dd>
+              </div>
+
+              <div>
+                <dt class="text-micro uppercase tracking-wide text-ink-2">AI, last 24h</dt>
+                <dd class="text-dense">
+                  {dash.ai.length === 0
+                    ? "no calls"
+                    : dash.ai
+                        .map(
+                          (p) =>
+                            `${p.provider}: ${p.calls} call${p.calls === 1 ? "" : "s"}${
+                              p.failures > 0 ? ` (${p.failures} failed)` : ""
+                            }`,
+                        )
+                        .join(" · ")}
+                </dd>
+              </div>
+
+              <div>
+                <dt class="text-micro uppercase tracking-wide text-ink-2">Catalogue</dt>
+                <dd class="text-dense">
+                  {dash.catalogue?.published ?? 0} published
+                  {(dash.catalogue?.stale ?? 0) > 0 && ` · ${dash.catalogue!.stale} stale`}
+                  {(dash.catalogue?.disputed ?? 0) > 0 && (
+                    <span class="font-semibold text-danger">
+                      {" "}
+                      · {dash.catalogue!.disputed} disputed
+                    </span>
+                  )}
+                  {(dash.catalogue?.in_review ?? 0) > 0 && ` · ${dash.catalogue!.in_review} in review`}
+                </dd>
+              </div>
+            </dl>
+
+            {/* §7's headline quality number. The one number on this page about the
+                pipeline rather than about the day, because it decides whether the
+                pipeline is worth running. */}
+            {dash.extraction_quality && dash.extraction_quality.reviews > 0 && (
+              <p
+                class={`mt-4 max-w-prose text-dense ${
+                  (dash.extraction_quality.approved_unedited_pct ?? 100) < 60
+                    ? "border-l-[3px] border-warning bg-unclear-wash p-3"
+                    : "text-ink-2"
+                }`}>
+                {dash.extraction_quality.approved_unedited_pct}% of the last{" "}
+                {dash.extraction_quality.reviews} reviews were published without an edit.
+                {(dash.extraction_quality.approved_unedited_pct ?? 100) < 60 &&
+                  " Under 60% means extraction is creating work rather than saving it."}
+              </p>
+            )}
+
+            {/* ── TODAY ── */}
+            <h2 class="mt-10 text-subtitle font-semibold">Today</h2>
+            <p class="mt-2 max-w-prose text-dense">
+              {dash.today.published} published · {dash.today.expired} expired ·{" "}
+              {dash.today.reports} report{dash.today.reports === 1 ? "" : "s"} (
+              {dash.today.reports_resolved} resolved) · {dash.today.signups} new account
+              {dash.today.signups === 1 ? "" : "s"}
+            </p>
+
+            <p class="mt-8 text-micro text-ink-2">
+              As of {when(dash.generated_at)}. Nothing on this page refreshes itself —
+              reload when you want it again.
+            </p>
+          </>
+        )
+      }
+    </Admin>
+  )
+}

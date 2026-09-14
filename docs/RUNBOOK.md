@@ -341,7 +341,63 @@ Challenge*). That issues the same token, the code already checks it once
 
 ---
 
-## 12. What has NOT been exercised
+## 12. Working the queues
+
+`/admin` answers one question — is anything wrong — and everything on it is either work or a
+bound on work. The queues are at `/admin/queues/<queue>`, one review card at a time, and
+every action is a plain form: no JavaScript, so it works on a phone with a bad connection,
+which is when queue-clearing actually happens.
+
+What the SLA numbers mean (`MODERATION_AND_TRUST.md` §7): scam and safety 12 hours, entry
+fees 24, claims and duplicates and submissions 48, extraction 72. A priority-1 item past its
+SLA fires a Telegram alert on the next dispatcher run — if `OPERATOR_TELEGRAM_CHAT_ID` is
+unset the alert is logged instead, and `operator_alerts` keeps it until it can be sent.
+
+```
+DATABASE_URL=... npm run notify -- dispatch            # sends queued messages AND alerts
+DATABASE_URL=... npm run notify -- dispatch --dry-run  # lists what would be sent
+```
+
+```sql
+-- Everything waiting, and what has breached.
+SELECT queue, count(*), round(max(extract(epoch FROM now() - created_at)/3600.0)) AS oldest_h,
+       queue_sla_hours(queue) AS sla_h
+  FROM review_queue WHERE state <> 'done' GROUP BY queue ORDER BY 3 DESC;
+
+-- What would alert right now, without recording anything.
+SELECT * FROM operator_alerts_due();
+```
+
+Roles are a ladder and they are enforced in the database, not the page: a `reviewer` works
+queues and rules, a `moderator` adds account actions, a `superadmin` adds sources, flags and
+the audit log. Granting one:
+
+```sql
+UPDATE users SET is_admin = true, admin_role = 'reviewer'   -- or moderator, superadmin
+ WHERE email = 'person@example.org';
+```
+
+Nobody at any role can read an eligibility profile, a tracker or an unflagged message. That
+is RLS, asserted structurally in `supabase/tests/invariants.sql` and again in
+`supabase/tests/admin.sql` against the admin user view's own result type. If you need
+eligibility data to debug something, aggregate it — `supabase/tests/` has examples of
+non-identifying queries.
+
+**Two things the queue will not let you do,** both deliberate:
+
+- Publish a listing with an entry fee. Invariant 13, enforced in
+  `admin_publish_opportunity`. If the fee turns out not to exist, correct `cost` first.
+- Save an eligibility rule without quoting the sentence it came from. The editor refuses, the
+  table refuses, and the publish gate refuses. Quote the page rather than your reading of it:
+  the whole value of the quote is that the next person can check it.
+
+**Extraction quality** is the number to watch on the dashboard. Approve-without-edit under
+60% over 50 reviews means the pipeline is making work rather than saving it — the fix is a
+prompt change measured against the golden set, not more reviewing.
+
+---
+
+## 13. What has NOT been exercised
 
 Stated because a runbook that implies more coverage than it has is worse than a short
 one.
@@ -358,5 +414,7 @@ one.
 | The thread poller against a real browser | The endpoint's 304 path is not covered by a test that drives a browser; the handler is straightforward and the page degrades to "reload to see replies" if the script never runs. |
 | Project matching against a real catalogue | The scorer is unit-tested and the whole path was run end to end against fixture rows in a local Postgres (two opportunities, one project, embeddings from the local model). What has never happened is a match over a real catalogue with real eligibility rules, which is the only thing that will show whether the weights in §1.5 are right. |
 | An organisation claim by a real organisation | The whole flow was exercised against real rows in a local Postgres — claim, dispatcher render, confirm, publish as `official`, edit a deadline, re-review — but no real organisation has ever claimed a page, and the confirmation email has never left the machine (no Brevo sending domain). |
+| The admin queues with real volume | Every function and page is tested, and the whole review path was exercised against fixture rows (claim, review card, rule editor, publish, reject, merge, report resolution, user action, source activation, flag change, audit read). What has never happened is a reviewer clearing a real queue on a real phone, which is the only way to find out whether one-handed operation actually works. |
+| A Telegram operator alert | The alert fires, records and re-sends correctly against a real breached queue item; the send itself has never left the machine because no bot token is configured. The first live run will either work or return a Telegram error naming the problem. |
 | A Turnstile token | Never seen one. `verifyTurnstile()` is written and called; no key is configured and no widget is in any page (ADR 0002). |
 | Workers AI embedding in the request tier | Never called. `PROJECT_EMBEDDING_MODEL` is unset, so project creation stores no vector and the first-pass match ranks on tags and urgency — a supported degraded state, and the batch embedder fills the vector in overnight. |

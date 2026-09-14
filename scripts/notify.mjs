@@ -549,19 +549,61 @@ async function runDispatch() {
        ON CONFLICT (kind, day) DO NOTHING`,
       [alert[0].msg],
     );
-    if ((rowCount ?? 0) > 0) {
-      console.log(`OPERATOR ALERT: ${alert[0].msg}`);
-      if (OPERATOR_CHAT && !dryRun) {
-        const res = await sendTelegram(OPERATOR_CHAT, `${BRAND} operator alert\n\n${alert[0].msg}`);
-        if (res.ok) {
-          await client.query(
-            "UPDATE operator_alerts SET notified_at = now() WHERE kind='email_budget' AND day=current_date",
-          );
-        }
-      } else {
-        console.log("(no OPERATOR_TELEGRAM_CHAT_ID set, so this alert is log-only)");
-      }
-    }
+    if ((rowCount ?? 0) > 0) await deliverAlert("email_budget", alert[0].msg);
+  }
+
+  // ADMIN_SYSTEM.md §9's remaining conditions, including the `[PR]` one: a priority-1
+  // queue item past its SLA fires a Telegram alert. The conditions live in
+  // operator_alerts_due() (migration 0022) because they are queries over the queue, the
+  // sources and the database — and a condition written here would be a second copy of the
+  // dashboard's.
+  if (dryRun) {
+    const { rows: due } = await client.query("SELECT * FROM operator_alerts_due()");
+    for (const row of due) await deliverAlert(row.kind, row.detail);
+  } else {
+    // Record first, then send everything unsent — including what was just recorded, and
+    // anything an earlier run recorded but could not deliver (a Telegram outage, or a run
+    // that died between the two). ONE loop rather than two: sending the newly recorded rows
+    // and then sweeping the unsent ones delivered every new alert twice, which the first
+    // live run showed immediately.
+    await client.query("SELECT count(*) FROM record_operator_alerts()");
+
+    const { rows: unsent } = await client.query(
+      `SELECT kind, detail FROM operator_alerts
+        WHERE notified_at IS NULL AND day >= current_date - 1
+        ORDER BY created_at`,
+    );
+    for (const row of unsent) await deliverAlert(row.kind, row.detail);
+  }
+}
+
+/**
+ * One alert, to the one channel §9 specifies.
+ *
+ * "All alerts go to Telegram because that is the channel the operator actually reads, and
+ * because it costs nothing." An alert that cannot be sent is logged and left unmarked, so
+ * the next run tries again rather than losing it.
+ *
+ * @param {string} kind
+ * @param {string} detail
+ */
+async function deliverAlert(kind, detail) {
+  console.log(`OPERATOR ALERT [${kind}]: ${detail}`);
+
+  if (!OPERATOR_CHAT || dryRun) {
+    if (!OPERATOR_CHAT) console.log("(no OPERATOR_TELEGRAM_CHAT_ID set, so this alert is log-only)");
+    return;
+  }
+
+  const res = await sendTelegram(OPERATOR_CHAT, `${BRAND} operator alert\n\n${detail}`);
+  if (res.ok) {
+    await client.query(
+      "UPDATE operator_alerts SET notified_at = now() WHERE kind = $1 AND day = current_date",
+      [kind],
+    );
+  } else {
+    // Left unmarked deliberately: the next run picks it up from the unsent sweep above.
+    console.error(`  could not send: ${res.error}`);
   }
 }
 

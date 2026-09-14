@@ -1,0 +1,241 @@
+---
+// Sources. ADMIN_SYSTEM.md §5.
+//
+// "Adding a source is a form, never a deploy." `[PR]` And the gate that matters:
+// "Robots check is run and displayed before a source can be activated. A source whose
+// robots.txt disallows our path cannot be enabled through the UI." `[PR]`
+//
+// The activate button is disabled for the same reasons admin_set_source_active would
+// refuse, and the reason is printed beside it — a disabled button with no explanation
+// is a bug report waiting to be filed. The ToS posture is a person's judgement
+// (OPPORTUNITY_INGESTION.md §7 reserves it for one) and activation is blocked until
+// somebody records it.
+
+import Admin from "../../layouts/Admin.astro";
+import { createAuthClient, getSessionUser } from "../../lib/auth";
+import { reportError } from "../../lib/errors";
+import { getSources, ipHash, type AdminSource } from "../../lib/admin";
+
+export const prerender = false;
+
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const user = await getSessionUser(Astro.cookies, env);
+
+if (!user) {
+  return Astro.redirect(`/signin?returnTo=${encodeURIComponent("/admin/sources")}`, 302);
+}
+if (!user.is_admin) Astro.response.status = 404;
+
+const client = createAuthClient(Astro.cookies, env);
+Astro.response.headers.set("cache-control", "private, no-store");
+
+const canChange = user.admin_role === "superadmin";
+
+let sources: AdminSource[] = [];
+let notice: string | null = null;
+let problem: string | null = null;
+
+if (user.is_admin && client) {
+  try {
+    if (Astro.request.method === "POST") {
+      const form = await Astro.request.formData();
+      const hash = await ipHash(
+        Astro.request.headers.get("cf-connecting-ip"),
+        env["IP_HASH_SALT"],
+      );
+
+      if (form.get("tos_posture")) {
+        // Recording the posture is not activation. It is the judgement that makes
+        // activation possible, and it is kept separate so the two decisions are two
+        // deliberate acts.
+        const { error } = await client
+          .from("sources")
+          .update({
+            tos_posture: String(form.get("tos_posture")),
+            legal_note: String(form.get("legal_note") ?? "").slice(0, 1000) || null,
+          })
+          .eq("id", String(form.get("source_id") ?? ""));
+        if (error) problem = error.message.replace(/^[a-z ]*error:?\s*/i, "");
+        else notice = "Posture recorded. Activation is a separate decision.";
+      } else {
+        const { error } = await client.rpc("admin_set_source_active", {
+          p_source_id: String(form.get("source_id") ?? ""),
+          p_active: form.get("activate") === "1",
+          p_reason: String(form.get("reason") ?? "") || null,
+          p_ip_hash: hash,
+        });
+        if (error) problem = error.message.replace(/^[a-z ]*error:?\s*/i, "");
+        else notice = form.get("activate") === "1" ? "Active." : "Paused.";
+      }
+    }
+
+    sources = await getSources(client);
+  } catch (err) {
+    await reportError(err, { route: "/admin/sources" }, env);
+    problem = "The source list could not be loaded.";
+  }
+}
+
+const POSTURES: [string, string][] = [
+  ["permits_feeds", "Permits feeds or automated access"],
+  ["silent", "Says nothing about automation"],
+  ["restricts_automation", "Restricts automation"],
+  ["requires_permission", "Requires written permission"],
+];
+
+const when = (iso: string | null) =>
+  iso
+    ? new Date(iso).toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        timeZone: "UTC",
+      })
+    : "never";
+---
+
+{
+  !user.is_admin ? (
+    <Admin title="Not found" user={user} role={null}>
+      <h1 class="text-title font-semibold">Nothing here</h1>
+    </Admin>
+  ) : (
+    <Admin title="Sources" user={user} role={user.admin_role}>
+      <h1 class="text-title font-semibold">Sources</h1>
+      <p class="mt-2 max-w-prose text-dense text-ink-2">
+        {sources.filter((s) => s.is_active).length} active of {sources.length}. A source cannot
+        be activated until its robots.txt has been checked and allows us, and until somebody
+        has recorded what its terms of service say — that judgement is a person's, not a job's.
+      </p>
+
+      {
+        notice && (
+          <p class="mt-4 max-w-prose border-l-[3px] border-success bg-eligible-wash p-3 text-dense">
+            {notice}
+          </p>
+        )
+      }
+      {
+        problem && (
+          <p class="mt-4 max-w-prose border-l-[3px] border-danger bg-noteligible-wash p-3 text-dense">
+            {problem}
+          </p>
+        )
+      }
+      {
+        !canChange && (
+          <p class="mt-4 max-w-prose border-l-[3px] border-line-strong bg-sunken p-3 text-dense">
+            Sources are a superadmin's to change. You can see everything here.
+          </p>
+        )
+      }
+
+      <ul class="mt-6 space-y-4">
+        {
+          sources.map((s) => (
+            <li
+              class={`max-w-prose rounded-sheet border bg-surface p-4 ${
+                s.is_active && s.consecutive_failures >= 3 ? "border-danger" : "border-line"
+              }`}>
+              <p class="text-dense font-semibold">
+                {s.name}
+                <span class="font-normal text-ink-2"> · {s.kind}</span>
+              </p>
+              <p class="mt-1 break-all text-micro text-ink-2">
+                <a href={s.url} rel="noopener noreferrer nofollow" target="_blank" class="text-brand"
+                  >{s.url}</a
+                >
+              </p>
+              <p class="mt-1 text-micro text-ink-2">
+                {s.is_active ? "active" : "inactive"} · every {s.cadence_minutes} min · trust{" "}
+                {s.trust_score}
+                <span aria-hidden="true"> · </span>
+                robots{" "}
+                {s.robots_allowed === null
+                  ? "never checked"
+                  : s.robots_allowed
+                    ? `allowed, checked ${when(s.robots_checked_at)}`
+                    : "DISALLOWS US"}
+                <span aria-hidden="true"> · </span>
+                terms {s.tos_posture ?? "not recorded"}
+              </p>
+              <p class="mt-1 text-micro text-ink-2">
+                {s.records_published} published
+                {s.reports_attributable > 0 && ` · ${s.reports_attributable} reports against its records`}
+                {s.consecutive_failures > 0 && (
+                  <span class="font-semibold text-danger">
+                    {" "}
+                    · {s.consecutive_failures} consecutive failures
+                  </span>
+                )}
+                {s.hours_since_success !== null && ` · last success ${s.hours_since_success}h ago`}
+              </p>
+
+              {!s.tos_posture && canChange && (
+                <form method="post" class="mt-3 space-y-2 border-t border-line pt-3">
+                  <input type="hidden" name="source_id" value={s.source_id} />
+                  <label class="block text-micro font-semibold">
+                    What do their terms say about automated access?
+                  </label>
+                  <select
+                    name="tos_posture"
+                    class="min-h-11 w-full rounded-row border border-line-strong px-2 text-dense">
+                    {POSTURES.map(([value, label]) => (
+                      <option value={value}>{label}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    name="legal_note"
+                    placeholder="Where you read it, and anything conditional"
+                    class="min-h-11 w-full rounded-row border border-line-strong px-2 text-dense"
+                  />
+                  <button
+                    type="submit"
+                    class="min-h-11 w-full rounded-row border border-line-strong bg-surface px-3 text-dense font-semibold"
+                    >Record the posture</button
+                  >
+                </form>
+              )}
+
+              {canChange && (
+                <form method="post" class="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+                  <input type="hidden" name="source_id" value={s.source_id} />
+                  <input type="hidden" name="activate" value={s.is_active ? "0" : "1"} />
+                  <input
+                    type="text"
+                    name="reason"
+                    placeholder="Reason, for the audit log"
+                    class="min-h-11 flex-1 rounded-row border border-line px-2 text-micro"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!s.is_active && !s.can_activate}
+                    class={`min-h-11 rounded-row px-4 text-dense font-semibold ${
+                      s.is_active
+                        ? "border border-line-strong bg-surface"
+                        : s.can_activate
+                          ? "bg-brand text-surface"
+                          : "border border-line bg-sunken text-ink-3"
+                    }`}>{s.is_active ? "Pause" : "Activate"}</button
+                  >
+                  {!s.is_active && s.blocker && (
+                    <span class="block w-full text-micro text-ink-2">
+                      Cannot be activated: {s.blocker}.
+                    </span>
+                  )}
+                </form>
+              )}
+            </li>
+          ))
+        }
+      </ul>
+
+      <p class="mt-8 max-w-prose text-micro text-ink-2">
+        Adding a source is <code>npm run sources:check</code> followed by recording the posture
+        here — never a deploy. The robots check is re-run on a cadence, and a check older than
+        30 days does not count as a check.
+      </p>
+    </Admin>
+  )
+}

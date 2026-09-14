@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 
 import { experimental_AstroContainer as AstroContainer } from "astro/container";
+import { RULE_TYPES } from "../src/lib/admin";
 import svelteRenderer from "@astrojs/svelte/server.js";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -62,6 +63,15 @@ const BUDGETS = {
   orgClaim: { label: "Organisation claim", total: 100 * KB, js: 15 * KB },
   orgManage: { label: "Organisation manage", total: 150 * KB, js: 40 * KB },
   submitPublic: { label: "Public submission", total: 100 * KB, js: 15 * KB },
+  // Phase 8. ADMIN_SYSTEM.md §12: "Byte budget applies: <= 200 KB per admin route. The
+  // operator is often on the same expensive connection as the users." Measured with a full
+  // queue and a review card carrying ten rules and their quotes.
+  adminDashboard: { label: "Admin dashboard", total: 200 * KB, js: 70 * KB },
+  adminQueue: { label: "Admin queue", total: 200 * KB, js: 70 * KB },
+  adminReports: { label: "Admin reports", total: 200 * KB, js: 70 * KB },
+  adminUsers: { label: "Admin people", total: 200 * KB, js: 70 * KB },
+  adminSources: { label: "Admin sources", total: 200 * KB, js: 70 * KB },
+  adminAudit: { label: "Admin audit", total: 200 * KB, js: 70 * KB },
 } as const;
 
 const LONG_QUOTE =
@@ -179,12 +189,15 @@ const SESSION_USER = {
   email: "t@example.invalid",
   handle: null,
   display_name: "Test",
-  is_admin: false,
-  admin_role: null,
+  is_admin: true,
+  admin_role: "superadmin",
   account_state: "active",
   age_confirmed_18: true,
   timezone: "Africa/Harare",
   low_data_mode: false,
+  // Admin routes render only for an admin, and §12's budget applies to them — so the
+  // fixture session is a superadmin, which is also the role that sees the MOST markup
+  // (every nav item, the audit page, the flag switches).
 };
 
 /**
@@ -422,6 +435,169 @@ const CATEGORY_VOCABULARY = Array.from({ length: 14 }, (_, i) => ({
   name: `${SUBJECTS[i % SUBJECTS.length]} ${KINDS[i % KINDS.length]}`,
 }));
 
+/**
+ * Phase 8 fixtures. A queue at its cap, a review card with ten rules each carrying a long
+ * verbatim quote, twenty-five grouped report cards and fifty audit rows with before/after
+ * JSON — which is the largest thing any admin page renders.
+ */
+const ADMIN_DASHBOARD = {
+  generated_at: "2026-09-15T08:00:00Z",
+  queues: [
+    { queue: "report_scam", open: 3, claimed: 1, sla_hours: 12, oldest_hours: 19.4, breached: true },
+    { queue: "low_confidence", open: 41, claimed: 2, sla_hours: 72, oldest_hours: 60.2, breached: false },
+    { queue: "duplicate", open: 12, claimed: 0, sla_hours: 48, oldest_hours: 30.1, breached: false },
+    { queue: "org_claim", open: 2, claimed: 0, sla_hours: 48, oldest_hours: 5.5, breached: false },
+    { queue: "ugc", open: 8, claimed: 0, sla_hours: 48, oldest_hours: 12.0, breached: false },
+  ],
+  sources: { total: 38, active: 36, degraded: 2, awaiting_tos: 2 },
+  ingestion: { last_success_at: "2026-09-15T07:19:00Z", minutes_ago: 41, silent: false },
+  ai: [
+    { provider: "groq", calls: 220, tokens: 184_000, failures: 3 },
+    { provider: "gemini", calls: 88, tokens: 96_000, failures: 0 },
+  ],
+  email: { used: 118, cap: 280, exhausted_at: null },
+  database_mb: 312.4,
+  database_near_limit: false,
+  catalogue: { published: 3412, in_review: 41, draft: 60, stale: 47, disputed: 2, expired: 8 },
+  today: { published: 14, expired: 4, reports: 9, reports_resolved: 6, signups: 23 },
+  extraction_quality: { reviews: 50, approved_unedited_pct: 58 },
+  unnotified_alerts: 1,
+};
+
+const ADMIN_QUEUE_ITEMS = Array.from({ length: 25 }, (_, i) => ({
+  queue_id: `queue-${i}`,
+  subject_type: "opportunity",
+  subject_id: `opp-${i}`,
+  priority: (i % 5) + 1,
+  state: i % 6 === 0 ? "claimed" : "open",
+  claimed_by_name: i % 6 === 0 ? "Another Reviewer" : null,
+  claimed_by_me: false,
+  age_hours: 80 - i,
+  breached: i < 4,
+  title: worstCaseOpportunity(i + 1).title,
+  detail: `Example Foundation for African Innovation · auto · confidence 0.${60 + (i % 40)}`,
+}));
+
+const ADMIN_REVIEW_CARD = {
+  opportunity: {
+    id: "opp-0",
+    slug: "worst-case-1",
+    title: worstCaseOpportunity(1).title,
+    status: "in_review",
+    verification: "auto",
+    confidence: 0.71,
+    summary: "s".repeat(400),
+    deadline_at: "2026-10-30T23:59:59Z",
+    deadline_precision: "date_only",
+    deadline_raw: "Applications close 30 September",
+    cost: "free",
+    cost_description: null,
+    eligibility_scope: "country_list",
+    eligible_countries: ["ZW", "ZM", "KE", "NG", "GH", "TZ", "UG", "RW"],
+    team_required: true,
+    team_size_min: 2,
+    team_size_max: 5,
+    source_url: "https://example.invalid/source",
+    official_url: "https://example.invalid/official",
+    apply_url: "https://example.invalid/apply",
+    organisation: "Example Foundation for African Innovation",
+    organisation_slug: "example-org",
+    category: "Grant",
+    source_name: "A long source name for a regional aggregator",
+    source_trust: 0.62,
+    submitted_by: null,
+    tracked_by: 17,
+  },
+  rules: RULE_TYPES.map((type, i) => ({
+    id: `rule-${i}`,
+    rule_type: type,
+    params: { example: ["a", "b", "c"] },
+    source_quote: LONG_QUOTE,
+    confidence: 0.5 + i / 25,
+    high_stakes: i < 5,
+    reviewed_at: null,
+  })),
+  reports: Array.from({ length: 5 }, (_, i) => ({
+    reason: ["possible_scam", "requires_payment", "wrong_deadline", "broken_link", "spam"][i]!,
+    detail: LONG_QUOTE,
+    created_at: "2026-09-14T00:00:00Z",
+  })),
+  duplicates: Array.from({ length: 3 }, (_, i) => ({
+    other_id: `dup-${i}`,
+    other_title: worstCaseOpportunity(i + 5).title,
+    other_slug: `worst-case-${i + 5}`,
+    score: 0.9 - i / 20,
+    method: "trigram",
+    model_verdict: i === 0 ? "same" : null,
+  })),
+};
+
+const ADMIN_REPORTS = Array.from({ length: 25 }, (_, i) => ({
+  subject_type: "opportunity",
+  subject_id: `opp-${i}`,
+  subject_title: worstCaseOpportunity(i + 1).title,
+  subject_slug: `worst-case-${i + 1}`,
+  report_count: (i % 5) + 1,
+  distinct_reporters: (i % 4) + 1,
+  weighted_score: 1 + i / 10,
+  reasons: ["possible_scam", "requires_payment"],
+  first_report_at: "2026-09-13T00:00:00Z",
+  age_hours: 30 + i,
+  breached: i < 3,
+  is_safety: i % 2 === 0,
+  latest_detail: LONG_QUOTE,
+}));
+
+const ADMIN_USERS = Array.from({ length: 20 }, (_, i) => ({
+  user_id: `user-${i}`,
+  handle: `builder${i}`,
+  display_name: `A person with quite a long display name ${i + 1}`,
+  email: `person${i}@example.invalid`,
+  account_state: ["active", "restricted", "suspended"][i % 3]!,
+  is_admin: false,
+  admin_role: null,
+  created_at: "2026-05-01T00:00:00Z",
+  last_seen_at: "2026-09-14T00:00:00Z",
+  reporter_weight: 1.0,
+  projects: i % 4,
+  teams: i % 3,
+  requests_sent: i,
+  reports_filed: i % 5,
+  reports_against: i % 7,
+  moderation_actions: i % 2,
+}));
+
+const ADMIN_SOURCES = Array.from({ length: 38 }, (_, i) => ({
+  source_id: `source-${i}`,
+  name: `A regional aggregator number ${i + 1}`,
+  kind: "html_page",
+  url: `https://example.invalid/source-${i}/opportunities/listing`,
+  is_active: i % 4 !== 0,
+  robots_allowed: i % 5 === 0 ? false : true,
+  robots_checked_at: "2026-09-01T00:00:00Z",
+  tos_posture: i % 6 === 0 ? null : "permits_feeds",
+  cadence_minutes: 720,
+  trust_score: 0.5,
+  consecutive_failures: i % 7,
+  last_success_at: "2026-09-15T00:00:00Z",
+  hours_since_success: 8,
+  records_published: i * 3,
+  reports_attributable: i % 3,
+  can_activate: i % 6 !== 0,
+  blocker: i % 6 === 0 ? "nobody has recorded the terms-of-service posture" : null,
+}));
+
+const ADMIN_AUDIT = Array.from({ length: 50 }, (_, i) => ({
+  id: 1000 - i,
+  ts: "2026-09-15T07:00:00Z",
+  actor_name: "A Reviewer",
+  action: ["publish_unedited", "publish_edited", "reject", "rule_edit", "user_restrict"][i % 5]!,
+  subject_type: "opportunity",
+  subject_id: `aaaaaaaa-0000-0000-0000-00000000000${i % 10}`,
+  before: { status: "in_review", source_quote: LONG_QUOTE },
+  after: { status: "published", source_quote: LONG_QUOTE },
+}));
+
 /** Every RPC the Phase 5 pages call, with a filled-to-the-cap answer for each. */
 const ROOM_RPC: Record<string, unknown> = {
   room_state: [{ state: "open", intent_count: 14, team_count: 6, reason: "room is open" }],
@@ -442,6 +618,17 @@ const ROOM_RPC: Record<string, unknown> = {
   my_org_claims: MY_CLAIMS,
   submit_opportunity_public: [{ ok: true, message: "Thank you." }],
   confirm_org_claim: [{ ok: true, organisation_slug: "example-org", organisation_name: "Example Foundation for African Innovation" }],
+  admin_dashboard: ADMIN_DASHBOARD,
+  admin_queue: ADMIN_QUEUE_ITEMS,
+  admin_review_card: ADMIN_REVIEW_CARD,
+  admin_report_inbox: ADMIN_REPORTS,
+  admin_user_search: ADMIN_USERS,
+  admin_sources: ADMIN_SOURCES,
+  admin_audit_search: ADMIN_AUDIT,
+  admin_density_status: [
+    { flag: "team_room_entry", enabled: false, description: "Team room entry point", condition_met: false, detail: "0 opportunities are above the room floor" },
+    { flag: "public_project_browse", enabled: false, description: "Public project browse", condition_met: false, detail: "12 of 40 public projects" },
+  ],
 };
 
 /**
@@ -924,6 +1111,42 @@ beforeAll(async () => {
     () => import("../src/pages/submit.astro"),
     {},
     "https://example.invalid/submit",
+  );
+  await render(
+    "adminDashboard",
+    () => import("../src/pages/admin/index.astro"),
+    {},
+    "https://example.invalid/admin",
+  );
+  await render(
+    "adminQueue",
+    () => import("../src/pages/admin/queues/[queue].astro"),
+    { queue: "low_confidence" },
+    "https://example.invalid/admin/queues/low_confidence",
+  );
+  await render(
+    "adminReports",
+    () => import("../src/pages/admin/reports.astro"),
+    {},
+    "https://example.invalid/admin/reports",
+  );
+  await render(
+    "adminUsers",
+    () => import("../src/pages/admin/users.astro"),
+    {},
+    "https://example.invalid/admin/users",
+  );
+  await render(
+    "adminSources",
+    () => import("../src/pages/admin/sources.astro"),
+    {},
+    "https://example.invalid/admin/sources",
+  );
+  await render(
+    "adminAudit",
+    () => import("../src/pages/admin/audit.astro"),
+    {},
+    "https://example.invalid/admin/audit",
   );
   await render(
     "unsubscribe",

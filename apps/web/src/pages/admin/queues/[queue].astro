@@ -1,0 +1,497 @@
+---
+// A queue, and the review card. ADMIN_SYSTEM.md §3.
+//
+// `[PR]`: "All queues clearable one-handed on a phone." That is the whole layout
+// decision: one card at a time, actions as full-width buttons at the bottom of the
+// card where a thumb reaches, and no horizontal anything. The side-by-side
+// extracted/source columns §3.1 draws become stacked pairs below 640px — the same
+// information, in the order a thumb reads it.
+//
+// Every action is a POST to this page and every one of them is idempotent (§12:
+// "Every admin action is idempotent and safe to retry — connections drop"). Approving
+// an already-approved record is a no-op that says so rather than an error.
+
+import Admin from "../../../layouts/Admin.astro";
+import { createAuthClient, getSessionUser } from "../../../lib/auth";
+import { reportError } from "../../../lib/errors";
+import {
+  QUEUES,
+  getQueue,
+  getReviewCard,
+  ipHash,
+  queueLabel,
+  RULE_TYPES,
+  type QueueItem,
+  type ReviewCard,
+} from "../../../lib/admin";
+
+export const prerender = false;
+
+const { queue } = Astro.params;
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const user = await getSessionUser(Astro.cookies, env);
+
+if (!user) {
+  return Astro.redirect(`/signin?returnTo=${encodeURIComponent(Astro.url.pathname)}`, 302);
+}
+if (!user.is_admin) {
+  Astro.response.status = 404;
+}
+
+const client = createAuthClient(Astro.cookies, env);
+Astro.response.headers.set("cache-control", "private, no-store");
+
+const known = QUEUES.some((q) => q.key === queue);
+if (!known) Astro.response.status = 404;
+
+let items: QueueItem[] = [];
+let card: ReviewCard | null = null;
+let notice: string | null = null;
+let problem: string | null = null;
+let failed = false;
+
+const openId = Astro.url.searchParams.get("open");
+
+if (user.is_admin && known && client) {
+  try {
+    if (Astro.request.method === "POST") {
+      const form = await Astro.request.formData();
+      const hash = await ipHash(
+        Astro.request.headers.get("cf-connecting-ip"),
+        env["IP_HASH_SALT"],
+      );
+
+      const fail = (message: string) => {
+        problem = message.replace(/^[a-z ]*error:?\s*/i, "");
+      };
+
+      if (form.get("claim")) {
+        const { data } = await client.rpc("admin_claim_queue_item", {
+          p_queue_id: String(form.get("claim")),
+        });
+        notice = data === true ? "Claimed." : "Somebody else has that one.";
+      } else if (form.get("release")) {
+        await client.rpc("admin_release_queue_item", {
+          p_queue_id: String(form.get("release")),
+        });
+        notice = "Released.";
+      } else if (form.get("publish")) {
+        const { error } = await client.rpc("admin_publish_opportunity", {
+          p_opportunity_id: String(form.get("publish")),
+          p_edited: form.get("edited") === "1",
+          p_notify_trackers: form.get("notify") === "1" ? true : null,
+          p_ip_hash: hash,
+        });
+        if (error) fail(error.message);
+        else notice = "Published.";
+      } else if (form.get("reject")) {
+        const { error } = await client.rpc("admin_reject_opportunity", {
+          p_opportunity_id: String(form.get("reject")),
+          p_reason: String(form.get("reason") ?? ""),
+          p_ip_hash: hash,
+        });
+        if (error) fail(error.message);
+        else notice = "Rejected.";
+      } else if (form.get("save_rule")) {
+        const { error } = await client.rpc("admin_save_rule", {
+          p_opportunity_id: String(form.get("opportunity_id")),
+          p_rule_type: String(form.get("rule_type")),
+          // The params come in as JSON text, because a rule's shape differs per type and a
+          // form field per shape would be a form nobody could extend.
+          p_params: JSON.parse(String(form.get("params") ?? "{}") || "{}"),
+          p_source_quote: String(form.get("source_quote") ?? ""),
+          p_rule_id: String(form.get("rule_id") ?? "") || null,
+          p_confidence: 1.0,
+          p_ip_hash: hash,
+        });
+        if (error) fail(error.message);
+        else notice = "Rule saved, with its quote.";
+      } else if (form.get("delete_rule")) {
+        const { error } = await client.rpc("admin_delete_rule", {
+          p_rule_id: String(form.get("delete_rule")),
+          p_reason: String(form.get("reason") ?? ""),
+          p_ip_hash: hash,
+        });
+        if (error) fail(error.message);
+        else notice = "Rule deleted.";
+      } else if (form.get("merge_into")) {
+        const { error } = await client.rpc("merge_opportunities", {
+          p_canonical: String(form.get("merge_into")),
+          p_duplicate: String(form.get("merge_from")),
+          p_actor: user.id,
+        });
+        if (error) fail(error.message);
+        else notice = "Merged. The duplicate's URL now returns 410 with where it went.";
+      }
+    }
+
+    items = await getQueue(client, queue!);
+    const toOpen = openId ?? items.find((i) => i.subject_type === "opportunity")?.subject_id ?? null;
+    if (toOpen) card = await getReviewCard(client, toOpen);
+  } catch (err) {
+    await reportError(err, { route: "/admin/queues/[queue]", tags: { queue: queue ?? "" } }, env);
+    failed = true;
+  }
+}
+
+const waiting = items.length;
+const opp = card?.opportunity ?? null;
+
+/** §3.1: low confidence first, and visibly so. */
+const confidenceMark = (c: number | null): string =>
+  c === null ? "" : c < 0.7 ? " ⚠" : "";
+
+const dateOnly = (iso: string | null) =>
+  iso
+    ? new Date(iso).toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        timeZone: "UTC",
+      })
+    : "not given";
+---
+
+{
+  !user.is_admin || !known ? (
+    <Admin title="Not found" user={user} role={null}>
+      <h1 class="text-title font-semibold">Nothing here</h1>
+      <p class="mt-3 text-body text-ink-2">This address doesn't lead anywhere.</p>
+    </Admin>
+  ) : (
+    <Admin title={queueLabel(queue!)} user={user} role={user.admin_role} waiting={waiting}>
+      <h1 class="text-title font-semibold">{queueLabel(queue!)}</h1>
+
+      <nav aria-label="Queues" class="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-micro">
+        {
+          QUEUES.map((q) => (
+            <a
+              href={`/admin/queues/${q.key}`}
+              class={q.key === queue ? "font-semibold text-ink" : "text-brand"}
+              >{q.label}</a
+            >
+          ))
+        }
+      </nav>
+
+      {
+        notice && (
+          <p class="mt-4 max-w-prose border-l-[3px] border-success bg-eligible-wash p-3 text-dense">
+            {notice}
+          </p>
+        )
+      }
+      {
+        problem && (
+          <p class="mt-4 max-w-prose border-l-[3px] border-danger bg-noteligible-wash p-3 text-dense">
+            {problem}
+          </p>
+        )
+      }
+      {
+        failed && (
+          <p class="mt-4 max-w-prose border-l-[3px] border-danger bg-noteligible-wash p-3 text-dense">
+            The queue could not be loaded.
+          </p>
+        )
+      }
+
+      {
+        items.length === 0 ? (
+          <p class="mt-6 max-w-prose text-dense text-ink-2">
+            Nothing in this queue. That is the goal rather than a problem.
+          </p>
+        ) : (
+          <>
+            {/* THE REVIEW CARD. One at a time, actions at the bottom. */}
+            {opp && (
+              <article class="mt-6 max-w-prose rounded-sheet border border-line-strong bg-surface p-4">
+                <h2 class="text-subtitle font-semibold">{opp.title}</h2>
+                <p class="mt-1 text-micro text-ink-2">
+                  {opp.organisation ?? "no organisation"} · {opp.verification} ·{" "}
+                  {opp.confidence === null ? "no confidence score" : `confidence ${opp.confidence}`}
+                  {opp.source_name && ` · via ${opp.source_name}`}
+                  {opp.tracked_by > 0 && ` · ${opp.tracked_by} tracking`}
+                </p>
+
+                {/* §3.1's two columns: extracted beside source. Stacked on a phone. */}
+                <dl class="mt-4 space-y-3">
+                  {[
+                    ["Deadline", `${dateOnly(opp.deadline_at)} (${opp.deadline_precision})`, opp.deadline_raw],
+                    ["Cost", opp.cost, opp.cost_description],
+                    [
+                      "Who can enter",
+                      opp.eligibility_scope === "country_list"
+                        ? (opp.eligible_countries ?? []).join(", ") || "no countries listed"
+                        : opp.eligibility_scope,
+                      null,
+                    ],
+                    [
+                      "Team",
+                      opp.team_required === null
+                        ? "not stated"
+                        : opp.team_required
+                          ? `teams of ${opp.team_size_min ?? "?"}–${opp.team_size_max ?? "?"}`
+                          : "individuals",
+                      null,
+                    ],
+                  ].map(([label, value, quote]) => (
+                    <div class="border-t border-line pt-2">
+                      <dt class="text-micro font-semibold uppercase tracking-wide text-ink-2">
+                        {label}
+                      </dt>
+                      <dd class="text-dense">{value}</dd>
+                      {quote && (
+                        <dd class="mt-1 border-l border-line-strong pl-3 text-meta text-ink-2">
+                          &ldquo;{quote}&rdquo;
+                        </dd>
+                      )}
+                    </div>
+                  ))}
+                </dl>
+
+                {/* Rules, worst confidence first, each beside its quote. */}
+                <h3 class="mt-5 text-dense font-semibold">Eligibility rules</h3>
+                {card!.rules.length === 0 ? (
+                  <p class="mt-1 text-dense text-ink-2">
+                    None extracted. Every verdict on this record will read "unclear" until
+                    somebody adds one — which is the honest outcome, not a gap to paper over.
+                  </p>
+                ) : (
+                  <ul class="mt-2 space-y-3">
+                    {card!.rules.map((rule) => (
+                      <li class={rule.confidence < 0.7 ? "border-l-[3px] border-warning pl-3" : "pl-3"}>
+                        <p class="text-dense">
+                          <span class="font-semibold">{rule.rule_type.replace(/_/g, " ")}</span>
+                          <span class="text-ink-2">
+                            {" "}
+                            {JSON.stringify(rule.params)} · {rule.confidence}
+                            {confidenceMark(rule.confidence)}
+                            {rule.high_stakes && " · high stakes"}
+                          </span>
+                        </p>
+                        <p class="mt-1 border-l border-line-strong pl-3 text-meta text-ink-2">
+                          &ldquo;{rule.source_quote}&rdquo;
+                        </p>
+                        <form method="post" class="mt-1 flex flex-wrap items-center gap-2">
+                          <input type="hidden" name="delete_rule" value={rule.id} />
+                          <input
+                            type="text"
+                            name="reason"
+                            placeholder="Why it is going"
+                            class="min-h-11 flex-1 rounded-row border border-line px-2 text-micro"
+                          />
+                          <button type="submit" class="min-h-11 text-micro text-ink-2 underline">
+                            Delete
+                          </button>
+                        </form>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {/* The rule editor. The quote field is REQUIRED here and in the database —
+                    the invariant applies to humans too (§3.1 `[PR]`). */}
+                <details class="mt-4">
+                  <summary class="cursor-pointer text-dense font-semibold">Add a rule</summary>
+                  <form method="post" class="mt-3">
+                    <input type="hidden" name="save_rule" value="1" />
+                    <input type="hidden" name="opportunity_id" value={opp.id} />
+                    <p>
+                      <label for="rule_type" class="block text-micro font-semibold">Type</label>
+                      <select
+                        id="rule_type"
+                        name="rule_type"
+                        class="mt-1 min-h-11 w-full rounded-row border border-line-strong px-2 text-dense">
+                        {RULE_TYPES.map((t) => (
+                          <option value={t}>{t.replace(/_/g, " ")}</option>
+                        ))}
+                      </select>
+                    </p>
+                    <p class="mt-3">
+                      <label for="params" class="block text-micro font-semibold">
+                        Parameters, as JSON
+                      </label>
+                      <input
+                        id="params"
+                        name="params"
+                        type="text"
+                        required
+                        placeholder={'{"countries":["ZW","ZM"]}'}
+                        class="mt-1 min-h-11 w-full rounded-row border border-line-strong px-2 text-dense"
+                      />
+                    </p>
+                    <p class="mt-3">
+                      <label for="source_quote" class="block text-micro font-semibold">
+                        The sentence this came from
+                      </label>
+                      <span class="mt-1 block text-micro text-ink-2">
+                        Quote the page. Not a summary, not your reading of it — the words, so
+                        the next person can check them.
+                      </span>
+                      <textarea
+                        id="source_quote"
+                        name="source_quote"
+                        rows="2"
+                        required
+                        minlength="10"
+                        class="mt-1 w-full rounded-row border border-line-strong p-2 text-dense"></textarea>
+                    </p>
+                    <p class="mt-3">
+                      <button
+                        type="submit"
+                        class="min-h-11 w-full rounded-row border border-line-strong bg-surface px-4 text-dense font-semibold"
+                        >Save the rule</button
+                      >
+                    </p>
+                  </form>
+                </details>
+
+                {card!.reports.length > 0 && (
+                  <>
+                    <h3 class="mt-5 text-dense font-semibold text-danger">
+                      Why it is here: {card!.reports.length} open report
+                      {card!.reports.length === 1 ? "" : "s"}
+                    </h3>
+                    <ul class="mt-2 space-y-2">
+                      {card!.reports.map((r) => (
+                        <li class="text-dense">
+                          <span class="font-semibold">{r.reason.replace(/_/g, " ")}</span>
+                          {r.detail && <span class="text-ink-2"> — {r.detail}</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+
+                {card!.duplicates.length > 0 && (
+                  <>
+                    <h3 class="mt-5 text-dense font-semibold">Possible duplicates</h3>
+                    <ul class="mt-2 space-y-2">
+                      {card!.duplicates.map((d) => (
+                        <li class="text-dense">
+                          <a href={`/opportunities/${d.other_slug}`} class="text-brand">
+                            {d.other_title}
+                          </a>
+                          <span class="text-ink-2">
+                            {" "}
+                            · {d.method} {d.score}
+                            {d.model_verdict ? ` · model says ${d.model_verdict}` : ""}
+                          </span>
+                          <form method="post" class="mt-1 flex flex-wrap gap-2">
+                            <input type="hidden" name="merge_into" value={opp.id} />
+                            <input type="hidden" name="merge_from" value={d.other_id} />
+                            <button
+                              type="submit"
+                              class="min-h-11 rounded-row border border-line px-3 text-micro font-semibold"
+                              >Keep this one, merge that one in</button
+                            >
+                          </form>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+
+                {/* Actions last, full width, thumb-reachable. */}
+                <div class="mt-6 space-y-2 border-t border-line pt-4">
+                  <form method="post">
+                    <input type="hidden" name="publish" value={opp.id} />
+                    <input type="hidden" name="notify" value="1" />
+                    <button
+                      type="submit"
+                      class="min-h-11 w-full rounded-row bg-brand px-4 font-semibold text-surface"
+                      >Publish as extracted</button
+                    >
+                  </form>
+                  <form method="post">
+                    <input type="hidden" name="publish" value={opp.id} />
+                    <input type="hidden" name="edited" value="1" />
+                    <input type="hidden" name="notify" value="1" />
+                    <button
+                      type="submit"
+                      class="min-h-11 w-full rounded-row border border-line-strong bg-surface px-4 font-semibold"
+                      >Publish — I edited it</button
+                    >
+                  </form>
+                  <form method="post" class="flex flex-wrap gap-2">
+                    <input type="hidden" name="reject" value={opp.id} />
+                    <input
+                      type="text"
+                      name="reason"
+                      required
+                      placeholder="Why it is being rejected"
+                      class="min-h-11 flex-1 rounded-row border border-line-strong px-3 text-dense"
+                    />
+                    <button
+                      type="submit"
+                      class="min-h-11 rounded-row border border-danger bg-surface px-4 text-dense font-semibold text-danger"
+                      >Reject</button
+                    >
+                  </form>
+                  <p class="flex flex-wrap gap-4 pt-1 text-micro">
+                    {opp.source_url && (
+                      <a
+                        href={opp.source_url}
+                        rel="noopener noreferrer nofollow"
+                        target="_blank"
+                        class="text-brand">Open the source ↗</a
+                      >
+                    )}
+                    <a href={`/opportunities/${opp.slug}`} class="text-brand">See the public page</a>
+                  </p>
+                </div>
+              </article>
+            )}
+
+            {/* The rest of the queue, as a list to pick from. */}
+            <h2 class="mt-10 text-subtitle font-semibold">
+              {items.length} waiting
+            </h2>
+            <ul class="mt-3 divide-y divide-line border-y border-line">
+              {items.map((item) => (
+                <li class={`py-3 ${item.breached ? "border-l-[3px] border-danger pl-3" : ""}`}>
+                  <p class="text-dense">
+                    {item.subject_type === "opportunity" ? (
+                      <a
+                        href={`/admin/queues/${queue}?open=${item.subject_id}`}
+                        class="font-semibold text-ink no-underline hover:underline"
+                        >{item.title}</a
+                      >
+                    ) : (
+                      <span class="font-semibold">{item.title}</span>
+                    )}
+                  </p>
+                  <p class="text-micro text-ink-2">
+                    {item.detail}
+                    {item.detail && " · "}
+                    {item.age_hours}h old
+                    {item.breached && <span class="font-semibold text-danger"> · past SLA</span>}
+                    {item.claimed_by_name && ` · claimed by ${item.claimed_by_name}`}
+                  </p>
+                  <form method="post" class="mt-1">
+                    {item.claimed_by_me ? (
+                      <>
+                        <input type="hidden" name="release" value={item.queue_id} />
+                        <button type="submit" class="min-h-11 text-micro text-ink-2 underline">
+                          Release
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <input type="hidden" name="claim" value={item.queue_id} />
+                        <button type="submit" class="min-h-11 text-micro text-brand underline">
+                          Claim
+                        </button>
+                      </>
+                    )}
+                  </form>
+                </li>
+              ))}
+            </ul>
+          </>
+        )
+      }
+    </Admin>
+  )
+}

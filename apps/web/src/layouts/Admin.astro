@@ -1,0 +1,79 @@
+---
+// The admin shell. ADMIN_SYSTEM.md §12.
+//
+// "Same design system as the public product, distinguished by a persistent admin bar
+// — never a different visual language." So this wraps Base rather than replacing it:
+// one set of tokens, one type scale, one set of components. An operator who has
+// learned the public product has learned this.
+//
+// The bar is the whole distinction, and it carries the two things an operator needs
+// on every screen: where they are, and what is waiting.
+
+import Base from "./Base.astro";
+
+interface Props {
+  title: string;
+  user: { display_name: string | null } | null;
+  /** Role as the database reports it, so the bar shows only what this person can reach. */
+  role: string | null;
+  /** Total open queue items, when the page already knows — never fetched just for the bar. */
+  waiting?: number | null;
+}
+
+const { title, user, role, waiting = null } = Astro.props;
+const path = Astro.url.pathname;
+
+const LINKS: [string, string, string][] = [
+  ["/admin", "Dashboard", "reviewer"],
+  ["/admin/queues/low_confidence", "Queues", "reviewer"],
+  ["/admin/reports", "Reports", "reviewer"],
+  ["/admin/sources", "Sources", "reviewer"],
+  ["/admin/users", "People", "moderator"],
+  ["/admin/flags", "Surfaces", "reviewer"],
+  ["/admin/audit", "Audit", "superadmin"],
+];
+
+const rank = (r: string | null): number =>
+  r === "superadmin" ? 3 : r === "moderator" ? 2 : r === "reviewer" ? 1 : 0;
+
+const needed = (r: string): number => rank(r);
+const visible = LINKS.filter(([, , min]) => rank(role) >= needed(min));
+---
+
+<Base title={`${title} · Admin`} noindex user={user}>
+  <!-- The persistent bar. Sticky because queue clearing happens with a thumb, and a
+       nav that scrolls away is a nav that gets scrolled past. -->
+  <div
+    class="sticky top-0 z-40 -mx-4 mb-6 border-b border-line-strong bg-sunken px-4 py-2"
+  >
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+      <span class="text-micro font-semibold uppercase tracking-wide text-ink-2">
+        Admin{role ? ` · ${role}` : ""}
+      </span>
+      <nav aria-label="Admin sections" class="flex flex-wrap items-center gap-x-3 gap-y-1 text-dense">
+        {
+          visible.map(([href, label]) => (
+            <a
+              href={href}
+              aria-current={path === href || (href !== "/admin" && path.startsWith(href.split("/").slice(0, 3).join("/"))) ? "page" : undefined}
+              class={
+                path === href
+                  ? "font-semibold text-ink underline"
+                  : "text-brand"
+              }>{label}</a
+            >
+          ))
+        }
+      </nav>
+      {
+        waiting !== null && waiting > 0 && (
+          <span class="ml-auto text-micro font-semibold text-ink">
+            {waiting} waiting
+          </span>
+        )
+      }
+    </div>
+  </div>
+
+  <slot />
+</Base>

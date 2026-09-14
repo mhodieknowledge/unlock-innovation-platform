@@ -1,0 +1,145 @@
+---
+// The audit log. ADMIN_SYSTEM.md §11.
+//
+// "Every state-changing admin action writes admin_audit_log with actor, action,
+// subject, before/after JSON, timestamp and hashed IP." `[PR]` And: "Immutable
+// (insert-only; no update or delete grants). Searchable by actor, subject and date.
+// Superadmin-only read."
+//
+// Superadmin-only is enforced in the function, not here. This page is the reading
+// surface, and it shows before and after in full — a log that summarises is a log that
+// has decided for you what mattered.
+
+import Admin from "../../layouts/Admin.astro";
+import { createAuthClient, getSessionUser } from "../../lib/auth";
+import { reportError } from "../../lib/errors";
+import { ACTION_LABEL, getAudit, type AuditRow } from "../../lib/admin";
+
+export const prerender = false;
+
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const user = await getSessionUser(Astro.cookies, env);
+
+if (!user) {
+  return Astro.redirect(`/signin?returnTo=${encodeURIComponent("/admin/audit")}`, 302);
+}
+
+const allowed = user.is_admin && user.admin_role === "superadmin";
+if (!allowed) Astro.response.status = 404;
+
+const client = createAuthClient(Astro.cookies, env);
+Astro.response.headers.set("cache-control", "private, no-store");
+
+const action = Astro.url.searchParams.get("action");
+const subject = Astro.url.searchParams.get("subject");
+
+let rows: AuditRow[] = [];
+let failed = false;
+
+if (allowed && client) {
+  try {
+    rows = await getAudit(client, { action, subjectId: subject });
+  } catch (err) {
+    await reportError(err, { route: "/admin/audit" }, env);
+    failed = true;
+  }
+}
+
+const when = (iso: string) =>
+  new Date(iso).toLocaleString("en-GB", {
+    dateStyle: "medium",
+    timeStyle: "medium",
+    timeZone: user?.timezone ?? "UTC",
+  });
+
+const ACTIONS = Object.keys(ACTION_LABEL);
+---
+
+{
+  !allowed ? (
+    <Admin title="Not found" user={user} role={null}>
+      <h1 class="text-title font-semibold">Nothing here</h1>
+      <p class="mt-3 text-body text-ink-2">This address doesn't lead anywhere.</p>
+    </Admin>
+  ) : (
+    <Admin title="Audit" user={user} role={user.admin_role}>
+      <h1 class="text-title font-semibold">Audit log</h1>
+      <p class="mt-2 max-w-prose text-dense text-ink-2">
+        Every state-changing action, with what it changed from and to. Insert-only: nobody can
+        edit or delete a row here, including you.
+      </p>
+
+      <form method="get" class="mt-6 flex max-w-prose flex-wrap gap-2">
+        <select
+          name="action"
+          class="min-h-11 flex-1 rounded-row border border-line-strong px-2 text-dense">
+          <option value="">Every action</option>
+          {ACTIONS.map((a) => (
+            <option value={a} selected={a === action}>
+              {ACTION_LABEL[a]}
+            </option>
+          ))}
+        </select>
+        <button
+          type="submit"
+          class="min-h-11 rounded-row border border-line-strong bg-surface px-4 text-dense font-semibold"
+          >Filter</button
+        >
+      </form>
+
+      {
+        failed && (
+          <p class="mt-4 max-w-prose border-l-[3px] border-danger bg-noteligible-wash p-3 text-dense">
+            The log could not be read.
+          </p>
+        )
+      }
+
+      {
+        rows.length === 0 ? (
+          <p class="mt-6 text-dense text-ink-2">
+            Nothing recorded{action ? " for that action" : " yet"}.
+          </p>
+        ) : (
+          <ul class="mt-6 max-w-prose divide-y divide-line border-y border-line">
+            {rows.map((row) => (
+              <li class="py-3">
+                <p class="text-dense">
+                  <span class="font-semibold">{ACTION_LABEL[row.action] ?? row.action}</span>
+                  <span class="text-ink-2">
+                    {" "}
+                    by {row.actor_name ?? "a job"} · {when(row.ts)}
+                  </span>
+                </p>
+                <p class="text-micro text-ink-2">
+                  {row.subject_type}
+                  {row.subject_id ? ` ${row.subject_id.slice(0, 8)}` : ""}
+                </p>
+                {(row.before || row.after) && (
+                  <dl class="mt-1 space-y-1 text-micro">
+                    {row.before && (
+                      <div>
+                        <dt class="inline font-semibold text-ink-2">before </dt>
+                        <dd class="inline break-all text-ink-2">{JSON.stringify(row.before)}</dd>
+                      </div>
+                    )}
+                    {row.after && (
+                      <div>
+                        <dt class="inline font-semibold text-ink-2">after </dt>
+                        <dd class="inline break-all text-ink-2">{JSON.stringify(row.after)}</dd>
+                      </div>
+                    )}
+                  </dl>
+                )}
+              </li>
+            ))}
+          </ul>
+        )
+      }
+
+      <p class="mt-8 text-micro text-ink-2">
+        Kept 24 months, then deleted by the retention job.
+      </p>
+    </Admin>
+  )
+}
