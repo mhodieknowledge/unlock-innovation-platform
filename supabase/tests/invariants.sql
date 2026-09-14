@@ -141,4 +141,87 @@ SELECT assert_accepts(
   $q$INSERT INTO sources (name, kind, url, tos_posture)
      VALUES ('Restricted feed', 'rss', 'https://example.org/feed', 'restricts_automation')$q$);
 
+-- MODERATION_AND_TRUST.md §2.2 — a scam or payment report must set
+-- verification='disputed' IMMEDIATELY and AUTOMATICALLY, before any human sees
+-- it. "False positives cost us one listing. False negatives cost someone money.
+-- Act first, review second." Enforced by trigger so no future write path can
+-- forget it.
+INSERT INTO reports (subject_type, subject_id, reason, reporter_fingerprint)
+VALUES ('opportunity', '22222222-2222-2222-2222-222222222222', 'possible_scam', 'test-fp');
+
+DO $$
+DECLARE v text; q int; p int;
+BEGIN
+  SELECT verification INTO v FROM opportunities
+   WHERE id = '22222222-2222-2222-2222-222222222222';
+  IF v <> 'disputed' THEN
+    RAISE EXCEPTION 'FAIL  a scam report must auto-dispute the listing (got %)', v;
+  END IF;
+
+  SELECT count(*) INTO q FROM review_queue WHERE queue = 'report_scam' AND priority = 1;
+  IF q <> 1 THEN
+    RAISE EXCEPTION 'FAIL  a scam report must queue at priority 1 (found % items)', q;
+  END IF;
+
+  SELECT priority INTO p FROM reports WHERE reason = 'possible_scam';
+  IF p <> 1 THEN
+    RAISE EXCEPTION 'FAIL  a scam report must be escalated to priority 1 (got %)', p;
+  END IF;
+
+  RAISE NOTICE 'PASS  a scam report auto-disputes, escalates and queues at priority 1';
+END $$;
+
+-- A safety report routes to its own queue, never batched with data-quality
+-- reports (ADMIN_SYSTEM.md §8: different urgency, different mindset).
+INSERT INTO reports (subject_type, subject_id, reason, reporter_fingerprint)
+VALUES ('profile', '22222222-2222-2222-2222-222222222222', 'harassment', 'test-fp2');
+
+DO $$
+DECLARE q int;
+BEGIN
+  SELECT count(*) INTO q FROM review_queue WHERE queue = 'report_safety' AND priority = 1;
+  IF q <> 1 THEN
+    RAISE EXCEPTION 'FAIL  a harassment report must queue to report_safety at priority 1 (found %)', q;
+  END IF;
+  RAISE NOTICE 'PASS  a safety report routes to its own priority-1 queue';
+END $$;
+
+-- The audit log must be append-only: a SELECT policy for superadmins and an
+-- INSERT policy for admins exist, and there is deliberately NO update or delete
+-- policy, so it cannot be rewritten through the API (ADMIN_SYSTEM.md §11).
+DO $$
+DECLARE n int;
+BEGIN
+  SELECT count(*) INTO n FROM pg_policy p
+    JOIN pg_class c ON c.oid = p.polrelid
+   WHERE c.relname = 'admin_audit_log' AND p.polcmd IN ('w', 'd');
+  IF n <> 0 THEN
+    RAISE EXCEPTION 'FAIL  admin_audit_log must have no UPDATE or DELETE policy (found %)', n;
+  END IF;
+  RAISE NOTICE 'PASS  admin_audit_log is append-only by policy';
+END $$;
+
+-- The hard invariant, asserted structurally: eligibility_profiles must have
+-- exactly one policy and it must not mention is_admin (DATA_MODEL.md §15,
+-- ADMIN_SYSTEM.md §1 -- nobody at any role can read it).
+DO $$
+DECLARE n int; expr text;
+BEGIN
+  SELECT count(*) INTO n FROM pg_policy p
+    JOIN pg_class c ON c.oid = p.polrelid
+   WHERE c.relname = 'eligibility_profiles';
+  IF n <> 1 THEN
+    RAISE EXCEPTION 'FAIL  eligibility_profiles must have exactly 1 policy (found %)', n;
+  END IF;
+
+  SELECT pg_get_expr(p.polqual, p.polrelid) INTO expr FROM pg_policy p
+    JOIN pg_class c ON c.oid = p.polrelid
+   WHERE c.relname = 'eligibility_profiles';
+  IF expr ILIKE '%is_admin%' THEN
+    RAISE EXCEPTION 'FAIL  eligibility_profiles policy must grant NO admin read path (got %)', expr;
+  END IF;
+
+  RAISE NOTICE 'PASS  eligibility_profiles has exactly one owner-only policy, no admin path';
+END $$;
+
 ROLLBACK;

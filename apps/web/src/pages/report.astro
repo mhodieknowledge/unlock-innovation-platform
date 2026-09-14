@@ -1,0 +1,186 @@
+---
+// Report form. PRODUCT_SPEC.md §23, MODERATION_AND_TRUST.md §5,
+// IMPLEMENTATION_PLAN.md §3 ("report form, logged-out, Turnstile").
+//
+// Handles its own POST rather than posting JSON from an island, so it works with
+// JavaScript disabled. For an audience on expensive, unreliable connections, a
+// report that needs a working JS bundle is a report that does not get filed —
+// and the whole point of logged-out reporting is to collect the signal from
+// people who would otherwise give up.
+
+import Base from "../layouts/Base.astro";
+import { getClient } from "../lib/db";
+import { reportError } from "../lib/errors";
+
+export const prerender = false;
+
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+
+const REASONS: [string, string][] = [
+  ["expired", "This has closed"],
+  ["wrong_deadline", "The deadline is wrong"],
+  ["wrong_eligibility", "The eligibility is wrong"],
+  ["broken_link", "The link is broken"],
+  ["possible_scam", "This looks like a scam"],
+  ["requires_payment", "It asks for a payment to apply"],
+  ["duplicate", "This is a duplicate"],
+  ["incorrect_info", "Something else is incorrect"],
+  ["other", "Other"],
+];
+
+const subjectSlug = Astro.url.searchParams.get("subject");
+
+type State = "form" | "received" | "error" | "not_found";
+let state: State = "form";
+let message = "";
+let chosenReason = "";
+
+if (Astro.request.method === "POST") {
+  try {
+    const form = await Astro.request.formData();
+    chosenReason = String(form.get("reason") ?? "");
+    const slug = String(form.get("subject") ?? subjectSlug ?? "");
+    const detail = String(form.get("detail") ?? "").slice(0, 1000);
+
+    const client = getClient(env);
+    if (!client) throw new Error("data layer unavailable");
+
+    const { data: opp } = await client
+      .from("opportunities")
+      .select("id")
+      .eq("slug", slug)
+      .maybeSingle();
+
+    if (!opp) {
+      state = "not_found";
+      message = "We couldn't find that listing. It may already have been removed.";
+    } else if (!REASONS.some(([value]) => value === chosenReason)) {
+      state = "error";
+      message = "Please choose a reason.";
+    } else {
+      // Posting through our own API keeps the rate limit, the fingerprinting and
+      // the auto-dispute trigger on one path, rather than duplicating the rules
+      // here where they would drift.
+      const response = await fetch(new URL("/api/v1/reports", Astro.url), {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          // Forwarded so the fingerprint is the reporter's, not the Worker's.
+          ...(Astro.request.headers.get("cf-connecting-ip")
+            ? { "cf-connecting-ip": Astro.request.headers.get("cf-connecting-ip")! }
+            : {}),
+        },
+        body: JSON.stringify({
+          subject_type: "opportunity",
+          subject_id: (opp as { id: string }).id,
+          reason: chosenReason,
+          detail: detail || undefined,
+        }),
+      });
+
+      const body = (await response.json()) as {
+        data?: { message?: string };
+        error?: { message?: string };
+      };
+
+      if (response.ok) {
+        state = "received";
+        message = body.data?.message ?? "Thank you — this is now in our review queue.";
+      } else {
+        state = "error";
+        message = body.error?.message ?? "We couldn't record that report.";
+      }
+    }
+  } catch (err) {
+    await reportError(err, { route: "/report" }, env);
+    state = "error";
+    message = "We couldn't record that report. Please try again shortly.";
+  }
+}
+
+// SEO.md §1: a user tool, not content.
+---
+
+<Base title="Report a problem" noindex>
+  <h1 class="text-title font-semibold">Report a problem</h1>
+
+  {
+    state === "received" ? (
+      <div class="mt-4 border-l-[3px] border-eligible bg-eligible-wash p-4">
+        <p class="font-semibold text-eligible">
+          <span aria-hidden="true">●</span> Report received
+        </p>
+        <p class="mt-1 text-dense text-ink-2">{message}</p>
+        <p class="mt-3 text-dense">
+          <a href="/opportunities" class="text-brand">Back to open opportunities</a>
+        </p>
+      </div>
+    ) : (
+      <>
+        <p class="prose-measure mt-2 text-dense text-ink-2">
+          No account needed. If something here is wrong, telling us is the fastest way it gets
+          fixed — and a listing reported as a scam is de-ranked and flagged immediately, before
+          anyone reviews it.
+        </p>
+
+        {(state === "error" || state === "not_found") && (
+          <p class="mt-3 border-l-[3px] border-danger bg-noteligible-wash p-3 text-dense text-danger" role="alert">
+            {message}
+          </p>
+        )}
+
+        <form method="post" class="mt-4 max-w-lg space-y-4">
+          <label class="block">
+            <span class="block text-micro font-semibold text-ink-2">Listing</span>
+            <input
+              name="subject"
+              value={subjectSlug ?? ""}
+              required
+              placeholder="the listing's address, e.g. agritech-ai-challenge-2026"
+              class="mt-1 h-11 w-full rounded-row border border-line px-3"
+            />
+          </label>
+
+          <fieldset>
+            <legend class="text-micro font-semibold text-ink-2">What's wrong?</legend>
+            <div class="mt-2 space-y-2">
+              {REASONS.map(([value, label]) => (
+                <label class="flex items-center gap-2 text-dense">
+                  <input
+                    type="radio"
+                    name="reason"
+                    {value}
+                    required
+                    checked={chosenReason === value}
+                    class="h-4 w-4"
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          <label class="block">
+            <span class="block text-micro font-semibold text-ink-2">
+              Anything else? <span class="font-normal">(optional)</span>
+            </span>
+            <textarea
+              name="detail"
+              rows="4"
+              maxlength="1000"
+              class="mt-1 w-full rounded-row border border-line p-3"
+            ></textarea>
+          </label>
+
+          <button type="submit" class="h-11 rounded-row bg-brand px-4 font-semibold text-surface">
+            Send report
+          </button>
+
+          <p class="text-meta text-ink-2">
+            We don't store your IP address. Reports are limited to five a day per device.
+          </p>
+        </form>
+      </>
+    )
+  }
+</Base>
