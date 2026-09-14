@@ -29,24 +29,34 @@ import { tmpdir } from "node:os";
 
 const KB = 1024;
 
-// Mirrors packages/config/src/budgets.ts. Duplicated deliberately: this script
-// must run before/independently of any TypeScript build step, and a drift test
-// in packages/config keeps the two honest.
-const ROUTE_BUDGETS = [
-  { pattern: "/", label: "Homepage", totalBytes: 120 * KB, jsBytes: 25 * KB },
-  { pattern: "/opportunities", label: "Opportunity list / search", totalBytes: 150 * KB, jsBytes: 40 * KB },
-  { pattern: "/opportunities/*", label: "Opportunity detail", totalBytes: 120 * KB, jsBytes: 30 * KB },
-  { pattern: "/countries", label: "Country index", totalBytes: 100 * KB, jsBytes: 15 * KB },
-  { pattern: "/countries/*", label: "Country index", totalBytes: 100 * KB, jsBytes: 15 * KB },
-  { pattern: "/categories", label: "Category index", totalBytes: 100 * KB, jsBytes: 15 * KB },
-  { pattern: "/categories/*", label: "Category index", totalBytes: 100 * KB, jsBytes: 15 * KB },
-  { pattern: "/organisations/*", label: "Organisation page", totalBytes: 120 * KB, jsBytes: 25 * KB },
-  { pattern: "/dashboard", label: "Authenticated dashboard", totalBytes: 200 * KB, jsBytes: 70 * KB },
-  { pattern: "/tracker", label: "Authenticated dashboard", totalBytes: 200 * KB, jsBytes: 70 * KB },
-  { pattern: "/admin/*", label: "Admin", totalBytes: 200 * KB, jsBytes: 70 * KB },
-];
+/**
+ * Budgets come from packages/config/src/route-budgets.json — the SINGLE source of
+ * truth, read by this script and by packages/config alike.
+ *
+ * This script used to carry its own hand-copied duplicate of the table, with a
+ * comment claiming a drift test in packages/config kept the two honest. There was
+ * no such test. The first time routes were added to the TypeScript copy and not
+ * this one, seven pages silently fell back to the absolute ceiling — a 250 KB
+ * budget standing in for a 100 KB one, reported as a pass. Read the file.
+ */
+const BUDGET_TABLE = JSON.parse(
+  readFileSync(
+    join(dirname(new URL(import.meta.url).pathname), "..", "packages", "config", "src", "route-budgets.json"),
+    "utf8",
+  ),
+);
 
-const ABSOLUTE = { totalBytes: 250 * KB, jsBytes: 90 * KB };
+const ROUTE_BUDGETS = BUDGET_TABLE.routes.map((r) => ({
+  pattern: r.pattern,
+  label: r.label,
+  totalBytes: r.totalKb * KB,
+  jsBytes: r.jsKb * KB,
+}));
+
+const ABSOLUTE = {
+  totalBytes: BUDGET_TABLE.absolute.totalKb * KB,
+  jsBytes: BUDGET_TABLE.absolute.jsKb * KB,
+};
 
 const gz = (buf) => gzipSync(buf, { level: 9 }).length;
 const fmt = (n) => `${(n / KB).toFixed(1)} KB`;

@@ -1,0 +1,41 @@
+{
+  "_comment": [
+    "PRODUCT_SPEC.md §25.1 — hard byte budgets, invariant 5. THE single source of truth.",
+    "JSON rather than TypeScript because two readers need it and they cannot share a module:",
+    "budgets.ts imports it for the app, and scripts/byte-budget.mjs reads it before any",
+    "TypeScript build has run. It used to be a hand-copied duplicate in both places with a",
+    "comment claiming a drift test kept them honest; there was no such test, and the first",
+    "time new routes were added the script silently fell back to the absolute ceiling.",
+    "Sizes are in KB, gzipped, transferred on a first visit.",
+    "`*` in a pattern matches exactly one path segment; the longest literal prefix wins."
+  ],
+  "absolute": { "totalKb": 250, "jsKb": 90 },
+  "routes": [
+    { "pattern": "/", "label": "Homepage", "totalKb": 120, "jsKb": 25 },
+    { "pattern": "/opportunities", "label": "Opportunity list / search", "totalKb": 150, "jsKb": 40 },
+    { "pattern": "/opportunities/*", "label": "Opportunity detail", "totalKb": 120, "jsKb": 30 },
+    { "pattern": "/countries", "label": "Country index", "totalKb": 100, "jsKb": 15 },
+    { "pattern": "/countries/*", "label": "Country index", "totalKb": 100, "jsKb": 15 },
+    { "pattern": "/countries/*/*", "label": "Country index", "totalKb": 100, "jsKb": 15 },
+    { "pattern": "/categories", "label": "Category index", "totalKb": 100, "jsKb": 15 },
+    { "pattern": "/categories/*", "label": "Category index", "totalKb": 100, "jsKb": 15 },
+    { "pattern": "/organisations", "label": "Organisation index", "totalKb": 120, "jsKb": 25 },
+    { "pattern": "/organisations/*", "label": "Organisation page", "totalKb": 120, "jsKb": 25 },
+    { "pattern": "/dashboard", "label": "Authenticated dashboard", "totalKb": 200, "jsKb": 70 },
+    { "pattern": "/tracker", "label": "Authenticated dashboard", "totalKb": 200, "jsKb": 70 },
+    { "pattern": "/you/*", "label": "Authenticated dashboard", "totalKb": 200, "jsKb": 70 },
+    { "pattern": "/admin", "label": "Admin", "totalKb": 200, "jsKb": 70 },
+    { "pattern": "/admin/*", "label": "Admin", "totalKb": 200, "jsKb": 70 },
+    { "pattern": "/signin", "label": "Sign in", "totalKb": 100, "jsKb": 15 },
+    { "pattern": "/report", "label": "Report form", "totalKb": 100, "jsKb": 15 },
+    { "pattern": "/unsubscribe", "label": "Unsubscribe", "totalKb": 100, "jsKb": 15 },
+    { "pattern": "/privacy", "label": "Policy page", "totalKb": 100, "jsKb": 15 },
+    { "pattern": "/terms", "label": "Policy page", "totalKb": 100, "jsKb": 15 },
+    { "pattern": "/content-policy", "label": "Policy page", "totalKb": 100, "jsKb": 15 },
+    { "pattern": "/anti-scam", "label": "Policy page", "totalKb": 100, "jsKb": 15 },
+    { "pattern": "/verification", "label": "Policy page", "totalKb": 100, "jsKb": 15 },
+    { "pattern": "/bot", "label": "Policy page", "totalKb": 100, "jsKb": 15 },
+    { "pattern": "/changelog", "label": "Policy page", "totalKb": 100, "jsKb": 15 },
+    { "pattern": "/404", "label": "Policy page", "totalKb": 100, "jsKb": 15 }
+  ]
+}

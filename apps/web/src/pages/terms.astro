@@ -1,0 +1,112 @@
+---
+// Terms of use. PRIVACY_AND_COMPLIANCE.md §7 item 2 — "including the anti-scam
+// statement and the 18+ requirement".
+//
+// Written to be read. A term nobody reads is a term nobody can rely on, and the
+// two that matter most here — we never charge you to apply, and we are not the
+// organiser — are the first two things on the page.
+
+import Base from "../layouts/Base.astro";
+import { BRAND, CONTACT, NO_FEE_STATEMENT } from "@mbele/config";
+---
+
+<Base
+  title="Terms of use"
+  description={`The terms you agree to by using ${BRAND.name}.`}
+  canonical="/terms"
+>
+  <article class="max-w-prose">
+    <h1 class="text-title font-semibold">Terms of use</h1>
+    <p class="mt-2 text-dense text-ink-2">
+      Plain English, because terms you cannot read are terms you cannot rely on.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">We never charge you to apply</h2>
+    <p class="mt-2 border-l-[3px] border-brand bg-brand-wash p-3 text-dense font-semibold">
+      {NO_FEE_STATEMENT}
+    </p>
+    <p class="mt-2 text-dense">
+      We do not list opportunities that charge an application fee, and we never ask you for money to
+      use this site, to apply for anything, or to be "considered". Nobody from here will ever
+      message you asking for a payment, a fee, or your bank details. If that happens, it is not us —
+      <a href="/anti-scam" class="text-brand">here is how to tell</a>.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">We are not the organiser</h2>
+    <p class="mt-2 text-dense">
+      Every opportunity here belongs to somebody else. We collect and structure what organisers
+      publish, show you the source, and say when we last checked it. We do not decide who wins, we
+      cannot influence an application, and we cannot answer questions about someone else's process.
+      The official page is always the authority — and where we disagree with it, believe it, not us.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">Eligibility answers are guidance</h2>
+    <p class="mt-2 text-dense">
+      When we say you are eligible, we mean the organiser's own published rules, as quoted on the
+      page, match the details you gave us. We show you the exact sentence we based it on so you can
+      check our reading. It is not a decision, a guarantee, or advice. When we are not sure we say
+      "unclear" rather than guessing, and "unclear" never means "do not apply".
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">You need to be 18</h2>
+    <p class="mt-2 text-dense">
+      Accounts here are for people aged 18 and over. Some listed opportunities accept under-18s and
+      we keep listing them, because removing them would help nobody — but you must be 18 to hold an
+      account. Until you confirm it, you can read everything and check your eligibility, and the
+      features that connect you to other people stay off. This is a deliberate trade: a
+      small independent product should not be running an unmoderated contact surface for minors.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">What we ask of you</h2>
+    <ul class="mt-2 list-disc space-y-1 pl-5 text-dense">
+      <li>Be honest in what you post. Made-up projects and borrowed work waste other people's time.</li>
+      <li>Do not use this to recruit for anything that charges people to take part.</li>
+      <li>Do not harass anyone, and do not contact people who have not asked to hear from you.</li>
+      <li>Do not scrape the site or hammer it with automated requests. Ask us instead — we may just give you the data.</li>
+      <li>One account per person.</li>
+    </ul>
+    <p class="mt-2 text-dense text-ink-2">
+      The full rules on content and behaviour are on the
+      <a href="/content-policy" class="text-brand">content policy</a> page, including what happens
+      when they are broken and how to appeal.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">Your content stays yours</h2>
+    <p class="mt-2 text-dense">
+      Anything you write — your profile, your projects, your notes — belongs to you. By posting it
+      you let us show it to the people you chose to show it to, and nothing more. Your tracker and
+      your notes are private, including from us in every routine sense: no administrator has a path
+      to read them.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">When we might restrict an account</h2>
+    <p class="mt-2 text-dense">
+      If someone is being harmed, we act first and explain afterwards, in that order. A restricted
+      account can still read everything, check eligibility and keep its tracker; what stops is
+      contacting other people. You will be told what happened and why, and you can appeal to
+      <a href={`mailto:${CONTACT.support}`} class="text-brand">{CONTACT.support}</a>. This is
+      protection, not punishment, and it is reversible.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">No promises we cannot keep</h2>
+    <p class="mt-2 text-dense">
+      This is a small product run on free infrastructure. It will occasionally be slow, and it will
+      occasionally be down. We will not promise uptime we cannot deliver. What we do promise: we
+      never lose your data silently, everything you can see you can export, and if we cannot serve a
+      page we say so rather than showing you something wrong.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">If something here is wrong</h2>
+    <p class="mt-2 text-dense">
+      Report it from the opportunity page — it takes one tap and you do not need an account. If you
+      are an organiser and something about your opportunity is wrong, or you want it removed, write
+      to <a href={`mailto:${CONTACT.takedown}`} class="text-brand">{CONTACT.takedown}</a> and we
+      act within 48 hours, without argument.
+    </p>
+
+    <p class="mt-8 text-micro text-ink-2">
+      Changes to these terms appear on the <a href="/changelog" class="text-brand">changelog</a>
+      with the date and a one-line summary.
+    </p>
+  </article>
+</Base>

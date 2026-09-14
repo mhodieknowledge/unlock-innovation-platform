@@ -1,4 +1,4 @@
-export { BRAND, CRAWLER_USER_AGENT, NO_FEE_STATEMENT } from "./brand.js";
+export { BRAND, CONTACT, CRAWLER_USER_AGENT, NO_FEE_STATEMENT } from "./brand.js";
 
 export {
   ABSOLUTE_BUDGET,

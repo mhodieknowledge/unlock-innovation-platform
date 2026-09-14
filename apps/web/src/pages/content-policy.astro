@@ -1,0 +1,98 @@
+---
+// Content and behaviour policy. PRIVACY_AND_COMPLIANCE.md §11 lists a content
+// policy among the documents published and kept current;
+// MODERATION_AND_TRUST.md §8 sets the posture that restriction is protection
+// rather than punishment, and §9 requires an appeal route.
+
+import Base from "../layouts/Base.astro";
+import { CONTACT } from "@mbele/config";
+
+const NOT_ALLOWED: [string, string][] = [
+  ["Anything that charges people to apply", "Fees to apply, to register, or to be shortlisted. This is the line the whole product is built around."],
+  ["Impersonation", "Claiming to be an organisation, a programme, or a person you are not."],
+  ["Harassment and targeted abuse", "Including following someone across the product after they have asked you to stop."],
+  ["Contacting people who have not asked to hear from you", "Requests are opt-in. An unanswered request is an answer."],
+  ["Recruitment for paid schemes", "Courses, coaching and \"opportunities\" that end in a payment request."],
+  ["Passing off someone else's work as your own", "On a profile or a project. It wastes the time of people deciding whether to work with you."],
+  ["Sexual content, graphic violence, and hate", "Directed at anyone, about anything."],
+  ["Scraping the site or automated bulk requests", "Ask instead. We may just give you the data."],
+];
+
+const CONSEQUENCES: [string, string][] = [
+  [
+    "A listing comes down",
+    "Immediately, while we look, if there is any credible safety concern. We would rather remove ten honest listings for a day than leave one scam up for an hour.",
+  ],
+  [
+    "An account becomes read-only",
+    "You keep everything: browsing, eligibility, your tracker, your saved items. What stops is contacting other people. This is the usual outcome, and it is reversible.",
+  ],
+  [
+    "An account is suspended",
+    "For deliberate, repeated harm, or anything targeting a person's safety.",
+  ],
+];
+---
+
+<Base
+  title="Content policy"
+  description="What is not allowed here, what happens when a rule is broken, and how to appeal."
+  canonical="/content-policy"
+>
+  <article class="max-w-prose">
+    <h1 class="text-title font-semibold">Content policy</h1>
+    <p class="mt-2 text-dense text-ink-2">
+      Short, because it needs to be read by the people it applies to.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">Not allowed</h2>
+    <dl class="mt-3 space-y-3">
+      {
+        NOT_ALLOWED.map(([what, detail]) => (
+          <div>
+            <dt class="text-dense font-semibold">{what}</dt>
+            <dd class="text-dense text-ink-2">{detail}</dd>
+          </div>
+        ))
+      }
+    </dl>
+
+    <h2 class="mt-8 text-subtitle font-semibold">What happens</h2>
+    <dl class="mt-3 space-y-3">
+      {
+        CONSEQUENCES.map(([what, detail]) => (
+          <div>
+            <dt class="text-dense font-semibold">{what}</dt>
+            <dd class="text-dense text-ink-2">{detail}</dd>
+          </div>
+        ))
+      }
+    </dl>
+    <p class="mt-3 text-dense">
+      When someone might be being harmed we act first and explain afterwards, in that order. You will
+      always be told what happened and which rule it was — never just a locked door.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">Appealing</h2>
+    <p class="mt-2 text-dense">
+      Write to <a href={`mailto:${CONTACT.support}`} class="text-brand">{CONTACT.support}</a>. A
+      person reads it, and you get a reason rather than a template. If we got it wrong we say so and
+      undo it. Restriction here is protection, not punishment; when the reason for it is gone, so is
+      the restriction.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">Reporting</h2>
+    <p class="mt-2 text-dense">
+      One tap from any opportunity page, and no account needed. You do not have to be sure and you do
+      not have to argue your case well. "This feels wrong" is a good report.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">What we do not do</h2>
+    <ul class="mt-2 list-disc space-y-1 pl-5 text-dense">
+      <li>We do not read your tracker or your private notes. There is no administrator path to them.</li>
+      <li>We do not rank or promote anyone for paying us. Nobody can pay us.</li>
+      <li>We do not remove a listing because an organiser dislikes a competitor's presence here.</li>
+      <li>We do not keep a permanent record against an account for something we got wrong.</li>
+    </ul>
+  </article>
+</Base>

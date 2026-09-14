@@ -140,7 +140,7 @@ const deletesOn =
 const longDate = (d: Date) => d.toLocaleDateString("en-GB", { dateStyle: "long" });
 ---
 
-<Base title="Your account" noindex>
+<Base title="Your account" noindex user={user}>
   <h1 class="text-title font-semibold">Your account</h1>
 
   {

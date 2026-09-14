@@ -211,7 +211,7 @@ const HOURS = Array.from({ length: 24 }, (_, h) => h);
 const pad = (h: number) => `${String(h).padStart(2, "0")}:00`;
 ---
 
-<Base title="Notifications" noindex>
+<Base title="Notifications" noindex user={user}>
   <h1 class="text-title font-semibold">Notifications</h1>
 
   <!-- §8: the caps, stated visibly. -->

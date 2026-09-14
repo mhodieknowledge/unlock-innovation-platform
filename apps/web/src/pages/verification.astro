@@ -1,0 +1,92 @@
+---
+// What the verification badges mean. PRIVACY_AND_COMPLIANCE.md §11 lists a
+// "verification explainer" as something published and kept current, and
+// MODERATION_AND_TRUST.md §1 makes the rule that no badge exists without a date.
+//
+// A badge whose meaning is not written down is decoration. This page is what makes
+// the badge mean something, so it says exactly what was and was not checked.
+
+import Base from "../layouts/Base.astro";
+import { CONTACT } from "@mbele/config";
+
+const LEVELS: { level: string; means: string; checked: string }[] = [
+  {
+    level: "Verified",
+    means:
+      "A person opened the organiser's own page, confirmed the opportunity is real and open, and confirmed the deadline and the eligibility rules against what the organiser published.",
+    checked:
+      "The listing matched the source on the date shown. That date is always displayed — a badge without one would be telling you nothing.",
+  },
+  {
+    level: "Official",
+    means:
+      "The organisation itself submitted or claimed this listing, and we confirmed that the person doing so controls the organisation's own domain.",
+    checked:
+      "Control of the domain, not the quality of the programme. It means the listing comes from the source.",
+  },
+  {
+    level: "Unverified",
+    means:
+      "We found it, the details are structured from the organiser's own page, and a person has not yet checked it end to end.",
+    checked:
+      "Automated checks only: the link works, it is not on a malware or phishing list, and it does not charge a fee to apply. Everything on this site passes those before it is published.",
+  },
+  {
+    level: "Community-submitted",
+    means: "Someone sent it in and it is waiting for review.",
+    checked: "The same automated checks. It is shown as pending, never as verified.",
+  },
+];
+---
+
+<Base
+  title="What verification means"
+  description="Exactly what we check before an opportunity carries a badge, and what a badge does not promise."
+  canonical="/verification"
+>
+  <article class="max-w-prose">
+    <h1 class="text-title font-semibold">What verification means</h1>
+
+    <p class="mt-3 text-dense">
+      Every opportunity here shows how well it has been checked and when. The date is not decoration:
+      "verified" without a date would mean nothing, so no badge is ever shown without one.
+    </p>
+
+    <dl class="mt-6 space-y-6">
+      {
+        LEVELS.map(({ level, means, checked }) => (
+          <div>
+            <dt class="text-subtitle font-semibold">{level}</dt>
+            <dd class="mt-1 text-dense">{means}</dd>
+            <dd class="mt-1 text-dense text-ink-2">
+              <span class="font-semibold">What that actually checked:</span> {checked}
+            </dd>
+          </div>
+        ))
+      }
+    </dl>
+
+    <h2 class="mt-8 text-subtitle font-semibold">What no badge ever promises</h2>
+    <ul class="mt-2 list-disc space-y-1 pl-5 text-dense">
+      <li>That you will be selected, or that anyone here can influence that.</li>
+      <li>That the programme is well run, well funded, or worth your time. We check that it is real, not that it is good.</li>
+      <li>That the details have not changed since the date shown. If the date is old, treat it as old.</li>
+      <li>That the organiser's own page agrees with ours today. Where they differ, believe them.</li>
+    </ul>
+
+    <h2 class="mt-8 text-subtitle font-semibold">Every eligibility rule shows its source</h2>
+    <p class="mt-2 text-dense">
+      When we say an opportunity is for undergraduates in Zimbabwe, we show you the organiser's own
+      sentence saying so. Not a paraphrase — the exact words, so you can judge our reading rather
+      than trust it. Where we could not turn a requirement into a rule, we say that too, and your
+      eligibility reads "unclear" rather than a guess dressed up as an answer.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">Found something wrong?</h2>
+    <p class="mt-2 text-dense">
+      Report it from the opportunity page — one tap, no account needed — or write to
+      <a href={`mailto:${CONTACT.support}`} class="text-brand">{CONTACT.support}</a>. A wrong
+      deadline is worth telling us about even if you are not certain.
+    </p>
+  </article>
+</Base>

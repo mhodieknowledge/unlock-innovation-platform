@@ -186,7 +186,7 @@ const unlocks = (field: { resolves: number }) =>
       : `Resolves eligibility on ${field.resolves} opportunities.`;
 ---
 
-<Base title="Your eligibility details" noindex>
+<Base title="Your eligibility details" noindex user={user}>
   <h1 class="text-title font-semibold">Your eligibility details</h1>
 
   <!-- UX_FLOWS.md §8.1 requires this stated explicitly at the top. -->
@@ -233,6 +233,91 @@ const unlocks = (field: { resolves: number }) =>
       }
     </p>
   </section>
+
+  <!-- Phase 2 acceptance: "Local eligibility inputs are offered as a prefill on
+       first signup." OFFERED, not applied: these answers were given to a
+       throwaway check on a public page, and silently promoting them into the
+       stored profile would be deciding on the user's behalf what they consented
+       to keep.
+
+       Only shown when the profile is still empty, and only when this browser
+       actually holds answers — which is why the decision is made in the browser
+       rather than on the server. No island: an inline script is a few hundred
+       bytes where a hydrated component is kilobytes, and this is a one-time
+       banner. -->
+  {
+    completeness === 0 && (
+      <section
+        id="prefill"
+        hidden
+        class="mt-6 max-w-md border-l-[3px] border-brand bg-brand-wash p-3"
+        aria-live="polite"
+      >
+        <p class="text-dense">
+          You checked your eligibility earlier using details saved in this browser. Use them here?
+        </p>
+        <p class="mt-2 flex flex-wrap gap-2">
+          <button
+            type="button"
+            id="prefill-use"
+            class="min-h-11 rounded-row bg-brand px-4 font-semibold text-surface"
+          >
+            Use those details
+          </button>
+          <button
+            type="button"
+            id="prefill-dismiss"
+            class="min-h-11 rounded-row border border-line px-4 text-dense"
+          >
+            Start fresh
+          </button>
+        </p>
+        <p class="mt-2 text-micro text-ink-2">
+          Nothing is saved until you press Save below.
+        </p>
+      </section>
+    )
+  }
+
+  <script is:inline>
+    (function () {
+      var box = document.getElementById("prefill");
+      if (!box) return;
+      // Every localStorage access is guarded: it throws in a private window and
+      // returns null once cleared.
+      var raw = null;
+      try {
+        raw = localStorage.getItem("mbele.eligibility.v1");
+      } catch (e) {
+        return;
+      }
+      if (!raw) return;
+      var saved;
+      try {
+        saved = JSON.parse(raw);
+      } catch (e) {
+        return;
+      }
+      var fields = ["country_of_residence", "student_status", "birth_year"];
+      var found = false;
+      for (var i = 0; i < fields.length; i++) {
+        if (saved[fields[i]]) found = true;
+      }
+      if (!found) return;
+
+      box.hidden = false;
+      document.getElementById("prefill-use").addEventListener("click", function () {
+        for (var i = 0; i < fields.length; i++) {
+          var el = document.querySelector('[name="' + fields[i] + '"]');
+          if (el && saved[fields[i]]) el.value = saved[fields[i]];
+        }
+        box.hidden = true;
+      });
+      document.getElementById("prefill-dismiss").addEventListener("click", function () {
+        box.hidden = true;
+      });
+    })();
+  </script>
 
   <form method="post" class="mt-8 max-w-md space-y-6">
     <label class="block">

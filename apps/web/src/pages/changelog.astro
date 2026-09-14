@@ -1,0 +1,59 @@
+---
+// Policy changelog. PRIVACY_AND_COMPLIANCE.md §11: "a changelog of material policy
+// changes with the date and a one-line summary of what changed."
+//
+// Held as data in this file rather than in the database: a policy change is a
+// deliberate act by the operator, and making it a commit means it is reviewed,
+// dated and attributable. A table anyone could edit at runtime would be a weaker
+// record than the one it replaced.
+
+import Base from "../layouts/Base.astro";
+
+interface Entry {
+  date: string;
+  summary: string;
+  detail?: string;
+}
+
+/** Newest first. Dates are ISO so they sort and read unambiguously. */
+const ENTRIES: Entry[] = [
+  {
+    date: "2026-09-14",
+    summary: "First published version of the privacy policy, terms, content policy and crawler page.",
+    detail:
+      "Nothing has changed yet — this is the starting point, recorded so that every later change has something to be a change from.",
+  },
+];
+
+const longDate = (iso: string) =>
+  new Date(iso).toLocaleDateString("en-GB", { dateStyle: "long", timeZone: "UTC" });
+---
+
+<Base
+  title="Policy changelog"
+  description="Every material change to our privacy policy, terms and content policy, with the date."
+  canonical="/changelog"
+>
+  <article class="max-w-prose">
+    <h1 class="text-title font-semibold">Policy changelog</h1>
+    <p class="mt-2 text-dense">
+      Every material change to the <a href="/privacy" class="text-brand">privacy policy</a>,
+      <a href="/terms" class="text-brand">terms</a> or
+      <a href="/content-policy" class="text-brand">content policy</a>, with the date and what
+      changed. If a change affects you, you will see a plain summary in the app before it takes
+      effect — not a link to a diff.
+    </p>
+
+    <ul class="mt-6 space-y-5">
+      {
+        ENTRIES.map((entry) => (
+          <li>
+            <p class="text-micro uppercase tracking-wide text-ink-2">{longDate(entry.date)}</p>
+            <p class="mt-1 text-dense font-semibold">{entry.summary}</p>
+            {entry.detail && <p class="mt-1 text-dense text-ink-2">{entry.detail}</p>}
+          </li>
+        ))
+      }
+    </ul>
+  </article>
+</Base>

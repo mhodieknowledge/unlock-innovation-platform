@@ -15,9 +15,21 @@ interface Props {
   /** SEO.md §1: private surfaces are noindex. Default is indexable. */
   noindex?: boolean;
   canonical?: string;
+  /**
+   * Passed in by pages that have already loaded a session, so the header can show
+   * where to go next.
+   *
+   * Deliberately a PROP rather than a session read inside this layout: reading the
+   * session here would make every page dynamic, including the prerendered ones.
+   * A page that does not pass it renders the signed-out header, which is correct
+   * for a static page — it cannot know who is reading it.
+   */
+  user?: { display_name: string | null } | null;
+  /** Unread in-app count, when the page already knows it. */
+  unread?: number;
 }
 
-const { title, description, noindex = false, canonical } = Astro.props;
+const { title, description, noindex = false, canonical, user = null, unread = 0 } = Astro.props;
 const fullTitle = title === BRAND.name ? title : `${title} | ${BRAND.name}`;
 ---
 
@@ -49,6 +61,25 @@ const fullTitle = title === BRAND.name ? title : `${title} | ${BRAND.name}`;
           class="text-title font-bold tracking-[-0.015em] text-brand no-underline"
           >{BRAND.name}</a
         >
+
+        <nav aria-label="Your pages" class="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-dense">
+          {
+            user ? (
+              <>
+                <a href="/tracker" class="text-brand">Tracker</a>
+                <a href="/you/inbox" class="text-brand">
+                  Messages{unread > 0 ? ` (${unread})` : ""}
+                </a>
+                <a href="/you/eligibility" class="text-brand">Eligibility</a>
+                <a href="/you/account" class="text-brand">Account</a>
+              </>
+            ) : (
+              <a href={`/signin?returnTo=${encodeURIComponent(Astro.url.pathname)}`} class="text-brand">
+                Sign in
+              </a>
+            )
+          }
+        </nav>
       </div>
     </header>
 
@@ -63,10 +94,13 @@ const fullTitle = title === BRAND.name ? title : `${title} | ${BRAND.name}`;
         <!-- MODERATION_AND_TRUST.md §2.1 rule 3: permanent and prominent. -->
         <p class="font-semibold text-ink">{NO_FEE_STATEMENT}</p>
         <nav aria-label="Site information" class="flex flex-wrap gap-x-4 gap-y-1">
-          <a href="/bot" class="text-brand">About our crawler</a>
+          <a href="/anti-scam" class="text-brand">Spotting scams</a>
+          <a href="/verification" class="text-brand">What verification means</a>
           <a href="/privacy" class="text-brand">Privacy</a>
           <a href="/terms" class="text-brand">Terms</a>
-          <a href="/anti-scam" class="text-brand">Spotting scams</a>
+          <a href="/content-policy" class="text-brand">Content policy</a>
+          <a href="/bot" class="text-brand">About our crawler</a>
+          <a href="/changelog" class="text-brand">Policy changes</a>
         </nav>
       </div>
     </footer>

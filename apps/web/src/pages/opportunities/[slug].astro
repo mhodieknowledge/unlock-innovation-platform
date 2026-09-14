@@ -201,8 +201,11 @@ const factGrid: [string, string][] = opp
             </a>
           )
         }
+        <!-- ?add=<slug> carries the intent through sign-in, so the save completes
+             on arrival rather than being lost (UX_FLOWS.md §17, and Phase 2's
+             "sign-in completes in under 3 taps FROM A SAVE ACTION"). -->
         <a
-          href="/tracker"
+          href={`/tracker?add=${opp.slug}`}
           class="inline-flex min-h-11 items-center rounded-row border border-line-strong bg-surface px-4 font-semibold"
           >Save opportunity</a
         >

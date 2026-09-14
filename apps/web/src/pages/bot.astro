@@ -1,0 +1,95 @@
+---
+// The crawler page. OPPORTUNITY_INGESTION.md §2.1 rule 3 requires the crawler to
+// "identify honestly" with a User-Agent pointing here, and rule 8 requires a
+// published takedown process with a 48-hour SLA.
+//
+// Written for the person who found our User-Agent in their access log at 2am and
+// wants to know what it is and how to make it stop. Everything that person needs is
+// above the fold: who we are, what we take, and the one address that stops it.
+
+import Base from "../layouts/Base.astro";
+import { BRAND, CONTACT, CRAWLER_USER_AGENT } from "@mbele/config";
+---
+
+<Base
+  title="About our crawler"
+  description={`What ${BRAND.name}Bot does, how it behaves, and how to make it stop.`}
+  canonical="/bot"
+>
+  <article class="max-w-prose">
+    <h1 class="text-title font-semibold">About our crawler</h1>
+
+    <p class="mt-3 text-dense">
+      If you found this page from your server logs: we run a small crawler that collects published
+      details of grants, scholarships, competitions and similar opportunities relevant to people in
+      Africa, so they can be found in one place. It identifies itself as:
+    </p>
+    <p class="mt-2 select-all overflow-x-auto rounded-row bg-sunken px-3 py-2 font-mono text-dense">
+      {CRAWLER_USER_AGENT}
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">To make it stop</h2>
+    <p class="mt-2 text-dense">
+      Write to <a href={`mailto:${CONTACT.takedown}`} class="text-brand">{CONTACT.takedown}</a> and
+      we stop within 48 hours. No justification needed, no argument, no negotiation. You can also
+      disallow it in <code class="font-mono">robots.txt</code> and it will stop on its next check.
+    </p>
+    <p class="mt-2 text-dense">
+      If you want an opportunity of yours removed from the site as well, say so in the same email
+      and it comes down in the same 48 hours.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">How it behaves</h2>
+    <ul class="mt-2 list-disc space-y-2 pl-5 text-dense">
+      <li>
+        <strong class="font-semibold">It honours robots.txt</strong> on every fetch, and records when
+        it last checked.
+      </li>
+      <li>
+        <strong class="font-semibold">It never signs in.</strong> It does not create accounts, does
+        not log in, and does not go around a paywall or any other authentication. If content needs an
+        account to see, we do not have it.
+      </li>
+      <li>
+        <strong class="font-semibold">At most one request every ten seconds</strong> per host. It
+        honours <code class="font-mono">Retry-After</code>, and backs off on 429 and 503.
+      </li>
+      <li>
+        <strong class="font-semibold">It asks before it takes.</strong> Conditional requests with
+        <code class="font-mono">ETag</code> and <code class="font-mono">If-Modified-Since</code>, so
+        an unchanged page costs you almost nothing.
+      </li>
+      <li>
+        <strong class="font-semibold">It stores facts, not your writing.</strong> Deadlines,
+        eligibility rules, dates and links are facts about the world. Your prose is yours. Where we
+        need to quote an eligibility requirement we quote it exactly and attribute it, because
+        showing the reader your own words is the honest way to explain a rule.
+      </li>
+      <li>
+        <strong class="font-semibold">Summaries are written in our own words</strong> and checked
+        against your text automatically — any overlap of eight consecutive words is rejected before
+        it can be published.
+      </li>
+      <li>
+        <strong class="font-semibold">Every opportunity links back to your page.</strong> Always, on
+        the page a reader actually looks at, not buried in a credits list.
+      </li>
+      <li>
+        <strong class="font-semibold">If your terms restrict automated access</strong>, we either use
+        your RSS feed or we do not collect from you at all.
+      </li>
+    </ul>
+
+    <h2 class="mt-8 text-subtitle font-semibold">Why we do it this way</h2>
+    <p class="mt-2 text-dense">
+      Opportunities for African builders are scattered across hundreds of sites, and the people who
+      need them most are the least able to spend data finding them. Collecting the facts in one place
+      is worth doing. Taking your content to do it is not, so we do not.
+    </p>
+
+    <p class="mt-8 text-micro text-ink-2">
+      Questions, complaints, or an offer of a better feed:
+      <a href={`mailto:${CONTACT.takedown}`} class="text-brand">{CONTACT.takedown}</a>.
+    </p>
+  </article>
+</Base>

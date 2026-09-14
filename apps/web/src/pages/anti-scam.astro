@@ -1,0 +1,124 @@
+---
+// Spotting scams. MODERATION_AND_TRUST.md §2 — the anti-scam posture, made useful
+// to a reader rather than stated as a policy.
+//
+// This page exists because the audience is the target. Opportunity scams work
+// precisely on people who are looking hard for a way forward, and the single most
+// valuable thing this product can do is make the pattern recognisable — including
+// when the impersonator is pretending to be us.
+
+import Base from "../layouts/Base.astro";
+import { BRAND, CONTACT, NO_FEE_STATEMENT } from "@mbele/config";
+
+const SIGNS: [string, string][] = [
+  [
+    "A fee to apply, to register, or to be shortlisted",
+    "This is the clearest signal there is. Real grants, scholarships and competitions do not charge you to be considered. A \"processing fee\", an \"administration charge\" or a \"refundable deposit\" all mean the same thing.",
+  ],
+  [
+    "Money before money",
+    "Any request to pay for a visa, a courier, a certificate, a training pack or a bank transfer fee in order to receive an award. Real organisers pay their own costs.",
+  ],
+  [
+    "Your bank details, your card, or a crypto wallet",
+    "No legitimate application needs your card number. Payment details come at the end of a real award process, through the organisation's own finance team, never over chat.",
+  ],
+  [
+    "Urgency that does not match the deadline",
+    "\"Reply in the next 2 hours or you lose your place.\" Real deadlines are published and do not move by the hour. Urgency is there to stop you checking.",
+  ],
+  [
+    "A prize you did not apply for",
+    "You cannot win something you never entered. This is the oldest version of the trick and it still works because it is flattering.",
+  ],
+  [
+    "A free email address or a lookalike domain",
+    "An organisation's programme officer writes from the organisation's own domain. Check the spelling character by character — one swapped letter is the whole scam.",
+  ],
+  [
+    "Contact only through WhatsApp or Telegram, with no website",
+    "A real programme has a page you can find independently. If every link goes back to the same chat, there is nothing behind it.",
+  ],
+  [
+    "An interview that is only ever a chat",
+    "No video, no call, no name you can look up, and a job offer within an hour.",
+  ],
+  [
+    "Pressure to keep it quiet",
+    "\"Do not discuss this with anyone until the announcement.\" Secrecy protects the scam, never you.",
+  ],
+];
+---
+
+<Base
+  title="Spotting scams"
+  description="How to tell a real opportunity from a scam, and what we do to keep them off this site."
+  canonical="/anti-scam"
+>
+  <article class="max-w-prose">
+    <h1 class="text-title font-semibold">Spotting scams</h1>
+
+    <p class="mt-3 border-l-[3px] border-brand bg-brand-wash p-3 text-dense font-semibold">
+      {NO_FEE_STATEMENT}
+    </p>
+
+    <p class="mt-4 text-dense">
+      Opportunity scams work on people who are looking hard for a way forward, which is everyone
+      reading this. The pattern is always the same once you have seen it, so here it is.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">Nine signs, in order of how reliable they are</h2>
+    <ol class="mt-3 space-y-4">
+      {
+        SIGNS.map(([sign, why], i) => (
+          <li>
+            <p class="text-dense font-semibold">
+              {i + 1}. {sign}
+            </p>
+            <p class="mt-1 text-dense text-ink-2">{why}</p>
+          </li>
+        ))
+      }
+    </ol>
+
+    <h2 class="mt-8 text-subtitle font-semibold">The one rule that catches almost everything</h2>
+    <p class="mt-2 text-dense">
+      Find the organisation independently. Do not click the link you were sent — search for the
+      organisation's name, go to its own website, and look for the programme there. If it does not
+      exist on the organiser's own site, it does not exist. This one habit defeats nearly every
+      version of this scam.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">If someone claims to be us</h2>
+    <p class="mt-2 text-dense">
+      We will never ask you for money, for your bank or card details, or for a password. We do not
+      have a recruitment team, we do not offer paid coaching, and we do not run a paid fast-track
+      for applications. Everything we send carries a reason it was sent and a way to stop it. Our
+      bot never asks for payment.
+    </p>
+    <p class="mt-2 text-dense">
+      If you get something claiming to be from {BRAND.name} that does not match that, it is not us.
+      Forward it to <a href={`mailto:${CONTACT.security}`} class="text-brand">{CONTACT.security}</a>.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">What we do on our side</h2>
+    <ul class="mt-2 list-disc space-y-1 pl-5 text-dense">
+      <li>
+        Nothing that charges a fee to apply is ever published here. That is not a guideline — the
+        database refuses to store it.
+      </li>
+      <li>Every published opportunity carries a link to the organiser's own page and the date we last checked it.</li>
+      <li>Links are checked against a malware and phishing list before an opportunity goes live, and again on a schedule.</li>
+      <li>Anything reported is looked at by a person, and anything with a credible safety concern comes down while we look.</li>
+      <li>Reporting takes one tap and needs no account.</li>
+    </ul>
+
+    <h2 class="mt-8 text-subtitle font-semibold">Found one here?</h2>
+    <p class="mt-2 text-dense">
+      Tell us. Use the report link on the opportunity page, or write to
+      <a href={`mailto:${CONTACT.support}`} class="text-brand">{CONTACT.support}</a>. You do not
+      need to be sure, and you do not need to explain yourself well — "this feels wrong" is a
+      perfectly good report, and we would much rather check ten honest listings than miss one scam.
+    </p>
+  </article>
+</Base>

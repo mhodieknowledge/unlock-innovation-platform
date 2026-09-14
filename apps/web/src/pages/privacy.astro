@@ -1,0 +1,215 @@
+---
+// Privacy policy. PRIVACY_AND_COMPLIANCE.md §7 item 1 and §11.
+//
+// "Plain-language privacy policy — what, why, how long, who else sees it, your
+// rights, how to contact." Plain language is the requirement, so this is written
+// as sentences a person can act on rather than as clauses that survive a lawyer.
+//
+// The cookie statement is §7 item 3 and is short because there is nothing to say:
+// no non-essential cookie is set, which is also why there is no consent banner.
+
+import Base from "../layouts/Base.astro";
+import { BRAND, CONTACT } from "@mbele/config";
+
+const COLLECT: [string, string][] = [
+  ["Your email address", "To sign you in and to send what you asked for. Nothing else."],
+  ["Country of residence, nationality", "To work out which opportunities are open to you."],
+  ["Birth year", "Some opportunities have age limits. We ask for the year, never the full date."],
+  ["Student status, year of study, institution name", "The same reason — many opportunities are for students."],
+  ["Skills, technologies, interests", "So we can suggest things worth your time."],
+  ["Gender, only if you choose to give it", "Used only for opportunities restricted by gender. Never displayed, never used for anything else."],
+  ["Your Telegram chat ID, if you link it", "So the bot can reach you."],
+  ["A hashed version of your IP address", "To stop abuse. Kept 30 days, then deleted."],
+];
+
+const NEVER: string[] = [
+  "Phone numbers",
+  "Your precise location or coordinates",
+  "Your full date of birth",
+  "Student ID numbers, transcripts, certificates or CVs",
+  "Race, ethnicity, religion, health, disability or political views",
+  "Your contact list or address book",
+  "Advertising identifiers",
+];
+
+const RIGHTS: [string, string][] = [
+  ["See everything we hold", "Download it as JSON from your account page. No request, no waiting."],
+  ["Correct anything", "Every field is editable where you entered it."],
+  ["Delete your account", "Self-serve. Immediate deactivation, then everything is destroyed 30 days later."],
+  ["Delete just your eligibility details", "Immediately, without losing your account."],
+  ["Pause everything", "Stops all processing except security messages, keeps your data."],
+  ["Take your data elsewhere", "JSON and CSV export of your tracker, profile and projects."],
+  ["Turn off any message type", "Per type, per channel, and it works without signing in."],
+];
+
+const PROCESSORS: [string, string, string][] = [
+  ["Supabase", "All application data", "Our database. A sub-processor of AWS."],
+  ["Cloudflare", "Traffic and cached pages", "Serves the site."],
+  ["Brevo", "Email address and message content", "Sends email. Based in the EU."],
+  ["Telegram", "Chat ID and message content", "Only if you link it. Your own relationship with Telegram applies."],
+  ["GitHub", "Scheduled jobs", "Runs our background work."],
+  ["Sentry", "Scrubbed error reports", "Tells us when something breaks. Personal data is stripped first."],
+  ["Google Safe Browsing", "Links we check", "We send them the URL of an opportunity, never anything about you."],
+  ["AI providers", "Public web pages only", "Never your data. Not your profile, not your tracker, not your messages — not ever."],
+];
+
+const RETENTION: [string, string][] = [
+  ["Your account and profile", "As long as you keep the account, plus a 30-day grace period after you delete it"],
+  ["Your eligibility details", "As long as you keep them. Deleted immediately when you ask, account or no account"],
+  ["Your tracker and notes", "As long as you keep the account"],
+  ["Messages between users", "The thread closes 60 days after the last activity, and is deleted 90 days after that"],
+  ["Hashed IP addresses", "30 days"],
+  ["Moderation records where a safety violation was confirmed", "24 months, to protect other people"],
+  ["Backups", "14 days"],
+];
+---
+
+<Base
+  title="Privacy"
+  description={`What ${BRAND.name} collects, why, how long it is kept, and what you can do about it.`}
+  canonical="/privacy"
+>
+  <article class="max-w-prose">
+    <h1 class="text-title font-semibold">Privacy</h1>
+
+    <p class="mt-3 text-dense">
+      The short version: the cheapest way to protect your data is not to hold it, so we hold as
+      little as we can. There is no advertising here, no data sale, no cross-site tracking, and no
+      third-party analytics script on any page.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">What we collect, and why</h2>
+    <dl class="mt-3 space-y-3">
+      {
+        COLLECT.map(([what, why]) => (
+          <div>
+            <dt class="text-dense font-semibold">{what}</dt>
+            <dd class="text-dense text-ink-2">{why}</dd>
+          </div>
+        ))
+      }
+    </dl>
+    <p class="mt-3 text-dense text-ink-2">
+      Everything except your email address is optional. A field you leave blank means the
+      opportunities that depend on it read "unclear" rather than "no" — it never blocks you.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">What we deliberately never collect</h2>
+    <ul class="mt-2 list-disc space-y-1 pl-5 text-dense text-ink-2">
+      {NEVER.map((item) => <li>{item}</li>)}
+    </ul>
+    <p class="mt-3 text-dense">
+      If an opportunity's rules depend on something we do not ask about — a fellowship for people
+      with a disability, for example — we show you the opportunity and the organiser's own wording,
+      mark your eligibility "unclear", and tell you to check the official page. We surface the
+      opportunity. We do not collect the attribute.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">Your eligibility details</h2>
+    <p class="mt-2 text-dense">
+      These are the most sensitive thing here, and they are treated that way. Only you can read
+      them. They are not on your public profile, they are never shown to another user, and
+      administrators have no access path to them — not a policy we follow, a permission that does
+      not exist. They are never sent to any AI service. When a verdict is computed, the calculation
+      happens where the data already is and only the verdict comes back.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">Cookies</h2>
+    <p class="mt-2 text-dense">
+      We set two: one to keep you signed in, and one to remember low-data mode so the first page
+      loads correctly. Both are essential, so there is no consent banner — there is nothing to
+      consent to. No advertising cookie, no analytics cookie, no third-party cookie.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">What you can do</h2>
+    <dl class="mt-3 space-y-3">
+      {
+        RIGHTS.map(([right, how]) => (
+          <div>
+            <dt class="text-dense font-semibold">{right}</dt>
+            <dd class="text-dense text-ink-2">{how}</dd>
+          </div>
+        ))
+      }
+    </dl>
+    <p class="mt-3 text-dense">
+      All of it is self-serve, on <a href="/you/account" class="text-brand">your account page</a>.
+      Nothing here needs a support ticket. If something is not working, write to
+      <a href={`mailto:${CONTACT.privacy}`} class="text-brand">{CONTACT.privacy}</a>.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">Who else sees it</h2>
+    <p class="mt-2 text-dense text-ink-2">
+      These are the companies whose services we use. None of them is allowed to use your data for
+      their own purposes.
+    </p>
+    <ul class="mt-3 space-y-2">
+      {
+        PROCESSORS.map(([name, data, note]) => (
+          <li class="text-dense">
+            <span class="font-semibold">{name}</span> — {data}.
+            <span class="text-ink-2"> {note}</span>
+          </li>
+        ))
+      }
+    </ul>
+
+    <h2 class="mt-8 text-subtitle font-semibold">How long we keep it</h2>
+    <dl class="mt-3 space-y-2">
+      {
+        RETENTION.map(([what, how_long]) => (
+          <div class="text-dense">
+            <dt class="font-semibold">{what}</dt>
+            <dd class="text-ink-2">{how_long}</dd>
+          </div>
+        ))
+      }
+    </dl>
+    <p class="mt-3 text-dense text-ink-2">
+      A scheduled job enforces this. A retention rule nobody executes is not a retention rule.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">Under-18s</h2>
+    <p class="mt-2 text-dense">
+      Accounts here are 18+. Some opportunities are open to under-18s and we list them, because
+      hiding them would not help anyone — but you need to be 18 to hold an account, and the
+      features that connect you to other people stay off until you confirm it.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">Where your data sits</h2>
+    <p class="mt-2 text-dense">
+      On Supabase and Cloudflare infrastructure, which means it may be processed outside the country
+      you live in. We choose the closest available region. This is a real transfer and we are saying
+      so rather than leaving it in a schedule at the bottom.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">If something goes wrong</h2>
+    <p class="mt-2 text-dense">
+      If data here is exposed, we aim to tell the people affected and the relevant authority within
+      72 hours of finding out, with what happened and what to do. Security reports are welcome at
+      <a href={`mailto:${CONTACT.security}`} class="text-brand">{CONTACT.security}</a>.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">Changes to this page</h2>
+    <p class="mt-2 text-dense">
+      If something material changes, you will see a plain summary of what changed in the app before
+      it takes effect — not a link to a diff. Past changes are on the
+      <a href="/changelog" class="text-brand">changelog</a>.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">Honest statement about compliance</h2>
+    <p class="mt-2 text-dense">
+      This is a small, independently run product. It does what a serious small operator should
+      actually do: minimise what it collects, publish what it does, and make every right self-serve.
+      It is not yet registered with every data-protection authority whose residents might use it.
+      That is a real gap, we would rather write it here than let you assume otherwise, and the plan
+      is to close it as the product grows rather than to pretend the obligation does not exist.
+    </p>
+
+    <p class="mt-8 text-micro text-ink-2">
+      Questions about any of this:
+      <a href={`mailto:${CONTACT.privacy}`} class="text-brand">{CONTACT.privacy}</a>. A person
+      reads it.
+    </p>
+  </article>
+</Base>

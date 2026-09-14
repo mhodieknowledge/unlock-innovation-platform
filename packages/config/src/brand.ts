@@ -16,6 +16,20 @@ export const BRAND = {
   handle: process.env["BRAND_HANDLE"] ?? "mbele",
 } as const;
 
+/**
+ * Published contact addresses. PRIVACY_AND_COMPLIANCE.md §7 item 4 requires "a
+ * named contact address for privacy requests, published and monitored", and
+ * OPPORTUNITY_INGESTION.md §2.1 rule 8 requires a published takedown address with
+ * a 48-hour SLA. Separate addresses so each can be routed and monitored on its own
+ * — a single catch-all is how a 48-hour SLA quietly becomes a fortnight.
+ */
+export const CONTACT = {
+  privacy: `privacy@${BRAND.domain}`,
+  takedown: `takedown@${BRAND.domain}`,
+  security: `security@${BRAND.domain}`,
+  support: `hello@${BRAND.domain}`,
+} as const;
+
 /** OPPORTUNITY_INGESTION.md §2.1 rule 3 — identify the crawler honestly. */
 export const CRAWLER_USER_AGENT = `${BRAND.name}Bot/1.0 (+https://${BRAND.domain}/bot)`;
 
