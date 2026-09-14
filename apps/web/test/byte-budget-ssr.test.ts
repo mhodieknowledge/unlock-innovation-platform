@@ -38,6 +38,7 @@ const BUDGETS = {
   // with two buttons on it has no business anywhere near that, so it is held to
   // the tightest budget in the table.
   unsubscribe: { label: "Unsubscribe", total: 100 * KB, js: 15 * KB },
+  dashboard: { label: "Your window", total: 200 * KB, js: 70 * KB },
 } as const;
 
 const LONG_QUOTE =
@@ -223,15 +224,83 @@ function tableStub(table: string) {
 // The authenticated pages redirect without a session, so their budgets could never
 // be measured on the real page. Mocking auth is what lets them be measured at all
 // -- an unmeasured route is an unenforced budget.
+/**
+ * The dashboard's two surfaces come back through rpc(). Filled to their caps, because a
+ * budget measured against an empty personal surface would prove nothing — and §14.1 and
+ * §14.2 exist precisely to cap what these can cost.
+ */
+const WINDOW_ROWS = Array.from({ length: 8 }, (_, i) => ({
+  source: "recommendations",
+  slug: `worst-case-${i + 1}`,
+  title: worstCaseOpportunity(i + 1).title,
+  deadline_at: worstCaseOpportunity(i + 1).deadline_at,
+  deadline_precision: "date_only",
+  is_rolling: false,
+  cost: "free",
+  organisation_name: "Example Foundation for African Innovation",
+  category_name: "AI challenge",
+  verdict: "eligible",
+  reasons: ["Zimbabwe eligible", "within the age range", "Python and ML match your interests", "closes in 5 days"],
+}));
+
+const ACTION_ROWS = Array.from({ length: 5 }, (_, i) => ({
+  kind: `action-${i}`,
+  headline: `Finish your application: ${worstCaseOpportunity(i + 1).title}`,
+  reason: "You saved this and it closes in 2 days.",
+  href: `/opportunities/worst-case-${i + 1}`,
+  priority: i + 1,
+}));
+
 vi.mock("../src/lib/auth", () => ({
   getSessionUser: vi.fn(async () => SESSION_USER),
   createAuthClient: vi.fn(() => ({
     from: (table: string) => tableStub(table),
-    rpc: async () => ({ data: null, error: null }),
+    rpc: async (fn: string) =>
+      fn === "your_window"
+        ? { data: WINDOW_ROWS, error: null }
+        : fn === "next_actions_capped"
+          ? { data: ACTION_ROWS, error: null }
+          : { data: null, error: null },
   })),
   personalWritesAllowed: vi.fn(() => true),
   socialWritesAllowed: vi.fn(() => ({ allowed: true, reason: null })),
   safeReturnTo: (v: string | null) => v ?? "/",
+}));
+
+/**
+ * The list page's hybrid-search path, with a query. Mocked so the budget covers the
+ * compiled-chip row: §7's chips are rendered markup and have to be measured, and the
+ * fixture query below is deliberately one the heuristic maps completely (four chips) so
+ * the measurement is of the worst realistic case rather than the empty one.
+ */
+vi.mock("../src/lib/search", () => ({
+  search: vi.fn(async () => ({
+    ok: true,
+    rows: PAGE_OF_ROWS.map((row) => ({
+      id: row.id,
+      slug: row.slug,
+      score: 1,
+      verdict: "eligible",
+      verification: "verified",
+      deadline_at: row.deadline_at,
+      is_rolling: false,
+      organisation_slug: "example-org",
+      category_code: "ai_challenge",
+    })),
+    compiled: {
+      chips: [
+        { kind: "country", value: "ZW", label: "Open to Zimbabwe", from: "zimbabwe", source: "heuristic" },
+        { kind: "category", value: "ai_challenge", label: "AI challenge", from: "ai challenges", source: "heuristic" },
+        { kind: "mode", value: "online", label: "Online", from: "remote", source: "heuristic" },
+        { kind: "deadline", value: "7", label: "Closing within a week", from: "closing soon", source: "heuristic" },
+      ],
+      keywords: "",
+      unmapped: [],
+    },
+    retrieval: { fts: true, vector: true, compiler: "heuristic" },
+  })),
+  getQueryVocabulary: vi.fn(async () => ({ countries: [], categories: [] })),
+  rank: vi.fn((rows: unknown[]) => rows),
 }));
 
 vi.mock("../src/lib/db", () => ({
@@ -249,6 +318,7 @@ vi.mock("../src/lib/db", () => ({
   isFlagEnabled: vi.fn(async () => false),
   // The unsubscribe page reads through this. Returning a real-looking token means
   // the page renders its decision state, which is the state with content in it.
+  getOpportunitiesByIds: vi.fn(async () => PAGE_OF_ROWS),
   getClient: vi.fn(() => ({
     rpc: async (fn: string) =>
       fn === "describe_unsubscribe_token"
@@ -367,7 +437,8 @@ beforeAll(async () => {
     "list",
     () => import("../src/pages/opportunities/index.astro"),
     {},
-    "https://example.invalid/opportunities?country=ZW&mode=online&cost=free",
+    // With a query, so the compiled-chip row is measured too.
+    "https://example.invalid/opportunities?q=remote+ai+hackathons+in+zimbabwe+closing+soon",
   );
   await render(
     "tracker",
@@ -392,6 +463,12 @@ beforeAll(async () => {
     () => import("../src/pages/you/account.astro"),
     {},
     "https://example.invalid/you/account",
+  );
+  await render(
+    "dashboard",
+    () => import("../src/pages/you/index.astro"),
+    {},
+    "https://example.invalid/you",
   );
   await render(
     "unsubscribe",
@@ -506,6 +583,32 @@ describe("byte budgets — on-demand routes (invariant 5)", () => {
     // PRODUCT_SPEC.md §12.4 and §11.3.
     expect(measured.detail!.html).toContain(LONG_QUOTE.slice(0, 60));
     expect(measured.detail!.html).toMatch(/Applications close \d+ September/);
+  });
+
+  it("caps the personal surfaces at what §14 promises", () => {
+    // §14.1 caps "Your window" at 8 and §14.2 the action list at 5. The caps are the
+    // product decision — a feed optimises for time spent, these optimise for something
+    // being done — so they are asserted rather than trusted.
+    const html = measured.dashboard!.html;
+    expect(html).toContain("Your window");
+    expect(html).toContain("What to do next");
+    // Every reason is rendered, because §14.2 requires each item to state one.
+    expect(html).toContain("You saved this and it closes in 2 days.");
+    // §14.3 [PR]: the explanation is templated, never free-generated.
+    expect(html).toContain("Python and ML match your interests");
+    // Never more than the caps, however many rows the query returned.
+    expect([...html.matchAll(/Finish your application/g)]).toHaveLength(5);
+  });
+
+  it("shows the compiled query chips, editable", () => {
+    // AI_SYSTEM.md §7 `[PR]`: "The user always sees and can edit the chips." Editing has
+    // to work without JavaScript, so each chip is a link.
+    const html = measured.list!.html;
+    expect(html).toContain("We read that as");
+    expect(html).toContain("Open to Zimbabwe");
+    expect(html).toContain("Closing within a week");
+    // Each chip removes itself by linking to the same search with the others pinned.
+    expect(html).toMatch(/href="\/opportunities\?[^"]*category=ai_challenge/);
   });
 
   it("offers an explicit 'show more' rather than infinite scroll", () => {

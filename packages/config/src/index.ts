@@ -33,4 +33,12 @@ export {
   applyDiversity,
   rrfScore,
   urgencyBoost,
-} from "./ranking.js";
+} from "./ranking.mjs";
+
+export {
+  QUERY_CACHE_TTL_SECONDS,
+  compileQueryHeuristically,
+  mergeModelChips,
+  queryCacheKey,
+} from "./query-compiler.js";
+export type { CompiledQuery, QueryChip, QueryVocabulary } from "./query-compiler.js";

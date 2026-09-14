@@ -9,6 +9,14 @@
  * a multiplier, and six months later nobody can say what the ranking optimises for.
  * Keeping them together with the reasoning attached makes a change a decision rather
  * than an adjustment.
+ *
+ * WHY .mjs AND NOT .ts: two callers need these weights and they cannot share a module
+ * otherwise — the web app imports them at request time, and scripts/recommend.mjs is
+ * plain Node running before any build step. §6.1 asks for "a single ranking.ts constants
+ * file"; the extension differs and the requirement it exists for does not, because the
+ * alternative was a second copy of the numbers in the batch tier. JSDoc plus checkJs
+ * keeps it typechecked. The same trade is made in packages/ingest and for the brand
+ * config, and for the same reason.
  */
 
 /**
@@ -46,12 +54,12 @@ export const CANDIDATES_PER_RETRIEVER = 120;
  * confirm is not a worse opportunity; it is one we know less about, and penalising it
  * would quietly bury everything our extraction found hard.
  */
-export const ELIGIBILITY_BOOST = {
+export const ELIGIBILITY_BOOST = /** @type {const} */ ({
   eligible: 1.35,
   likely_eligible: 1.15,
   unclear: 1.0,
   not_eligible: 0.25,
-} as const;
+});
 
 /**
  * Urgency. §6.1: "peaks at 7 days out, decays to 0 after the deadline."
@@ -63,7 +71,7 @@ export const ELIGIBILITY_BOOST = {
  * expired records are excluded from search entirely (§5.4), so this never applies to
  * them and does not need to fight that exclusion.
  */
-export const URGENCY = {
+export const URGENCY = /** @type {const} */ ({
   /** Days to deadline at which the boost is highest. */
   peakDays: 7,
   /** The multiplier at the peak. */
@@ -72,7 +80,7 @@ export const URGENCY = {
   noDeadline: 0.9,
   /** How far out the boost has faded back to neutral. */
   neutralDays: 60,
-} as const;
+});
 
 /**
  * Freshness. §6.1: "×0.8 when `verification='stale'`, ×0.5 when `disputed`."
@@ -82,13 +90,13 @@ export const URGENCY = {
  * unverified report would make the report button a censorship tool. It is halved
  * rather than nudged because the cost of being wrong runs the other way.
  */
-export const FRESHNESS_PENALTY = {
+export const FRESHNESS_PENALTY = /** @type {const} */ ({
   stale: 0.8,
   disputed: 0.5,
   community_flagged: 0.7,
   /** Everything else — official, verified, auto, expired — is unpenalised here. */
   default: 1.0,
-} as const;
+});
 
 /**
  * Diversity. §6.1: "max 2 per organisation, 3 per category in the first 20 results."
@@ -98,11 +106,11 @@ export const FRESHNESS_PENALTY = {
  * cap applies to the first 20 only: beyond that a user is deliberately looking for more
  * of something, and capping a deep scroll would hide what they came for.
  */
-export const DIVERSITY = {
+export const DIVERSITY = /** @type {const} */ ({
   maxPerOrganisation: 2,
   maxPerCategory: 3,
   withinFirst: 20,
-} as const;
+});
 
 /**
  * Recommendation scoring. SYSTEM_ARCHITECTURE.md §8:
@@ -114,11 +122,11 @@ export const DIVERSITY = {
  * what stops an unverified listing from an unproven source outranking a confirmed one
  * on a slightly better embedding match.
  */
-export const RECOMMENDATION_WEIGHTS = {
+export const RECOMMENDATION_WEIGHTS = /** @type {const} */ ({
   similarity: 0.45,
   urgency: 0.35,
   quality: 0.2,
-} as const;
+});
 
 /**
  * Quality, for the recommendation score: verification × source trust × completeness.
@@ -127,7 +135,7 @@ export const RECOMMENDATION_WEIGHTS = {
  * available, so it tops the scale. `auto` at 0.75 is a deliberate discount on
  * something no person has checked.
  */
-export const VERIFICATION_QUALITY = {
+export const VERIFICATION_QUALITY = /** @type {const} */ ({
   official: 1.0,
   verified: 0.95,
   auto: 0.75,
@@ -135,7 +143,7 @@ export const VERIFICATION_QUALITY = {
   stale: 0.6,
   disputed: 0.2,
   expired: 0.0,
-} as const;
+});
 
 /** SYSTEM_ARCHITECTURE.md §8: "top 20 stored". */
 export const RECOMMENDATIONS_STORED = 20;
@@ -148,12 +156,12 @@ export const RECOMMENDATIONS_STORED = 20;
  * A cap is a promise about attention. Eight things closing soon is a list someone reads;
  * thirty is a list someone closes.
  */
-export const SURFACE_CAPS = {
+export const SURFACE_CAPS = /** @type {const} */ ({
   yourWindow: 8,
   nextActions: 5,
   /** Cold start, when there is nothing personal to show yet. */
   countryBoard: 10,
-} as const;
+});
 
 /** SYSTEM_ARCHITECTURE.md §8: "per active user (seen in the last 30 days)". */
 export const ACTIVE_USER_DAYS = 30;
@@ -165,11 +173,11 @@ export const RECOMMENDATION_HORIZON_DAYS = 60;
  * The urgency curve, shared by search and recommendations so the two cannot disagree
  * about what "closing soon" means.
  *
- * @param deadlineAt when it closes, or null for rolling and unknown
- * @param now the moment to measure from
- * @returns a multiplier
+ * @param {Date | string | null} deadlineAt when it closes, or null for rolling and unknown
+ * @param {Date} [now] the moment to measure from
+ * @returns {number} a multiplier
  */
-export function urgencyBoost(deadlineAt: Date | string | null, now: Date = new Date()): number {
+export function urgencyBoost(deadlineAt, now = new Date()) {
   if (deadlineAt === null) return URGENCY.noDeadline;
 
   const deadline = deadlineAt instanceof Date ? deadlineAt : new Date(deadlineAt);
@@ -195,8 +203,12 @@ export function urgencyBoost(deadlineAt: Date | string | null, now: Date = new D
   return URGENCY.peak - (URGENCY.peak - 1) * ratio;
 }
 
-/** RRF's contribution from one retriever's rank. @param rank 1-based */
-export function rrfScore(rank: number): number {
+/**
+ * RRF's contribution from one retriever's rank.
+ * @param {number} rank 1-based
+ * @returns {number}
+ */
+export function rrfScore(rank) {
   return rank <= 0 ? 0 : 1 / (RRF_K + rank);
 }
 
@@ -208,17 +220,20 @@ export function rrfScore(rank: number): number {
  * displaced lands after them in its original relative order.
  *
  * @template T
- * @param items ordered best first
- * @param keyOf where to read the organisation and category from
+ * @param {readonly T[]} items ordered best first
+ * @param {(item: T) => { organisation: string | null, category: string | null }} keyOf
+ *   where to read the organisation and category from
+ * @returns {T[]}
  */
-export function applyDiversity<T>(
-  items: readonly T[],
-  keyOf: (item: T) => { organisation: string | null; category: string | null },
-): T[] {
-  const kept: T[] = [];
-  const displaced: T[] = [];
-  const perOrganisation = new Map<string, number>();
-  const perCategory = new Map<string, number>();
+export function applyDiversity(items, keyOf) {
+  /** @type {T[]} */
+  const kept = [];
+  /** @type {T[]} */
+  const displaced = [];
+  /** @type {Map<string, number>} */
+  const perOrganisation = new Map();
+  /** @type {Map<string, number>} */
+  const perCategory = new Map();
 
   for (const item of items) {
     if (kept.length >= DIVERSITY.withinFirst) {

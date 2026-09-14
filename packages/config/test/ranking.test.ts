@@ -15,7 +15,7 @@ import {
   applyDiversity,
   rrfScore,
   urgencyBoost,
-} from "../src/ranking.js";
+} from "../src/ranking.mjs";
 
 describe("eligibility boost", () => {
   it("down-ranks not_eligible without hiding it", () => {

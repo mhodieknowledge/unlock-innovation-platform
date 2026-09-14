@@ -18,6 +18,7 @@ on:
     - cron: "20 */6 * * *"   # link health: §5.2 says every 6 hours
     - cron: "50 * * * *"     # re-verify: hourly, the per-record cadence does the rest
     - cron: "10 3 * * *"     # sweep and health: daily
+    - cron: "30 3 * * *"     # embeddings, then recommendations: daily, after the sweep
   workflow_dispatch:
     inputs:
       job:
@@ -25,7 +26,7 @@ on:
         required: true
         default: ingest
         type: choice
-        options: [ingest, links, reverify, sweep, health, check-sources]
+        options: [ingest, links, reverify, sweep, health, check-sources, embed, recommend]
       dry_run:
         description: Render without writing
         required: false
@@ -104,6 +105,22 @@ jobs:
           npm run reverify -- sweep
           npm run reverify -- health
 
+      # AI_SYSTEM.md §3.3: the embedding model runs locally, with no API and no quota.
+      # It is the decision that keeps the whole AI budget viable, and the model is cached
+      # between runs by setup-node's npm cache plus the transformers cache below.
+      - name: Cache the local embedding model
+        if: github.event.schedule == '30 3 * * *' || github.event_name == 'workflow_dispatch'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: embedding-model-${{ hashFiles('package-lock.json') }}
+
+      - name: Embed new records, then recompute recommendations
+        if: github.event.schedule == '30 3 * * *'
+        run: |
+          npm run embed
+          npm run recommend
+
       - name: Manual run
         if: github.event_name == 'workflow_dispatch'
         env:
@@ -114,5 +131,7 @@ jobs:
           case "$JOB" in
             ingest)        npm run ingest -- $DRY $NOAI ;;
             check-sources) npm run sources:check ;;
+            embed)         npm run embed -- $DRY ;;
+            recommend)     npm run recommend -- $DRY ;;
             *)             npm run reverify -- "$JOB" $DRY ;;
           esac

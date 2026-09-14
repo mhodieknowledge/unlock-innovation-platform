@@ -166,3 +166,52 @@ export function activeChips(filters: Filters, basePath = "/opportunities"): Chip
 }
 
 export const hasAnyFilter = (filters: Filters): boolean => activeChips(filters).length > 0;
+
+/**
+ * Turn a compiled natural-language query into URL state.
+ *
+ * AI_SYSTEM.md §7: "The user always sees and can edit the chips before or after results
+ * render." Editing has to work without JavaScript, so a chip's remove link is just a URL
+ * with the OTHER chips pinned as explicit filters — after which they behave like any
+ * other filter chip, because they are.
+ *
+ * @param compiled what the compiler produced
+ * @param without a chip to leave out, for its own remove link
+ */
+export function compiledToParams(
+  compiled: { chips: Array<{ kind: string; value: string }>; keywords: string },
+  without?: { kind: string; value: string },
+): URLSearchParams {
+  const params = new URLSearchParams();
+
+  for (const chip of compiled.chips) {
+    if (without && chip.kind === without.kind && chip.value === without.value) continue;
+    switch (chip.kind) {
+      case "country":
+        params.set("country", chip.value);
+        break;
+      case "category":
+        params.set("category", chip.value);
+        break;
+      case "mode":
+        params.set("mode", chip.value);
+        break;
+      case "cost":
+        params.set("cost", chip.value);
+        break;
+      case "team":
+        params.set("team", chip.value);
+        break;
+      case "prize":
+        params.set("prize", "1");
+        break;
+      default:
+        // `deadline` and `keyword` have no URL filter of their own yet. Dropping a chip
+        // here would silently widen the search, so the keywords carry through instead.
+        break;
+    }
+  }
+
+  if (compiled.keywords) params.set("q", compiled.keywords);
+  return params;
+}

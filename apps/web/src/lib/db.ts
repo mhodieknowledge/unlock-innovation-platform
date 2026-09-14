@@ -440,3 +440,34 @@ export async function isFlagEnabled(key: string, env: Env = {}): Promise<boolean
   if (error || !data) return false;
   return (data as { enabled?: boolean }).enabled === true;
 }
+
+/**
+ * Hydrate ranked search results into full rows, in the order given.
+ *
+ * Search returns ids and ranking signals (migration 0014 keeps retrieval in Postgres and
+ * ranking in TypeScript); the view needs the whole record. A single `in` query plus a
+ * client-side reorder beats one query per row, and beats asking the database to return
+ * the full record for 120 candidates when only 20 are shown.
+ */
+export async function getOpportunitiesByIds(
+  ids: readonly string[],
+  env: Env = {},
+): Promise<OpportunityRow[]> {
+  if (ids.length === 0) return [];
+  const client = getClient(env);
+  if (!client) return [];
+
+  const { data, error } = await client
+    .from("opportunities")
+    .select(OPPORTUNITY_FIELDS)
+    .in("id", [...ids]);
+
+  if (error || !data) return [];
+
+  const byId = new Map(
+    (data as unknown as OpportunityRow[]).map((row) => [row.id, row]),
+  );
+  // The ranking is the order. Anything the select did not return (deleted between the
+  // two queries) is dropped rather than left as a hole.
+  return ids.map((id) => byId.get(id)).filter((row): row is OpportunityRow => row !== undefined);
+}

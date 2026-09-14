@@ -10,37 +10,108 @@
 
 import Base from "../../layouts/Base.astro";
 import OpportunityRow from "../../components/OpportunityRow.astro";
-import { searchOpportunities } from "../../lib/db";
-import { activeChips, hasAnyFilter, parseFilters, toSearchParams } from "../../lib/filters";
+import { getOpportunitiesByIds, searchOpportunities } from "../../lib/db";
+import {
+  activeChips,
+  compiledToParams,
+  hasAnyFilter,
+  parseFilters,
+  toSearchParams,
+} from "../../lib/filters";
+import { getSessionUser } from "../../lib/auth";
+import { search } from "../../lib/search";
 
 export const prerender = false;
 
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
 const filters = parseFilters(Astro.url);
-const result = await searchOpportunities(
-  {
-    q: filters.q,
-    country: filters.country,
-    category: filters.category,
-    mode: filters.mode,
-    team: filters.team,
-    cost: filters.cost,
-    hasPrize: filters.hasPrize,
-    organisation: filters.organisation,
-    verification: filters.verification,
-    sort: filters.sort,
-    limit: filters.limit,
-  },
-  (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {},
-);
+
+// The viewer, for the eligibility boost in ranking (§6.1). Their profile never leaves the
+// database: the verdict is computed there and only the word comes back.
+const viewer = filters.q ? await getSessionUser(Astro.cookies, env) : null;
+
+// Hybrid retrieval when there is something to search for; the plain filtered list
+// otherwise. Two paths rather than one because §13.4 makes urgency the default ORDER for
+// browsing, and running a ranking formula over an unqueried list would reorder it by
+// relevance to nothing.
+const hybrid = filters.q
+  ? await search(
+      {
+        q: filters.q,
+        country: filters.country,
+        category: filters.category,
+        mode: filters.mode,
+        cost: filters.cost,
+        team: filters.team,
+        hasPrize: filters.hasPrize,
+        limit: filters.limit,
+        userId: viewer?.id ?? null,
+      },
+      env,
+    )
+  : null;
+
+const listed = hybrid
+  ? await getOpportunitiesByIds(
+      hybrid.rows.map((row) => row.id),
+      env,
+    )
+  : null;
+
+const fallback =
+  hybrid && hybrid.ok
+    ? null
+    : await searchOpportunities(
+        {
+          q: filters.q,
+          country: filters.country,
+          category: filters.category,
+          mode: filters.mode,
+          team: filters.team,
+          cost: filters.cost,
+          hasPrize: filters.hasPrize,
+          organisation: filters.organisation,
+          verification: filters.verification,
+          sort: filters.sort,
+          limit: filters.limit,
+        },
+        env,
+      );
 
 // SEO.md §1: filtered and paginated views are `noindex, follow` — they are user
 // tools, not content, and indexing them creates thin-content duplication at scale.
 const isFiltered = hasAnyFilter(filters);
 
-const rows = result.ok ? result.data.rows : [];
-const total = result.ok ? result.data.total : null;
+const rows = listed ?? (fallback?.ok ? fallback.data.rows : []);
+const total = fallback?.ok ? fallback.data.total : null;
 const chips = activeChips(filters);
-const degraded = !result.ok;
+const degraded = hybrid ? !hybrid.ok && !fallback?.ok : !fallback?.ok;
+
+/**
+ * AI_SYSTEM.md §7 `[PR]`: the compiler outputs "filter chips only", and "the user always
+ * sees and can edit the chips". Only chips the URL does not already carry are shown —
+ * once a filter is URL state it is rendered by activeChips above, and showing it twice
+ * would make removing it look like it had not worked.
+ */
+const compiledChips = (hybrid?.compiled?.chips ?? []).filter((chip) => {
+  switch (chip.kind) {
+    case "country":
+      return !filters.country;
+    case "category":
+      return !filters.category;
+    case "mode":
+      return !filters.mode;
+    case "cost":
+      return !filters.cost;
+    case "team":
+      return !filters.team;
+    default:
+      return true;
+  }
+});
+
+const compiledHref = (without?: { kind: string; value: string }) =>
+  `/opportunities?${compiledToParams(hybrid?.compiled ?? { chips: [], keywords: "" }, without)}`;
 
 const moreHref = (() => {
   const params = toSearchParams({ ...filters, limit: filters.limit + 20 });
@@ -126,6 +197,30 @@ const SORT_LABELS: [string, string][] = [
       </button>
     </div>
   </form>
+
+  {
+    compiledChips.length > 0 && (
+      <div class="mt-3">
+        <p class="text-meta text-ink-2">
+          We read that as — remove anything we got wrong:
+        </p>
+        <div class="mt-1 flex flex-wrap items-center gap-2">
+          {compiledChips.map((chip) => (
+            <a
+              href={compiledHref(chip)}
+              class="inline-flex min-h-11 items-center gap-1 rounded-row border border-brand bg-brand-wash px-3 text-meta text-brand no-underline"
+              title={`From "${chip.from}"`}
+            >
+              {chip.label}
+              <span aria-hidden="true">×</span>
+              <span class="sr-only">Remove this filter</span>
+            </a>
+          ))}
+          <a href={compiledHref()} class="text-meta text-brand">Keep these as filters</a>
+        </div>
+      </div>
+    )
+  }
 
   {
     chips.length > 0 && (
