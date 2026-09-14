@@ -38,10 +38,48 @@ if (!CONN) {
   process.exit(1);
 }
 
+/**
+ * Supabase's direct database endpoint (db.<ref>.supabase.co) resolves to IPv6
+ * only. GitHub Actions runners have no IPv6 route, so a migration from CI fails
+ * with a bare `ENETUNREACH` against an AAAA address and no hint as to why.
+ *
+ * The fix is the connection pooler, which is IPv4-reachable. Detected here so
+ * the error explains itself instead of looking like an outage.
+ */
+function warnIfDirectSupabaseHost(conn) {
+  if (!/@db\.[a-z0-9]+\.supabase\.co/.test(conn)) return;
+  const inCi = process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true";
+  const message = [
+    "",
+    "This looks like Supabase's DIRECT database endpoint (db.<ref>.supabase.co).",
+    "That hostname is IPv6-only, and GitHub Actions runners have no IPv6 route,",
+    "so connecting from CI fails with ENETUNREACH.",
+    "",
+    "Use the connection POOLER string instead. In the Supabase dashboard:",
+    "  Connect -> Connection pooling -> Session mode",
+    "It looks like:",
+    "  postgresql://postgres.<project-ref>:<password>@<region>.pooler.supabase.com:5432/postgres",
+    "Note the username carries the project ref, and the host is pooler.supabase.com.",
+    "",
+    "Session mode (5432) is the right choice for migrations; transaction mode",
+    "(6543) does not support every DDL statement.",
+    "",
+  ].join("\n");
+
+  if (inCi) {
+    console.error(message);
+    process.exit(1);
+  }
+  console.warn(message);
+}
+
+warnIfDirectSupabaseHost(CONN);
+
 const client = new pg.Client({
   connectionString: CONN,
   // Supabase requires TLS; local sockets do not offer it.
   ssl: /supabase\.(co|com)/.test(CONN) ? { rejectUnauthorized: false } : false,
+  connectionTimeoutMillis: 15000,
 });
 
 async function ensureTable() {
