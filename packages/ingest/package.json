@@ -1,0 +1,14 @@
+{
+  "name": "@mbele/ingest",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Pure ingestion logic: URL canonicalisation, text normalisation, and the deterministic validations that AI output must survive. No I/O, no network.",
+  "main": "./src/index.mjs",
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

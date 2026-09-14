@@ -1,0 +1,23 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    // Written as .mjs, typechecked as if it were TypeScript.
+    //
+    // The batch tier is plain Node — it runs these files directly, before any build
+    // step, so they cannot be .ts (Node's type stripping does not resolve the .js
+    // specifiers a TypeScript project emits). Writing them as .mjs with JSDoc types
+    // and checkJs gives one implementation that the scripts run, the web app
+    // imports, vitest tests, and tsc checks. A build step producing a second copy
+    // is the thing being avoided: this repository has already been bitten twice by
+    // two copies of one rule drifting apart.
+    "allowJs": true,
+    "checkJs": true,
+    "types": ["node", "vitest/globals"]
+  },
+  "include": ["src/**/*.mjs", "test/**/*.ts"]
+}
