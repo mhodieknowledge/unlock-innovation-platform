@@ -1,0 +1,336 @@
+---
+// The tracker. UX_FLOWS.md §6, PRODUCT_SPEC.md §15.
+//
+// "The personal pipeline nobody else provides." Research found people tracking
+// applications in a notes app, a spreadsheet, or memory
+// (00_PASS1_ECOSYSTEM_RESEARCH.md §3), and rated all three bad.
+//
+// State changes are a plain form POST. No JS required: the audience is on
+// expensive, unreliable connections, and a one-tap action that needs a working
+// bundle is an action that fails at the worst moment. Swipe gestures and the
+// bottom sheet in UX_FLOWS.md §6 are progressive enhancement on top of this,
+// not a replacement for it.
+
+import Base from "../layouts/Base.astro";
+import { countdownLabel, countdownWeight, deadlineFacts, freshnessLabel } from "../lib/deadline";
+import { createAuthClient, getSessionUser, personalWritesAllowed } from "../lib/auth";
+import { getTracker, type TrackerRow } from "../lib/db";
+import { reportError } from "../lib/errors";
+
+export const prerender = false;
+
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const user = await getSessionUser(Astro.cookies, env);
+
+if (!user) {
+  return Astro.redirect(`/signin?returnTo=${encodeURIComponent(Astro.url.pathname)}`, 302);
+}
+
+const client = createAuthClient(Astro.cookies, env);
+let flash = "";
+let flashKind: "ok" | "error" = "ok";
+
+// ?add=<slug> is how a Save from a listing arrives, so the save survives the
+// sign-in round trip (UX_FLOWS.md §17: "returns to exactly where they were,
+// action completed").
+const addSlug = Astro.url.searchParams.get("add");
+
+if (client && personalWritesAllowed(user)) {
+  try {
+    if (Astro.request.method === "POST") {
+      const form = await Astro.request.formData();
+      const action = String(form.get("action") ?? "");
+      const entryId = String(form.get("entry_id") ?? "");
+
+      if (action === "set_state") {
+        const next = String(form.get("state") ?? "");
+        const { error } = await client
+          .from("tracker_entries")
+          .update({ state: next })
+          .eq("id", entryId);
+
+        if (error) {
+          // The database refuses an invalid transition (migration 0007). Surfacing
+          // its refusal is better than pre-filtering the UI and pretending the
+          // rule lives in the browser.
+          flashKind = "error";
+          flash = "That isn't a valid next step for this one.";
+        } else {
+          flash = "Updated.";
+        }
+      } else if (action === "remove") {
+        await client.from("tracker_entries").delete().eq("id", entryId);
+        flash = "Removed from your tracker.";
+      } else if (action === "note") {
+        await client
+          .from("tracker_entries")
+          .update({ note: String(form.get("note") ?? "").slice(0, 2000) })
+          .eq("id", entryId);
+        flash = "Note saved.";
+      }
+    } else if (addSlug) {
+      const { data: opp } = await client
+        .from("opportunities")
+        .select("id, title")
+        .eq("slug", addSlug)
+        .maybeSingle();
+
+      if (opp) {
+        const { error } = await client.from("tracker_entries").insert({
+          user_id: user.id,
+          opportunity_id: (opp as { id: string }).id,
+          state: "saved",
+        });
+        // A duplicate save is not an error worth showing; the user's intent is
+        // already satisfied.
+        flash = error
+          ? "That's already in your tracker."
+          : `Saved. We'll remind you before it closes.`;
+      }
+    }
+  } catch (err) {
+    await reportError(err, { route: "/tracker" }, env);
+    flashKind = "error";
+    flash = "We couldn't save that change. Nothing was lost — try again.";
+  }
+}
+
+const result = client ? await getTracker(client) : ({ ok: false, reason: "unavailable" } as const);
+const entries: TrackerRow[] = result.ok ? result.data : [];
+
+// Counts by state become filter tabs, not decoration (UX_FLOWS.md §6).
+const counts = entries.reduce<Record<string, number>>((acc, e) => {
+  acc[e.state] = (acc[e.state] ?? 0) + 1;
+  return acc;
+}, {});
+
+const activeTab = Astro.url.searchParams.get("state");
+const visible = activeTab ? entries.filter((e) => e.state === activeTab) : entries;
+
+const withFacts = visible.map((entry) => ({
+  entry,
+  facts: entry.opportunities
+    ? deadlineFacts({
+        deadline_at: entry.opportunities.deadline_at,
+        deadline_precision: entry.opportunities.deadline_precision as never,
+        opens_at: entry.opportunities.opens_at,
+        is_rolling: entry.opportunities.is_rolling,
+      })
+    : null,
+}));
+
+// Closing soon is pinned at the top: the product's most concrete promise is
+// reminding someone before a deadline (NOTIFICATIONS.md §11).
+const closingSoon = withFacts.filter(
+  (x) => x.facts && x.facts.daysRemaining !== null && x.facts.daysRemaining >= 0 && x.facts.daysRemaining <= 7,
+);
+const rest = withFacts.filter((x) => !closingSoon.includes(x));
+
+const STATE_LABELS: Record<string, string> = {
+  saved: "Saved",
+  planning_to_apply: "Planning to apply",
+  applied: "Applied",
+  submitted: "Submitted",
+  participating: "Participating",
+  completed: "Completed",
+  outcome_won: "Won",
+  outcome_placed: "Placed",
+  outcome_not_selected: "Not selected",
+  withdrawn: "Withdrawn",
+  missed_deadline: "Missed the deadline",
+};
+
+// Mirrors tracker_allowed_transitions in migration 0007. The database is the
+// authority and refuses anything else; this only decides what to OFFER.
+const NEXT_STATES: Record<string, string[]> = {
+  saved: ["planning_to_apply", "applied", "withdrawn", "missed_deadline"],
+  planning_to_apply: ["applied", "saved", "withdrawn", "missed_deadline"],
+  applied: ["submitted", "participating", "outcome_not_selected", "withdrawn"],
+  submitted: ["participating", "outcome_won", "outcome_placed", "outcome_not_selected", "withdrawn"],
+  participating: ["completed", "outcome_won", "outcome_placed", "outcome_not_selected", "withdrawn"],
+  completed: ["outcome_won", "outcome_placed", "outcome_not_selected"],
+};
+---
+
+<Base title="Your tracker" noindex>
+  <h1 class="text-title font-semibold">Your tracker</h1>
+  <p class="mt-1 text-meta text-ink-2">
+    Private to you. Notes here are never read, scanned or used for anything.
+  </p>
+
+  {
+    flash && (
+      <p
+        class={`mt-3 border-l-[3px] p-3 text-dense ${
+          flashKind === "ok"
+            ? "border-eligible bg-eligible-wash text-eligible"
+            : "border-danger bg-noteligible-wash text-danger"
+        }`}
+        role="status"
+      >
+        {flash}
+      </p>
+    )
+  }
+
+  {
+    entries.length === 0 ? (
+      /* DESIGN_SYSTEM.md §6.4 — one sentence naming the situation, one action. */
+      <div class="mt-6 border border-line bg-surface p-4">
+        <p class="font-semibold">Nothing saved yet.</p>
+        <p class="mt-1 text-dense text-ink-2">
+          Saving an opportunity gets you a reminder before it closes.
+        </p>
+        <p class="mt-3">
+          <a
+            href="/opportunities?deadline_state=closing_this_week"
+            class="inline-flex min-h-11 items-center rounded-row bg-brand px-4 font-semibold text-surface no-underline"
+            >Browse what's closing this week</a
+          >
+        </p>
+      </div>
+    ) : (
+      <>
+        <nav class="mt-4 flex flex-wrap gap-2" aria-label="Filter by state">
+          <a
+            href="/tracker"
+            class={`rounded-row px-2 py-1 text-meta no-underline ${
+              !activeTab ? "bg-brand-wash text-brand" : "bg-sunken text-ink-2"
+            }`}
+            >All {entries.length}</a
+          >
+          {Object.entries(counts).map(([state, n]) => (
+            <a
+              href={`/tracker?state=${state}`}
+              class={`rounded-row px-2 py-1 text-meta no-underline ${
+                activeTab === state ? "bg-brand-wash text-brand" : "bg-sunken text-ink-2"
+              }`}
+            >
+              {STATE_LABELS[state] ?? state} {n}
+            </a>
+          ))}
+        </nav>
+
+        {closingSoon.length > 0 && (
+          <section class="mt-6" aria-labelledby="closing-soon">
+            <h2 id="closing-soon" class="text-subtitle font-semibold">Closing soon</h2>
+            <div class="mt-2 border-t border-line">
+              {closingSoon.map(({ entry, facts }) => (
+                <article class="border-b border-line bg-surface px-3 py-3">
+                  <h3 class="text-dense font-semibold">
+                    <a
+                      href={`/opportunities/${entry.opportunities?.slug ?? ""}`}
+                      class="text-ink no-underline hover:underline"
+                      >{entry.opportunities?.title ?? "Removed listing"}</a
+                    >
+                  </h3>
+                  <p
+                    class="mt-1 text-countdown-sm text-absolute"
+                    style={`font-weight:${countdownWeight(facts?.daysRemaining ?? null)}`}
+                  >
+                    {facts ? countdownLabel(facts) : ""}
+                  </p>
+                  <p class="mt-1 text-meta text-ink-2">
+                    {STATE_LABELS[entry.state] ?? entry.state}
+                    <span aria-hidden="true"> · </span>
+                    {freshnessLabel(entry.opportunities?.last_verified_at)}
+                  </p>
+
+                  <form method="post" class="mt-2 flex flex-wrap items-center gap-2">
+                    <input type="hidden" name="entry_id" value={entry.id} />
+                    <input type="hidden" name="action" value="set_state" />
+                    <label class="sr-only" for={`state-${entry.id}`}>Change state</label>
+                    <select
+                      id={`state-${entry.id}`}
+                      name="state"
+                      class="h-11 rounded-row border border-line bg-surface px-2 text-dense"
+                    >
+                      {(NEXT_STATES[entry.state] ?? []).map((s) => (
+                        <option value={s}>{STATE_LABELS[s] ?? s}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="submit"
+                      class="h-11 rounded-row border border-line-strong bg-surface px-3 font-semibold text-dense"
+                      >Update</button
+                    >
+                  </form>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {rest.length > 0 && (
+          <section class="mt-8" aria-labelledby="everything-else">
+            <h2 id="everything-else" class="text-subtitle font-semibold">
+              {closingSoon.length > 0 ? "Everything else" : "Tracked"}
+            </h2>
+            <div class="mt-2 border-t border-line">
+              {rest.map(({ entry, facts }) => (
+                <article class="border-b border-line bg-surface px-3 py-3">
+                  <h3 class="text-dense font-semibold">
+                    <a
+                      href={`/opportunities/${entry.opportunities?.slug ?? ""}`}
+                      class="text-ink no-underline hover:underline"
+                      >{entry.opportunities?.title ?? "Removed listing"}</a
+                    >
+                  </h3>
+                  <p class="mt-1 text-meta text-ink-2">
+                    {STATE_LABELS[entry.state] ?? entry.state}
+                    {facts && (
+                      <>
+                        <span aria-hidden="true"> · </span>
+                        {countdownLabel(facts)}
+                      </>
+                    )}
+                  </p>
+
+                  <div class="mt-2 flex flex-wrap items-center gap-2">
+                    <form method="post" class="flex items-center gap-2">
+                      <input type="hidden" name="entry_id" value={entry.id} />
+                      <input type="hidden" name="action" value="set_state" />
+                      <label class="sr-only" for={`s2-${entry.id}`}>Change state</label>
+                      <select
+                        id={`s2-${entry.id}`}
+                        name="state"
+                        class="h-11 rounded-row border border-line bg-surface px-2 text-dense"
+                      >
+                        {(NEXT_STATES[entry.state] ?? []).map((s) => (
+                          <option value={s}>{STATE_LABELS[s] ?? s}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="submit"
+                        class="h-11 rounded-row border border-line-strong bg-surface px-3 font-semibold text-dense"
+                        >Update</button
+                      >
+                    </form>
+
+                    <form method="post">
+                      <input type="hidden" name="entry_id" value={entry.id} />
+                      <input type="hidden" name="action" value="remove" />
+                      <button
+                        type="submit"
+                        class="h-11 rounded-row border border-danger bg-surface px-3 font-semibold text-dense text-danger"
+                        >Remove</button
+                      >
+                    </form>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <!-- PRODUCT_SPEC.md §15 and §22.5: export is a right, self-serve, no
+             support ticket. -->
+        <p class="mt-8 text-meta">
+          <a href="/api/v1/tracker/export?format=json" class="text-brand">Export as JSON</a>
+          <span aria-hidden="true"> · </span>
+          <a href="/api/v1/tracker/export?format=csv" class="text-brand">Export as CSV</a>
+        </p>
+      </>
+    )
+  }
+</Base>

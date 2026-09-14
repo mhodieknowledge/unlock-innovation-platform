@@ -30,6 +30,7 @@ const BUDGETS = {
   detail: { label: "Opportunity detail", total: 120 * KB, js: 30 * KB },
   list: { label: "Opportunity list / search", total: 150 * KB, js: 40 * KB },
   organisation: { label: "Organisation page", total: 120 * KB, js: 25 * KB },
+  tracker: { label: "Authenticated dashboard", total: 200 * KB, js: 70 * KB },
 } as const;
 
 const LONG_QUOTE =
@@ -41,19 +42,34 @@ const RULE_TYPES = [
   "experience_between", "language_required",
 ] as const;
 
-const LONG_TITLE =
-  "Pan-African AgriTech and Climate Resilience Innovation Challenge for Early-Career Builders 2026";
+const SUBJECTS = [
+  "AgriTech", "Climate Resilience", "Health Data", "Fintech Inclusion",
+  "Renewable Energy", "Open Transport", "Water Sanitation", "Civic Technology",
+  "Creative Industries", "Youth Employment",
+];
+const KINDS = ["Innovation Challenge", "Fellowship", "Grant", "Accelerator", "Research Call"];
+const PLACES = ["Southern Africa", "East Africa", "West Africa", "Pan-African", "Continental"];
 
+/**
+ * Distinct per row. Thirty near-identical titles gzip down to almost nothing,
+ * which would flatter the budget with a compression artefact rather than measure
+ * a realistic page.
+ */
 function worstCaseOpportunity(i: number) {
+  const subject = SUBJECTS[i % SUBJECTS.length]!;
+  const kind = KINDS[i % KINDS.length]!;
+  const place = PLACES[i % PLACES.length]!;
+  // Deadlines spread across the window so some rows land in "closing soon".
+  const day = 15 + (i % 14);
   return {
     id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
     slug: `worst-case-${i}`,
-    title: `${LONG_TITLE} — cohort ${i}`,
+    title: `${place} ${subject} ${kind} for Early-Career Builders 2026, cohort ${i} (${subject} track)`,
     summary: "x".repeat(400),
     description_md: "y".repeat(4000),
-    deadline_at: "2026-12-30T21:59:00Z",
+    deadline_at: `2026-09-${String(day).padStart(2, "0")}T21:59:00Z`,
     deadline_precision: "date_only",
-    deadline_raw: "Applications close 30 December",
+    deadline_raw: `Applications close ${day} September`,
     deadline_timezone: "Africa/Harare",
     opens_at: "2026-08-01T00:00:00Z",
     starts_at: "2027-01-15T00:00:00Z",
@@ -99,6 +115,18 @@ const DETAIL = {
 // A full page of rows, which is what the list budget has to survive.
 const PAGE_OF_ROWS = Array.from({ length: 20 }, (_, i) => worstCaseOpportunity(i + 1));
 
+// A busy tracker: 30 entries is well past what a real user accumulates, so the
+// dashboard budget is measured against a worse case than it will meet.
+const TRACKER_ROWS = Array.from({ length: 30 }, (_, i) => ({
+  id: `entry-${i}`,
+  state: ["saved", "planning_to_apply", "applied", "submitted", "participating"][i % 5]!,
+  note: "n".repeat(200),
+  applied_at: null,
+  remind_at: null,
+  updated_at: "2026-09-13T00:00:00Z",
+  opportunities: worstCaseOpportunity(i + 1),
+}));
+
 const ORGANISATION = {
   organisation: {
     id: "org-1",
@@ -115,6 +143,37 @@ const ORGANISATION = {
   past: PAGE_OF_ROWS.slice(10),
 };
 
+const SESSION_USER = {
+  id: "aaaa1111-1111-1111-1111-111111111111",
+  email: "t@example.invalid",
+  handle: null,
+  display_name: "Test",
+  is_admin: false,
+  admin_role: null,
+  account_state: "active",
+  age_confirmed_18: true,
+  timezone: "Africa/Harare",
+  low_data_mode: false,
+};
+
+// The tracker redirects without a session, so the budget could never be measured
+// on the real page. Mocking auth is what lets the authenticated route be measured
+// at all -- an unmeasured route is an unenforced budget.
+vi.mock("../src/lib/auth", () => ({
+  getSessionUser: vi.fn(async () => SESSION_USER),
+  createAuthClient: vi.fn(() => ({
+    from: () => ({
+      select: () => ({
+        order: () => ({ data: TRACKER_ROWS, error: null }),
+        eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }),
+      }),
+    }),
+  })),
+  personalWritesAllowed: vi.fn(() => true),
+  socialWritesAllowed: vi.fn(() => ({ allowed: true, reason: null })),
+  safeReturnTo: (v: string | null) => v ?? "/",
+}));
+
 vi.mock("../src/lib/db", () => ({
   getOpportunity: vi.fn(async () => ({ ok: true, data: DETAIL })),
   searchOpportunities: vi.fn(async () => ({
@@ -123,6 +182,9 @@ vi.mock("../src/lib/db", () => ({
   })),
   listOpportunities: vi.fn(async () => ({ ok: true, data: PAGE_OF_ROWS })),
   getOrganisation: vi.fn(async () => ({ ok: true, data: ORGANISATION })),
+  getTracker: vi.fn(async () => ({ ok: true, data: TRACKER_ROWS })),
+  getRuleTypeCounts: vi.fn(async () => ({ country_in: 42, age_between: 17 })),
+  allowedTrackerTransitions: vi.fn(async () => ["applied"]),
   getPublishedCount: vi.fn(async () => 312),
   isFlagEnabled: vi.fn(async () => false),
   getClient: vi.fn(() => null),
@@ -241,6 +303,12 @@ beforeAll(async () => {
     "https://example.invalid/opportunities?country=ZW&mode=online&cost=free",
   );
   await render(
+    "tracker",
+    () => import("../src/pages/tracker.astro"),
+    {},
+    "https://example.invalid/tracker",
+  );
+  await render(
     "organisation",
     () => import("../src/pages/organisations/[slug].astro"),
     { slug: "example-org" },
@@ -314,13 +382,23 @@ describe("byte budgets — on-demand routes (invariant 5)", () => {
   it("shows the quoted source sentence and the raw deadline string", () => {
     // PRODUCT_SPEC.md §12.4 and §11.3.
     expect(measured.detail!.html).toContain(LONG_QUOTE.slice(0, 60));
-    expect(measured.detail!.html).toContain("Applications close 30 December");
+    expect(measured.detail!.html).toMatch(/Applications close \d+ September/);
   });
 
   it("offers an explicit 'show more' rather than infinite scroll", () => {
     // UX_FLOWS.md §3 marks this `[PR]`: infinite scroll on metered data spends
     // the user's money without asking.
     expect(measured.list!.html).toContain("Show 20 more");
+  });
+
+  it("renders a populated tracker, not the empty state", () => {
+    // 2.6 KB of HTML for 30 entries would mean the empty state rendered and the
+    // dashboard budget was measured against nothing. Assert the rows are really
+    // there, the same discipline as the vacuous-pass guard.
+    expect(measured.tracker!.html).not.toContain("Nothing saved yet");
+    expect(measured.tracker!.html).toContain("Closing soon");
+    const rowCount = [...measured.tracker!.html.matchAll(/Early-Career Builders 2026/g)].length;
+    expect(rowCount, `expected 30 tracker rows, found ${rowCount}`).toBeGreaterThanOrEqual(30);
   });
 
   it("keeps past opportunities on the organisation page", () => {

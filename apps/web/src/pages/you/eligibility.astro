@@ -1,0 +1,410 @@
+---
+// The eligibility profile. UX_FLOWS.md §8.1 — "the most important settings screen
+// in the product."
+//
+// Every field states what it unlocks, counted from real published rules rather
+// than asserted. The completeness meter names the single highest-impact next
+// field, because a bare percentage tells someone they are incomplete without
+// telling them what to do about it.
+//
+// PRODUCT_SPEC.md §12.1: every field is optional. A missing field produces
+// `unclear` on the rules that need it, never a block — so this screen is an
+// invitation, not a form to be completed.
+
+import Base from "../../layouts/Base.astro";
+import { createAuthClient, getSessionUser, personalWritesAllowed } from "../../lib/auth";
+import { getRuleTypeCounts } from "../../lib/db";
+import { reportError } from "../../lib/errors";
+
+export const prerender = false;
+
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const user = await getSessionUser(Astro.cookies, env);
+
+if (!user) {
+  return Astro.redirect(`/signin?returnTo=${encodeURIComponent(Astro.url.pathname)}`, 302);
+}
+
+const client = createAuthClient(Astro.cookies, env);
+let flash = "";
+let flashKind: "ok" | "error" = "ok";
+
+const STUDENT_STATUSES: [string, string][] = [
+  ["", "Prefer not to say"],
+  ["secondary", "Secondary school"],
+  ["undergraduate", "Undergraduate"],
+  ["postgraduate", "Postgraduate"],
+  ["recent_graduate", "Recent graduate"],
+  ["not_student", "Not a student"],
+];
+
+const INSTITUTION_TYPES: [string, string][] = [
+  ["", "Prefer not to say"],
+  ["university", "University"],
+  ["polytechnic", "Polytechnic"],
+  ["secondary", "Secondary school"],
+  ["bootcamp", "Bootcamp"],
+  ["none", "None"],
+];
+
+if (client && Astro.request.method === "POST" && personalWritesAllowed(user)) {
+  try {
+    const form = await Astro.request.formData();
+    const text = (k: string, max = 200) => {
+      const v = String(form.get(k) ?? "").trim();
+      return v ? v.slice(0, max) : null;
+    };
+    const int = (k: string) => {
+      const v = Number(String(form.get(k) ?? "").trim());
+      return Number.isFinite(v) && v !== 0 ? Math.trunc(v) : null;
+    };
+
+    const countryRaw = text("country_of_residence", 2);
+    const nationalitiesRaw = String(form.get("nationalities") ?? "")
+      .split(",")
+      .map((s) => s.trim().toUpperCase())
+      .filter((s) => /^[A-Z]{2}$/.test(s))
+      .slice(0, 5);
+    const languagesRaw = String(form.get("languages") ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 10);
+
+    const { error } = await client
+      .from("eligibility_profiles")
+      .update({
+        country_of_residence: countryRaw ? countryRaw.toUpperCase() : null,
+        nationalities: nationalitiesRaw,
+        birth_year: int("birth_year"),
+        student_status: text("student_status") ?? null,
+        year_of_study: int("year_of_study"),
+        institution_type: text("institution_type") ?? null,
+        institution_name: text("institution_name"),
+        years_experience: form.get("years_experience") === "" ? null : int("years_experience") ?? 0,
+        languages: languagesRaw,
+        // Optional, self-declared, never inferred, used ONLY for
+        // gender_restricted rules and never displayed (PRODUCT_SPEC.md §12.2).
+        gender: text("gender", 40),
+        can_travel:
+          form.get("can_travel") === "" ? null : form.get("can_travel") === "yes",
+      })
+      .eq("user_id", user.id);
+
+    if (error) throw new Error(error.message);
+    flash = "Saved. Your verdicts will use this from now on.";
+  } catch (err) {
+    await reportError(err, { route: "/you/eligibility" }, env);
+    flashKind = "error";
+    flash = "We couldn't save that. Nothing was lost — try again.";
+  }
+}
+
+const { data: profileRow } = client
+  ? await client.from("eligibility_profiles").select("*").eq("user_id", user.id).maybeSingle()
+  : { data: null };
+
+const p = (profileRow ?? {}) as Record<string, unknown>;
+const completeness = Number(p["completeness"] ?? 0);
+
+const ruleCounts = await getRuleTypeCounts(env);
+const countFor = (...types: string[]) =>
+  types.reduce((sum, t) => sum + (ruleCounts[t] ?? 0), 0);
+
+// Field -> the rule types it resolves, and the weight it carries in the meter
+// (migration 0008 holds the same weights).
+const FIELDS = [
+  {
+    name: "country_of_residence",
+    label: "Country you live in",
+    weight: 30,
+    resolves: countFor("country_in", "country_not_in", "residency_required"),
+    filled: Boolean(p["country_of_residence"]),
+  },
+  {
+    name: "birth_year",
+    label: "Birth year",
+    weight: 20,
+    resolves: countFor("age_between"),
+    filled: Boolean(p["birth_year"]),
+  },
+  {
+    name: "student_status",
+    label: "Student status",
+    weight: 20,
+    resolves: countFor("student_status_in"),
+    filled: Boolean(p["student_status"]),
+  },
+  {
+    name: "nationalities",
+    label: "Nationality",
+    weight: 10,
+    resolves: countFor("nationality_in"),
+    filled: Array.isArray(p["nationalities"]) && (p["nationalities"] as unknown[]).length > 0,
+  },
+  {
+    name: "year_of_study",
+    label: "Year of study",
+    weight: 5,
+    resolves: countFor("year_of_study_in"),
+    filled: Boolean(p["year_of_study"]),
+  },
+  {
+    name: "institution_type",
+    label: "Institution type",
+    weight: 5,
+    resolves: countFor("institution_type_in"),
+    filled: Boolean(p["institution_type"]),
+  },
+  {
+    name: "years_experience",
+    label: "Years of experience",
+    weight: 5,
+    resolves: countFor("experience_between"),
+    filled: p["years_experience"] !== null && p["years_experience"] !== undefined,
+  },
+  {
+    name: "languages",
+    label: "Languages you read",
+    weight: 5,
+    resolves: countFor("language_required"),
+    filled: Array.isArray(p["languages"]) && (p["languages"] as unknown[]).length > 0,
+  },
+];
+
+// The single highest-impact next field: most rules it would resolve, then weight.
+// Naming one beats listing eight.
+const nextField = FIELDS.filter((f) => !f.filled).sort(
+  (a, b) => b.resolves - a.resolves || b.weight - a.weight,
+)[0];
+
+const unlocks = (field: { resolves: number }) =>
+  field.resolves === 0
+    ? "No published rules need this yet."
+    : field.resolves === 1
+      ? "Resolves eligibility on 1 opportunity."
+      : `Resolves eligibility on ${field.resolves} opportunities.`;
+---
+
+<Base title="Your eligibility details" noindex>
+  <h1 class="text-title font-semibold">Your eligibility details</h1>
+
+  <!-- UX_FLOWS.md §8.1 requires this stated explicitly at the top. -->
+  <p class="mt-2 border-l-[3px] border-brand bg-brand-wash p-3 text-dense">
+    <strong class="font-semibold">Only you can see this.</strong> It is never shown to other users,
+    never attached to your public profile, and never sent to any AI service. Administrators cannot
+    read it either — there is no access path for them.
+  </p>
+
+  {
+    flash && (
+      <p
+        class={`mt-3 border-l-[3px] p-3 text-dense ${
+          flashKind === "ok"
+            ? "border-eligible bg-eligible-wash text-eligible"
+            : "border-danger bg-noteligible-wash text-danger"
+        }`}
+        role="status"
+      >
+        {flash}
+      </p>
+    )
+  }
+
+  <section class="mt-6" aria-labelledby="completeness">
+    <h2 id="completeness" class="text-subtitle font-semibold">
+      {completeness}% of what we can use
+    </h2>
+    <div
+      class="mt-2 h-2 w-full max-w-md overflow-hidden rounded-row bg-sunken"
+      role="progressbar"
+      aria-valuenow={completeness}
+      aria-valuemin="0"
+      aria-valuemax="100"
+      aria-labelledby="completeness"
+    >
+      <div class="h-full bg-brand" style={`width:${completeness}%`}></div>
+    </div>
+    <p class="mt-2 max-w-md text-dense text-ink-2">
+      {
+        nextField
+          ? `The one that would help most: ${nextField.label.toLowerCase()}. ${unlocks(nextField)}`
+          : "Everything we can use is filled in. Verdicts will be as precise as the rules allow."
+      }
+    </p>
+  </section>
+
+  <form method="post" class="mt-8 max-w-md space-y-6">
+    <label class="block">
+      <span class="block text-micro font-semibold text-ink-2">Country you live in</span>
+      <input
+        name="country_of_residence"
+        value={String(p["country_of_residence"] ?? "")}
+        maxlength="2"
+        placeholder="ZW"
+        autocomplete="country"
+        class="mt-1 h-11 w-full rounded-row border border-line px-3 uppercase"
+      />
+      <span class="mt-1 block text-meta text-ink-2">
+        {unlocks(FIELDS[0]!)} Residency and nationality are different things and we keep them apart.
+      </span>
+    </label>
+
+    <label class="block">
+      <span class="block text-micro font-semibold text-ink-2">Birth year</span>
+      <input
+        name="birth_year"
+        value={String(p["birth_year"] ?? "")}
+        inputmode="numeric"
+        maxlength="4"
+        placeholder="2004"
+        class="mt-1 h-11 w-full rounded-row border border-line px-3"
+      />
+      <span class="mt-1 block text-meta text-ink-2">
+        {unlocks(FIELDS[1]!)} We ask for the year only, never a full date of birth — which means a
+        rule you sit exactly on the boundary of will read <em>unclear</em> rather than guess.
+      </span>
+    </label>
+
+    <label class="block">
+      <span class="block text-micro font-semibold text-ink-2">Student status</span>
+      <select
+        name="student_status"
+        class="mt-1 h-11 w-full rounded-row border border-line bg-surface px-3"
+      >
+        {
+          STUDENT_STATUSES.map(([value, label]) => (
+            <option value={value} selected={p["student_status"] === value}>
+              {label}
+            </option>
+          ))
+        }
+      </select>
+      <span class="mt-1 block text-meta text-ink-2">{unlocks(FIELDS[2]!)}</span>
+    </label>
+
+    <label class="block">
+      <span class="block text-micro font-semibold text-ink-2">Nationality</span>
+      <input
+        name="nationalities"
+        value={(Array.isArray(p["nationalities"]) ? (p["nationalities"] as string[]) : []).join(", ")}
+        placeholder="ZW, GB"
+        class="mt-1 h-11 w-full rounded-row border border-line px-3 uppercase"
+      />
+      <span class="mt-1 block text-meta text-ink-2">
+        {unlocks(FIELDS[3]!)} Two-letter codes, comma separated if you hold more than one.
+      </span>
+    </label>
+
+    <label class="block">
+      <span class="block text-micro font-semibold text-ink-2">Year of study</span>
+      <input
+        name="year_of_study"
+        value={String(p["year_of_study"] ?? "")}
+        inputmode="numeric"
+        maxlength="2"
+        class="mt-1 h-11 w-full rounded-row border border-line px-3"
+      />
+      <span class="mt-1 block text-meta text-ink-2">{unlocks(FIELDS[4]!)}</span>
+    </label>
+
+    <label class="block">
+      <span class="block text-micro font-semibold text-ink-2">Institution type</span>
+      <select
+        name="institution_type"
+        class="mt-1 h-11 w-full rounded-row border border-line bg-surface px-3"
+      >
+        {
+          INSTITUTION_TYPES.map(([value, label]) => (
+            <option value={value} selected={p["institution_type"] === value}>
+              {label}
+            </option>
+          ))
+        }
+      </select>
+      <span class="mt-1 block text-meta text-ink-2">{unlocks(FIELDS[5]!)}</span>
+    </label>
+
+    <label class="block">
+      <span class="block text-micro font-semibold text-ink-2">Institution name</span>
+      <input
+        name="institution_name"
+        value={String(p["institution_name"] ?? "")}
+        maxlength="200"
+        class="mt-1 h-11 w-full rounded-row border border-line px-3"
+      />
+      <span class="mt-1 block text-meta text-ink-2">
+        Optional. We never ask for a student ID, a transcript or any document.
+      </span>
+    </label>
+
+    <label class="block">
+      <span class="block text-micro font-semibold text-ink-2">Years of experience</span>
+      <input
+        name="years_experience"
+        value={p["years_experience"] === null || p["years_experience"] === undefined ? "" : String(p["years_experience"])}
+        inputmode="numeric"
+        maxlength="2"
+        class="mt-1 h-11 w-full rounded-row border border-line px-3"
+      />
+      <span class="mt-1 block text-meta text-ink-2">{unlocks(FIELDS[6]!)} Zero is a real answer.</span>
+    </label>
+
+    <label class="block">
+      <span class="block text-micro font-semibold text-ink-2">Languages you read</span>
+      <input
+        name="languages"
+        value={(Array.isArray(p["languages"]) ? (p["languages"] as string[]) : []).join(", ")}
+        placeholder="English, French"
+        class="mt-1 h-11 w-full rounded-row border border-line px-3"
+      />
+      <span class="mt-1 block text-meta text-ink-2">{unlocks(FIELDS[7]!)}</span>
+    </label>
+
+    <label class="block">
+      <span class="block text-micro font-semibold text-ink-2">Can you travel?</span>
+      <select
+        name="can_travel"
+        class="mt-1 h-11 w-full rounded-row border border-line bg-surface px-3"
+      >
+        <option value="" selected={p["can_travel"] === null || p["can_travel"] === undefined}>
+          Prefer not to say
+        </option>
+        <option value="yes" selected={p["can_travel"] === true}>Yes</option>
+        <option value="no" selected={p["can_travel"] === false}>No</option>
+      </select>
+      <span class="mt-1 block text-meta text-ink-2">
+        Only used where an opportunity requires travel. Leaving this blank means such a rule reads
+        <em>unclear</em> rather than ruling you out.
+      </span>
+    </label>
+
+    <fieldset class="border-t border-line pt-4">
+      <legend class="text-micro font-semibold text-ink-2">Optional</legend>
+      <label class="mt-2 block">
+        <span class="block text-dense">Gender</span>
+        <input
+          name="gender"
+          value={String(p["gender"] ?? "")}
+          maxlength="40"
+          class="mt-1 h-11 w-full rounded-row border border-line px-3"
+        />
+        <span class="mt-1 block text-meta text-ink-2">
+          Only used to evaluate programmes that are open to a specific group — women-in-tech
+          programmes are a real and important category. Never inferred, never displayed, and if you
+          leave it blank such a rule reads <em>unclear</em> rather than excluding you.
+        </span>
+      </label>
+    </fieldset>
+
+    <button type="submit" class="h-11 rounded-row bg-brand px-4 font-semibold text-surface">
+      Save details
+    </button>
+  </form>
+
+  <p class="mt-8 text-meta text-ink-2">
+    You can <a href="/api/v1/tracker/export?format=json" class="text-brand">export everything</a>
+    or delete your account at any time. Deleting the eligibility details alone is also possible —
+    clear the fields and save.
+  </p>
+</Base>

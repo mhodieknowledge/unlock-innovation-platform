@@ -279,6 +279,51 @@ export async function searchOpportunities(
   };
 }
 
+/**
+ * PRODUCT_SPEC.md §15 — the personal pipeline "nobody else provides".
+ *
+ * Read through the caller's own authenticated client, so RLS is what scopes the
+ * rows to their owner. There is no user_id filter in the query on purpose: if the
+ * policy were ever wrong, an application-level filter would mask the bug rather
+ * than expose it, and this table has no admin read path to fall back on.
+ */
+export interface TrackerRow {
+  id: string;
+  state: string;
+  note: string | null;
+  applied_at: string | null;
+  remind_at: string | null;
+  updated_at: string;
+  opportunities: OpportunityRow | null;
+}
+
+export async function getTracker(
+  client: SupabaseClient,
+): Promise<{ ok: true; data: TrackerRow[] } | { ok: false; reason: "unavailable" }> {
+  const { data, error } = await client
+    .from("tracker_entries")
+    .select(
+      `id, state, note, applied_at, remind_at, updated_at,
+       opportunities ( ${OPPORTUNITY_FIELDS} )`,
+    )
+    .order("updated_at", { ascending: false });
+
+  if (error) return { ok: false, reason: "unavailable" };
+  return { ok: true, data: (data ?? []) as unknown as TrackerRow[] };
+}
+
+/** API_SPEC.md §5 — the allowed set comes from the database, not a duplicate list. */
+export async function allowedTrackerTransitions(
+  client: SupabaseClient,
+  fromState: string,
+): Promise<string[]> {
+  const { data, error } = await client.rpc("tracker_allowed_transitions", {
+    from_state: fromState,
+  });
+  if (error || !Array.isArray(data)) return [];
+  return data as string[];
+}
+
 export interface OrganisationDetail {
   slug: string;
   name: string;
@@ -331,6 +376,39 @@ export async function getOrganisation(
       past: rows.filter((r) => r.status !== "published"),
     },
   };
+}
+
+/**
+ * How many published opportunities carry a rule of each type.
+ *
+ * Powers the "what this unlocks" line on every eligibility field
+ * (UX_FLOWS.md §8.1: "Your year of study resolves eligibility on 23
+ * opportunities"). Computed live from real rules, because
+ * CONTENT_AND_LAUNCH.md §1 requires every number shown to be true — a
+ * plausible-looking constant here would be exactly the kind of fabricated
+ * number the content principles forbid.
+ */
+export async function getRuleTypeCounts(
+  env: Env = {},
+): Promise<Record<string, number>> {
+  const client = getClient(env);
+  if (!client) return {};
+
+  // Only rules attached to something a reader could actually act on.
+  const { data, error } = await client
+    .from("eligibility_rules")
+    .select("rule_type, opportunities!inner(status)")
+    .eq("opportunities.status", "published");
+
+  if (error || !data) return {};
+
+  return (data as unknown as { rule_type: string }[]).reduce<Record<string, number>>(
+    (acc, row) => {
+      acc[row.rule_type] = (acc[row.rule_type] ?? 0) + 1;
+      return acc;
+    },
+    {},
+  );
 }
 
 /** Live counts for the footer. CONTENT_AND_LAUNCH.md §1: every number shown is true. */

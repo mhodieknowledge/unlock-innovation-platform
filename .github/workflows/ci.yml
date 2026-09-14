@@ -121,15 +121,11 @@ jobs:
           END $$;
           SQL
 
-      # Proves the database REFUSES invariant violations (1, 2, 13) and the
-      # ingestion legal gates, rather than merely that the constraints exist.
+      # Proves the database REFUSES invariant violations (1, 2, 13), the ingestion
+      # legal gates, and that owner-only tables grant no admin path. Shares one
+      # script with local use so the two cannot drift.
       - name: Schema invariant tests
-        run: |
-          set -euo pipefail
-          out=$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/invariants.sql 2>&1)
-          echo "$out" | sed 's/^psql:[^ ]* NOTICE:  //'
-          if echo "$out" | grep -q 'FAIL'; then exit 1; fi
-          echo "$out" | grep -c 'PASS' | xargs -I{} echo "{} invariant assertions passed."
+        run: npm run db:test
 
       - name: Roll back every migration
         run: npm run db:rollback -- --all

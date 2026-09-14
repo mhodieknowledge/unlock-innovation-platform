@@ -201,27 +201,70 @@ BEGIN
   RAISE NOTICE 'PASS  admin_audit_log is append-only by policy';
 END $$;
 
--- The hard invariant, asserted structurally: eligibility_profiles must have
--- exactly one policy and it must not mention is_admin (DATA_MODEL.md §15,
--- ADMIN_SYSTEM.md §1 -- nobody at any role can read it).
+-- The hard invariant, asserted structurally. DATA_MODEL.md §15: eligibility
+-- profiles are "readable by exactly one principal — the owning user. Admin roles
+-- have no read path."
+--
+-- Deliberately NOT asserted as "exactly one policy". An earlier version did, and
+-- it broke the moment migration 0008 added the owner-scoped INSERT policy a user
+-- needs to create their own row. Counting policies was a proxy for the real rule;
+-- this checks the rule itself, which is that EVERY policy is confined to the
+-- owning user and none consults admin status.
+--
+-- Applied to the other owner-only tables too: tracker contents and digest history
+-- are equally off-limits to admins (ADMIN_SYSTEM.md §6).
 DO $$
-DECLARE n int; expr text;
+DECLARE
+  bad record;
+  checked int := 0;
+BEGIN
+  FOR bad IN
+    SELECT c.relname AS tbl,
+           p.polname AS pol,
+           coalesce(pg_get_expr(p.polqual, p.polrelid), '') AS qual,
+           coalesce(pg_get_expr(p.polwithcheck, p.polrelid), '') AS chk
+      FROM pg_policy p
+      JOIN pg_class c ON c.oid = p.polrelid
+     WHERE c.relname IN ('eligibility_profiles', 'tracker_entries',
+                         'notification_channels', 'notification_preferences')
+  LOOP
+    checked := checked + 1;
+
+    IF bad.qual ILIKE '%is_admin%' OR bad.chk ILIKE '%is_admin%' THEN
+      RAISE EXCEPTION
+        'FAIL  %.% must grant NO admin path (qual=%, check=%)',
+        bad.tbl, bad.pol, bad.qual, bad.chk;
+    END IF;
+
+    -- Every policy must be scoped to the caller. A policy with neither a
+    -- USING nor a WITH CHECK expression would be unrestricted.
+    IF bad.qual NOT ILIKE '%auth.uid()%' AND bad.chk NOT ILIKE '%auth.uid()%' THEN
+      RAISE EXCEPTION
+        'FAIL  %.% is not scoped to auth.uid() (qual=%, check=%)',
+        bad.tbl, bad.pol, bad.qual, bad.chk;
+    END IF;
+  END LOOP;
+
+  IF checked = 0 THEN
+    RAISE EXCEPTION 'FAIL  found no policies to check — the assertion is vacuous';
+  END IF;
+
+  RAISE NOTICE
+    'PASS  all % owner-only policies are scoped to auth.uid() with no admin path', checked;
+END $$;
+
+-- Deliveries and the send budget must have NO user-facing policy at all: they are
+-- dispatcher-only, written in the batch tier (NOTIFICATIONS.md §4).
+DO $$
+DECLARE n int;
 BEGIN
   SELECT count(*) INTO n FROM pg_policy p
     JOIN pg_class c ON c.oid = p.polrelid
-   WHERE c.relname = 'eligibility_profiles';
-  IF n <> 1 THEN
-    RAISE EXCEPTION 'FAIL  eligibility_profiles must have exactly 1 policy (found %)', n;
+   WHERE c.relname IN ('notification_deliveries', 'send_budget', 'rate_limit_counters');
+  IF n <> 0 THEN
+    RAISE EXCEPTION 'FAIL  dispatcher tables must have no policy at all (found %)', n;
   END IF;
-
-  SELECT pg_get_expr(p.polqual, p.polrelid) INTO expr FROM pg_policy p
-    JOIN pg_class c ON c.oid = p.polrelid
-   WHERE c.relname = 'eligibility_profiles';
-  IF expr ILIKE '%is_admin%' THEN
-    RAISE EXCEPTION 'FAIL  eligibility_profiles policy must grant NO admin read path (got %)', expr;
-  END IF;
-
-  RAISE NOTICE 'PASS  eligibility_profiles has exactly one owner-only policy, no admin path';
+  RAISE NOTICE 'PASS  dispatcher tables are unreachable by any user (default deny)';
 END $$;
 
 ROLLBACK;

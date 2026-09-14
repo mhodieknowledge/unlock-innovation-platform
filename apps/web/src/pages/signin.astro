@@ -1,0 +1,216 @@
+---
+// Sign-in. UX_FLOWS.md §17.
+//
+// "Triggered only by a personal action, never by arrival." This page is reachable
+// from a Save or an intent, and the copy frames the benefit rather than the
+// account: PRODUCT_SPEC.md §8 principle 3 means no account is ever required to
+// receive value, so asking for one has to earn its place.
+//
+// Provider order is GitHub -> Google -> email OTP and is NOT cosmetic: email OTP
+// spends the same ~300/day budget as the digests that drive retention
+// (FREE_INFRASTRUCTURE.md §3.3). UX_FLOWS.md §17 says it should not be reshuffled.
+
+import Base from "../layouts/Base.astro";
+import { createAuthClient, safeReturnTo } from "../lib/auth";
+import { reportError } from "../lib/errors";
+
+export const prerender = false;
+
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const returnTo = safeReturnTo(Astro.url.searchParams.get("returnTo"));
+
+type State = "form" | "otp_sent" | "error" | "unavailable";
+let state: State = "form";
+let message = "";
+let emailUsed = "";
+
+const client = createAuthClient(Astro.cookies, env);
+if (!client) state = "unavailable";
+
+if (Astro.request.method === "POST" && client) {
+  try {
+    const form = await Astro.request.formData();
+    const provider = String(form.get("provider") ?? "");
+    const confirmed18 = form.get("age_confirmed") === "on";
+
+    // PRODUCT_SPEC.md §22.1 — the 18+ confirmation is REQUIRED at signup, not
+    // an afterthought. MODERATION_AND_TRUST.md §8 explains why a zero-budget,
+    // solo-operated platform cannot responsibly run user-to-user contact for
+    // minors, and states the limitation plainly rather than accepting the risk
+    // quietly.
+    if (!confirmed18) {
+      state = "error";
+      message = "Please confirm you are 18 or over. Accounts here are 18+.";
+    } else if (provider === "github" || provider === "google") {
+      // Carry the 18+ acknowledgement across the OAuth round trip. HTTP-only and
+      // short-lived, because a query parameter would be trivially forged and
+      // PRODUCT_SPEC.md §22.1 treats this as a gate, not a formality. If it is
+      // missing on return, the account is created unconfirmed and stays read-only
+      // for social surfaces — failing closed rather than assuming consent.
+      Astro.cookies.set("mb_age_ack", "1", {
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 900,
+      });
+
+      const { data, error } = await client.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo: new URL(
+            `/auth/callback?returnTo=${encodeURIComponent(returnTo)}`,
+            Astro.url,
+          ).toString(),
+        },
+      });
+      if (error) throw new Error(error.message);
+      if (data.url) return Astro.redirect(data.url, 302);
+      state = "error";
+      message = "We couldn't start that sign-in. Try another option.";
+    } else if (provider === "email") {
+      emailUsed = String(form.get("email") ?? "").trim().slice(0, 200);
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(emailUsed)) {
+        state = "error";
+        message = "That doesn't look like an email address.";
+      } else {
+        Astro.cookies.set("mb_age_ack", "1", {
+          httpOnly: true,
+          secure: true,
+          sameSite: "lax",
+          path: "/",
+          maxAge: 900,
+        });
+
+        const { error } = await client.auth.signInWithOtp({
+          email: emailUsed,
+          options: {
+            emailRedirectTo: new URL(
+              `/auth/callback?returnTo=${encodeURIComponent(returnTo)}`,
+              Astro.url,
+            ).toString(),
+          },
+        });
+        if (error) throw new Error(error.message);
+        state = "otp_sent";
+      }
+    } else {
+      state = "error";
+      message = "Choose how you'd like to sign in.";
+    }
+  } catch (err) {
+    await reportError(err, { route: "/signin" }, env);
+    state = "error";
+    // SECURITY.md §7: no enumeration. The message never reveals whether an
+    // address is already registered.
+    message = "We couldn't sign you in just now. Please try again shortly.";
+  }
+}
+---
+
+<Base title="Sign in" noindex>
+  <div class="max-w-md">
+    <h1 class="text-title font-semibold">Save this and get a reminder before it closes</h1>
+    <p class="mt-2 text-dense text-ink-2">
+      You can browse everything and check your eligibility without an account. Signing in is only
+      for the things that are yours: saved opportunities, reminders, and your eligibility details.
+    </p>
+
+    {
+      state === "unavailable" && (
+        <p class="mt-4 border-l-[3px] border-line-strong bg-sunken p-3 text-dense">
+          Sign-in isn't available right now. Everything you can read without an account still
+          works.
+        </p>
+      )
+    }
+
+    {
+      state === "otp_sent" ? (
+        <div class="mt-4 border-l-[3px] border-eligible bg-eligible-wash p-4">
+          <p class="font-semibold text-eligible">
+            <span aria-hidden="true">●</span> Check your email
+          </p>
+          <p class="mt-1 text-dense text-ink-2">
+            We sent a sign-in link to {emailUsed}. It works once and expires in 10 minutes.
+          </p>
+        </div>
+      ) : (
+        state !== "unavailable" && (
+          <>
+            {state === "error" && (
+              <p
+                class="mt-4 border-l-[3px] border-danger bg-noteligible-wash p-3 text-dense text-danger"
+                role="alert"
+              >
+                {message}
+              </p>
+            )}
+
+            <form method="post" class="mt-5 space-y-4">
+              <!-- Required, and checked server-side. A checkbox is not a
+                   verification, and PRODUCT_SPEC.md §22.1 says so: age is
+                   self-asserted. The gate is a policy boundary, and the
+                   limitation is stated rather than hidden. -->
+              <label class="flex items-start gap-2 text-dense">
+                <input type="checkbox" name="age_confirmed" class="mt-1 h-4 w-4" required />
+                <span>
+                  I'm 18 or over.
+                  <span class="block text-meta text-ink-2">
+                    Opportunities open to under-18s stay fully readable without an account — you
+                    just can't track or join them here.
+                  </span>
+                </span>
+              </label>
+
+              <button
+                type="submit"
+                name="provider"
+                value="github"
+                class="h-11 w-full rounded-row bg-brand px-4 font-semibold text-surface"
+              >
+                Continue with GitHub
+              </button>
+
+              <button
+                type="submit"
+                name="provider"
+                value="google"
+                class="h-11 w-full rounded-row border border-line-strong bg-surface px-4 font-semibold"
+              >
+                Continue with Google
+              </button>
+
+              <div class="border-t border-line pt-4">
+                <label class="block">
+                  <span class="block text-micro font-semibold text-ink-2">Or use email</span>
+                  <input
+                    type="email"
+                    name="email"
+                    value={emailUsed}
+                    autocomplete="email"
+                    placeholder="you@example.com"
+                    class="mt-1 h-11 w-full rounded-row border border-line px-3"
+                  />
+                </label>
+                <button
+                  type="submit"
+                  name="provider"
+                  value="email"
+                  class="mt-2 h-11 w-full rounded-row border border-line-strong bg-surface px-4 font-semibold"
+                >
+                  Email me a sign-in link
+                </button>
+              </div>
+            </form>
+
+            <p class="mt-4 text-meta text-ink-2">
+              We never ask for a password. Your eligibility details are visible only to you, and
+              are never sent to any AI service.
+            </p>
+          </>
+        )
+      )
+    }
+  </div>
+</Base>
