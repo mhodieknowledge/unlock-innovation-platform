@@ -59,6 +59,35 @@ VALUES ('77777777-7777-7777-7777-777777777777', 'privacy@example.invalid', true,
 INSERT INTO profiles (user_id, visibility, headline, bio, indexable)
 VALUES ('77777777-7777-7777-7777-777777777777', 'public', 'Builder in Harare', 'A bio.', true);
 
+-- Phase 5 and 6 presence, so the export has something to carry and the deletion has
+-- something to withdraw. Before migration 0019 the export omitted all of it and the
+-- deletion left every bit of it standing.
+INSERT INTO users (id, email, age_confirmed_18, timezone, display_name)
+VALUES ('78777777-7777-7777-7777-777777777777', 'other@example.invalid', true,
+        'Africa/Harare', 'Someone Else');
+
+INSERT INTO intents (user_id, opportunity_id, stance, note)
+VALUES ('77777777-7777-7777-7777-777777777777', '66666666-6666-6666-6666-666666666662',
+        'looking_for_team', 'Happy to take the backend.');
+
+INSERT INTO projects (id, owner_user_id, title, pitch, visibility)
+VALUES ('79777777-7777-7777-7777-777777777777', '77777777-7777-7777-7777-777777777777',
+        'A project of theirs', 'One line about it', 'public');
+
+INSERT INTO teams (id, opportunity_id, owner_user_id, name, max_size, roles_needed)
+VALUES ('7a777777-7777-7777-7777-777777777777', '66666666-6666-6666-6666-666666666662',
+        '77777777-7777-7777-7777-777777777777', 'Their team', 3, ARRAY['frontend']);
+
+INSERT INTO team_members (team_id, user_id) VALUES
+  ('7a777777-7777-7777-7777-777777777777', '78777777-7777-7777-7777-777777777777');
+
+INSERT INTO collaboration_requests
+  (id, context, team_id, requester_user_id, target_user_id, message)
+VALUES ('7b777777-7777-7777-7777-777777777777', 'team_request',
+        '7a777777-7777-7777-7777-777777777777',
+        '78777777-7777-7777-7777-777777777777', '77777777-7777-7777-7777-777777777777',
+        'I would like to help with the interface.');
+
 INSERT INTO eligibility_profiles (user_id, country_of_residence, birth_year)
 VALUES ('77777777-7777-7777-7777-777777777777', 'ZW', 1998);
 
@@ -224,7 +253,7 @@ BEGIN
   j := export_my_account();
 
   PERFORM assert_eq('the export names its format',
-    j->>'format', 'mbele-account-export-v1');
+    j->>'format', 'mbele-account-export-v2');
   PERFORM assert_eq('the export includes the account',
     j->'account'->>'email', 'privacy@example.invalid');
   PERFORM assert_true('the export includes the eligibility profile',
@@ -245,6 +274,27 @@ BEGIN
     AND j ? 'notification_settings' AND j ? 'notification_channels'
     AND j ? 'notification_preferences' AND j ? 'notifications'
     AND j ? 'organisation_memberships' AND j ? 'reports_i_filed');
+
+  -- §5's portability row names projects explicitly, and the export did not carry them
+  -- until migration 0019. Nor anything from Phase 5 — an export that silently omits half
+  -- of what a person wrote is worse than no export, because they cannot tell.
+  PERFORM assert_eq('the export includes their projects (§5 names them)',
+    j->'projects'->0->>'title', 'A project of theirs');
+  PERFORM assert_eq('and what they said about an opportunity',
+    j->'intents'->0->>'note', 'Happy to take the backend.');
+  PERFORM assert_eq('and the teams they are in',
+    j->'teams'->0->>'name', 'Their team');
+  PERFORM assert_eq('and the requests they received, which are addressed to them',
+    j->'requests_i_received'->0->>'message',
+    'I would like to help with the interface.');
+  PERFORM assert_true('every Phase 5 and 6 section is present as a key too',
+    j ? 'projects' AND j ? 'project_memberships' AND j ? 'intents' AND j ? 'teams'
+    AND j ? 'requests_i_sent' AND j ? 'requests_i_received' AND j ? 'my_messages'
+    AND j ? 'people_i_blocked');
+
+  -- Other people's words are not this person's data to take.
+  PERFORM assert_eq('the export carries no message anyone else wrote',
+    jsonb_array_length(j->'my_messages'), 0);
 END $$;
 
 -- An unauthenticated caller gets nothing, and says why.
@@ -307,6 +357,46 @@ BEGIN
     enqueue_notification('77777777-7777-7777-7777-777777777777', 'opportunity_closed',
                          'Something you saved has closed.'),
     NULL::uuid);
+
+  -- "Immediate deactivation" has to mean the account stops being PRESENT, not just that it
+  -- stops signing in. Before migration 0019 every assertion below failed: the intent stayed
+  -- listed in the room, the team kept taking requests, and the requester was left waiting on
+  -- someone who had gone.
+  PERFORM assert_eq(
+    'their intent is withdrawn from every room immediately',
+    (SELECT count(*)::int FROM intents
+      WHERE user_id = '77777777-7777-7777-7777-777777777777' AND withdrawn_at IS NULL),
+    0);
+
+  PERFORM assert_eq(
+    'requests waiting on them are withdrawn rather than left pending forever',
+    (SELECT state::text FROM collaboration_requests
+      WHERE id = '7b777777-7777-7777-7777-777777777777'),
+    'withdrawn');
+
+  -- §4.3: "If the owner leaves, ownership transfers to the longest-standing member."
+  PERFORM assert_eq(
+    'a team they owned passes to its longest-standing member (§4.3)',
+    (SELECT owner_user_id FROM teams WHERE id = '7a777777-7777-7777-7777-777777777777'),
+    '78777777-7777-7777-7777-777777777777'::uuid);
+
+  PERFORM assert_eq(
+    'and the new owner is told, rather than discovering it',
+    (SELECT count(*)::int FROM notifications
+      WHERE user_id = '78777777-7777-7777-7777-777777777777' AND type = 'team_update'),
+    1);
+
+  PERFORM assert_eq(
+    'their projects stop being visible to anyone else',
+    (SELECT visibility::text FROM projects WHERE id = '79777777-7777-7777-7777-777777777777'),
+    'private');
+
+  -- And NOT deleted: the 30-day window is a way back, and a cancelled deletion that
+  -- returned an empty project list would make the window worthless.
+  PERFORM assert_eq(
+    'but they are not destroyed during the grace period',
+    (SELECT count(*)::int FROM projects WHERE id = '79777777-7777-7777-7777-777777777777'),
+    1);
 END $$;
 
 -- The grace period is real: a purge run today deletes nothing.
@@ -340,7 +430,36 @@ SELECT assert_eq(
   0);
 
 SELECT assert_true(
-  'the purge reports the retention rules it cannot yet enforce',
-  jsonb_array_length(purge_expired_data()->'not_yet_enforced') = 3);
+  'the purge still reports whatever it cannot yet enforce',
+  jsonb_array_length(purge_expired_data()->'not_yet_enforced') >= 1);
+
+SELECT assert_true(
+  'and names the rules enforced by another job, so the list is not read as a gap',
+  jsonb_array_length(purge_expired_data()->'enforced_elsewhere') >= 2);
+
+-- §2.5 and §8: a declined request is deleted 90 days after the decision. Its only
+-- continuing purpose is the 7-day re-request cooldown, which has long expired by then, so
+-- keeping the message text is holding someone's words for nothing.
+-- A second live account, because the one the erasure test used has been purged by now and a
+-- request needs two distinct people (request_not_to_self).
+INSERT INTO users (id, email, age_confirmed_18)
+VALUES ('7d777777-7777-7777-7777-777777777777', 'declined-target@example.invalid', true);
+
+INSERT INTO collaboration_requests
+  (id, context, opportunity_id, requester_user_id, target_user_id, message, state, decided_at)
+VALUES ('7c777777-7777-7777-7777-777777777777', 'opportunity_intent',
+        '66666666-6666-6666-6666-666666666662',
+        '78777777-7777-7777-7777-777777777777', '7d777777-7777-7777-7777-777777777777',
+        'An old declined request.', 'declined', now() - interval '100 days');
+
+SELECT assert_true(
+  'a declined request older than 90 days is purged (§2.5)',
+  (purge_expired_data()->>'decided_requests_purged')::int >= 1);
+
+SELECT assert_eq(
+  'and it is gone',
+  (SELECT count(*)::int FROM collaboration_requests
+    WHERE id = '7c777777-7777-7777-7777-777777777777'),
+  0);
 
 ROLLBACK;

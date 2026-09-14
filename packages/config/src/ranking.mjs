@@ -258,3 +258,80 @@ export function applyDiversity(items, keyOf) {
 
   return [...kept, ...displaced];
 }
+
+/**
+ * Project → opportunity matching. COLLABORATION_SYSTEM.md §1.5:
+ *
+ *   score: 0.55·cosine(project, opportunity) + 0.30·urgency + 0.15·tag_overlap
+ *   cap:   top 10, max 2 per organisation
+ *
+ * Similarity carries more weight here than in the recommendation score (0.45), and
+ * deliberately: a recommendation answers "what should I look at", where urgency and
+ * provenance matter as much as fit, while a project match answers "does this call want
+ * what I am already building" — a question about the work itself.
+ */
+export const PROJECT_MATCH_WEIGHTS = /** @type {const} */ ({
+  similarity: 0.55,
+  urgency: 0.3,
+  tagOverlap: 0.15,
+});
+
+/** §1.5's cap. Ten is a list a person reads; twenty is a list they scroll past. */
+export const PROJECT_MATCHES_STORED = 10;
+
+/**
+ * How many shared tags count as a full tag-overlap score.
+ *
+ * Four, because a project carries categories, industries, skills and technologies, and an
+ * opportunity that matches one of each is as aligned as the tag data can show. Beyond that
+ * the extra overlap is noise from a broadly tagged listing, not a better match.
+ */
+export const TAG_OVERLAP_SATURATION = 4;
+
+/**
+ * A HARD per-organisation cap, unlike applyDiversity's displacement.
+ *
+ * §8's recommendation surface displaces an over-represented organisation's third item
+ * down the list, because a recommendation list that drops things has hidden something the
+ * user might have wanted. §1.5's project matches are a cap: "top 10, max 2 per
+ * organisation". With few candidates, displacement would let a third item from the same
+ * organisation back into the top 10 — so this one filters.
+ *
+ * @template T
+ * @param {T[]} items ordered best first
+ * @param {(item: T) => string | null} organisationOf
+ * @param {number} [max]
+ * @returns {T[]}
+ */
+export function capPerOrganisation(items, organisationOf, max = DIVERSITY.maxPerOrganisation) {
+  /** @type {Map<string, number>} */
+  const seen = new Map();
+  /** @type {T[]} */
+  const kept = [];
+
+  for (const item of items) {
+    const org = organisationOf(item);
+    if (org === null) {
+      // An opportunity with no organisation cannot crowd one out either.
+      kept.push(item);
+      continue;
+    }
+    const n = seen.get(org) ?? 0;
+    if (n >= max) continue;
+    seen.set(org, n + 1);
+    kept.push(item);
+  }
+
+  return kept;
+}
+
+/**
+ * The tag-overlap term, normalised to 0..1.
+ *
+ * @param {number} sharedTagCount
+ * @returns {number}
+ */
+export function tagOverlapScore(sharedTagCount) {
+  if (!Number.isFinite(sharedTagCount) || sharedTagCount <= 0) return 0;
+  return Math.min(1, sharedTagCount / TAG_OVERLAP_SATURATION);
+}

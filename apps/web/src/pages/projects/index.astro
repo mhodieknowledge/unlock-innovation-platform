@@ -1,0 +1,110 @@
+---
+// Project discovery. UX_FLOWS.md §9.3 `[PR]`:
+//
+//   "Does not exist below 40 public projects. Not an empty page, not a 'coming soon' —
+//    the route is absent and the nav item is not rendered."
+//
+// So this route returns 404 below the floor, and the 404 says nothing about a feature
+// arriving later: a "coming soon" page is a promise the product has not earned, and it
+// teaches a visitor that the place is empty. Below the floor, projects are a private tool,
+// which is what §1.1 says they are for anyway.
+//
+// The floor and the flag are both decided in the database (project_browse_state), so this
+// page cannot accidentally render a browse surface by asking the wrong question.
+
+import Base from "../../layouts/Base.astro";
+import { getSessionUser } from "../../lib/auth";
+import { getClient } from "../../lib/db";
+import { reportError } from "../../lib/errors";
+import { getProjectBrowseState, stateLabel, type ProjectState } from "../../lib/projects";
+
+export const prerender = false;
+
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const user = await getSessionUser(Astro.cookies, env);
+const client = getClient(env);
+
+interface PublicProject {
+  slug: string;
+  title: string;
+  pitch: string | null;
+  state: ProjectState;
+  country_iso2: string | null;
+  last_activity_at: string;
+}
+
+let browse = { state: "disabled" as "open" | "below_floor" | "disabled", public_projects: 0, floor: 40 };
+let rows: PublicProject[] = [];
+
+if (client) {
+  try {
+    browse = await getProjectBrowseState(client);
+
+    if (browse.state === "open") {
+      const { data } = await client
+        .from("projects")
+        .select("slug, title, pitch, state, country_iso2, last_activity_at")
+        .eq("visibility", "public")
+        .is("deleted_at", null)
+        .neq("state", "archived")
+        .order("last_activity_at", { ascending: false })
+        .limit(40);
+      rows = (data ?? []) as unknown as PublicProject[];
+    }
+  } catch (err) {
+    await reportError(err, { route: "/projects" }, env);
+  }
+}
+
+if (browse.state !== "open") {
+  Astro.response.status = 404;
+  Astro.response.headers.set("cache-control", "public, s-maxage=300");
+} else {
+  Astro.response.headers.set("cache-control", "public, s-maxage=900");
+}
+---
+
+{
+  browse.state !== "open" ? (
+    <Base title="Not found" noindex user={user}>
+      <h1 class="text-display font-bold">Nothing here</h1>
+      <p class="prose-measure mt-3 text-body text-ink-2">
+        This address doesn't lead anywhere. If you were looking for opportunities, they're all in
+        one place.
+      </p>
+      <p class="mt-4"><a href="/opportunities" class="text-brand">Browse what's open →</a></p>
+    </Base>
+  ) : (
+    <Base
+      title="Projects"
+      description="Projects builders across Africa are working on, and the open calls they match."
+      canonical="/projects"
+      user={user}
+    >
+      <h1 class="text-title font-semibold">Projects</h1>
+      <p class="mt-2 max-w-prose text-dense text-ink-2">
+        {browse.public_projects} projects people have chosen to show. Most projects here are
+        private — they exist to be matched against open calls, not to be browsed.
+      </p>
+
+      <ul class="mt-6 grid gap-3 md:grid-cols-2">
+        {rows.map((row) => (
+          <li class="rounded-sheet border border-line bg-surface p-4">
+            <p class="text-dense font-semibold">
+              <a href={`/projects/${row.slug}`} class="text-ink">{row.title}</a>
+            </p>
+            <p class="mt-1 text-micro text-ink-2">
+              {stateLabel(row.state)}
+              {row.country_iso2 ? ` · ${row.country_iso2}` : ""}
+            </p>
+            {row.pitch && <p class="mt-2 text-dense">{row.pitch}</p>}
+          </li>
+        ))}
+      </ul>
+
+      <p class="mt-8 text-micro text-ink-2">
+        <a href="/projects/new" class="underline">Start your own →</a>
+      </p>
+    </Base>
+  )
+}

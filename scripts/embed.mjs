@@ -97,6 +97,31 @@ function profileText(row) {
     .slice(0, 2000);
 }
 
+/**
+ * What a PROJECT is about. COLLABORATION_SYSTEM.md §1.5 matches this vector against the
+ * opportunity vectors, so it is built from the same kind of fields: what the thing is, who
+ * it is for, and the tags around it — not the whole problem statement, which would dilute a
+ * specific project into "a document about technology".
+ *
+ * Visibility is not consulted. §1.1 `[PR]`: a private project still receives matches, and a
+ * private project with no embedding would receive worse ones.
+ *
+ * @param {Record<string, any>} row
+ */
+function projectText(row) {
+  return [
+    row.title,
+    row.pitch,
+    row.problem,
+    row.target_users,
+    (row.tag_names ?? []).join(", "),
+    row.country_iso2,
+  ]
+    .filter((part) => typeof part === "string" && part.trim() !== "")
+    .join("\n")
+    .slice(0, 2000);
+}
+
 /** pgvector's text input format, shared by vector and halfvec. @param {number[]} values */
 const toVectorLiteral = (values) => `[${values.map((v) => v.toFixed(6)).join(",")}]`;
 
@@ -130,9 +155,25 @@ try {
     [ALL, LIMIT],
   );
 
+  const { rows: projects } = await client.query(
+    `SELECT p.id, p.title, p.pitch, p.problem, p.target_users, p.country_iso2,
+            coalesce(ARRAY(
+              SELECT t.name FROM tags t
+               WHERE t.id = ANY (p.category_ids || p.industry_ids || p.skill_ids || p.technology_ids)
+            ), '{}') AS tag_names
+       FROM projects p
+      WHERE p.deleted_at IS NULL
+        AND p.state <> 'archived'
+        AND ($1::boolean OR p.embedding IS NULL)
+      ORDER BY p.updated_at DESC
+      LIMIT $2`,
+    [ALL, LIMIT],
+  );
+
   const work = [
     ...opportunities.map((row) => ({ kind: "opportunity", id: row.id, text: opportunityText(row) })),
     ...profiles.map((row) => ({ kind: "profile", id: row.user_id, text: profileText(row) })),
+    ...projects.map((row) => ({ kind: "project", id: row.id, text: projectText(row) })),
   ].filter((item) => item.text.trim() !== "");
 
   if (work.length === 0) {
@@ -171,16 +212,26 @@ try {
       if (DRY_RUN) continue;
 
       const item = batch[j];
+      // An explicit branch per kind, and a throw on an unknown one. An `else` that wrote
+      // to profiles was fine with two kinds and would have written project vectors into
+      // profile rows the moment a third arrived.
       if (item.kind === "opportunity") {
         await client.query("UPDATE opportunities SET embedding = $2::halfvec WHERE id = $1", [
           item.id,
           toVectorLiteral(vector),
         ]);
-      } else {
+      } else if (item.kind === "profile") {
         await client.query("UPDATE profiles SET embedding = $2::halfvec WHERE user_id = $1", [
           item.id,
           toVectorLiteral(vector),
         ]);
+      } else if (item.kind === "project") {
+        await client.query("UPDATE projects SET embedding = $2::halfvec WHERE id = $1", [
+          item.id,
+          toVectorLiteral(vector),
+        ]);
+      } else {
+        throw new Error(`Unknown embedding target: ${item.kind}`);
       }
       written += 1;
     }

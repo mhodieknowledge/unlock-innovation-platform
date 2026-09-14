@@ -11,6 +11,7 @@ import Base from "../../layouts/Base.astro";
 import EligibilityCheck from "../../components/EligibilityCheck.svelte";
 import { getClient, getOpportunity } from "../../lib/db";
 import { getIntentCount, getRoomState } from "../../lib/rooms";
+import { getRelatedProjects, stateLabel, type RelatedProject } from "../../lib/projects";
 import { countdownLabel, countdownWeight, deadlineFacts, freshnessLabel } from "../../lib/deadline";
 import { RULE_OUTCOME_GLYPH } from "../../lib/verdict";
 import { NO_FEE_STATEMENT } from "@mbele/config";
@@ -61,6 +62,16 @@ const room =
     ? await getRoomState(anon, opp.id)
     : { state: "disabled" as const, intent_count: 0, team_count: 0, reason: "unavailable" };
 const intentCount = opp && anon && room.state !== "disabled" ? await getIntentCount(anon, opp.id) : null;
+
+/**
+ * §1.6: matching PUBLIC projects, "only at a density floor of 3 matching public projects.
+ * Below that, the section does not exist."
+ *
+ * The floor is enforced in projects_for_opportunity, which returns NOTHING below it rather
+ * than a short list — so this page cannot render two projects and call it a section.
+ */
+const relatedProjects: RelatedProject[] =
+  opp && anon ? await getRelatedProjects(anon, opp.id) : [];
 
 const facts = opp
   ? deadlineFacts({
@@ -339,6 +350,36 @@ const factGrid: [string, string][] = opp
           )
         }
       </p>
+
+      {
+        /* §1.6. Absent below three matching public projects, and absent entirely while its
+           flag is off — both halves, never either (§24). */
+        relatedProjects.length > 0 && (
+          <>
+            <h2 class="mt-8 text-subtitle font-semibold">Projects aiming at this</h2>
+            <p class="mt-1 text-meta text-ink-2">
+              Public projects whose subject overlaps this call. Their owners chose to show them.
+            </p>
+            <ul class="mt-3 divide-y divide-line border-t border-line">
+              {relatedProjects.map((project) => (
+                <li class="py-3">
+                  <a href={`/projects/${project.slug}`} class="text-dense font-semibold text-brand"
+                    >{project.title}</a
+                  >
+                  <p class="text-micro text-ink-2">
+                    {stateLabel(project.state)}
+                    {project.country_iso2 ? ` · ${project.country_iso2}` : ""}
+                    {project.roles_needed.length > 0
+                      ? ` · looking for ${project.roles_needed.slice(0, 3).join(", ")}`
+                      : ""}
+                  </p>
+                  {project.pitch && <p class="mt-1 text-dense">{project.pitch}</p>}
+                </li>
+              ))}
+            </ul>
+          </>
+        )
+      }
 
       <p class="mt-6 text-meta text-ink-2">{NO_FEE_STATEMENT}</p>
 

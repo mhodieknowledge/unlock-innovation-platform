@@ -49,6 +49,14 @@ const BUDGETS = {
   compose: { label: "Request composer", total: 100 * KB, js: 15 * KB },
   threads: { label: "Conversations", total: 120 * KB, js: 25 * KB },
   thread: { label: "One conversation", total: 120 * KB, js: 25 * KB },
+  // Phase 6. The detail page is measured with ten matches and the edit page with the whole
+  // tag vocabulary and every country in the select, which is the largest form in the
+  // product.
+  projectBrowse: { label: "Project browse", total: 150 * KB, js: 40 * KB },
+  projectNew: { label: "New project", total: 100 * KB, js: 15 * KB },
+  projectDetail: { label: "Project detail", total: 150 * KB, js: 40 * KB },
+  projectEdit: { label: "Project edit", total: 150 * KB, js: 40 * KB },
+  myProjects: { label: "Your projects", total: 200 * KB, js: 70 * KB },
 } as const;
 
 const LONG_QUOTE =
@@ -295,6 +303,90 @@ const THREAD_MESSAGES = Array.from({ length: 200 }, (_, i) => ({
   created_at: "2026-09-13T10:00:00Z",
 }));
 
+/**
+ * Phase 6 fixtures. COLLABORATION_SYSTEM.md §1's field lengths at their maximums: a 200-char
+ * pitch, 2,000-char problem and solution, ten matches with four reasons each.
+ */
+const PROJECT_ROW = {
+  id: "project-1",
+  slug: "irrigation-monitor-7f3a91",
+  owner_user_id: SESSION_USER.id,
+  title: "Irrigation monitoring for smallholder farms across Southern Africa",
+  pitch: "p".repeat(200),
+  problem: (LONG_PITCH.repeat(12) + " problem").slice(0, 2000),
+  solution: (LONG_PITCH.repeat(12) + " solution").slice(0, 2000),
+  target_users: "t".repeat(500),
+  state: "building",
+  visibility: "public",
+  indexable: true,
+  category_ids: [],
+  industry_ids: ["11111111-1111-1111-1111-111111111111"],
+  skill_ids: [],
+  technology_ids: [],
+  roles_needed: ["22222222-2222-2222-2222-222222222222"],
+  repo_url: "https://example.invalid/repo",
+  demo_url: "https://example.invalid/demo",
+  docs_url: "https://example.invalid/docs",
+  country_iso2: "ZW",
+  state_changed_at: "2026-08-01T00:00:00Z",
+  last_activity_at: "2026-09-13T00:00:00Z",
+  matched_at: "2026-09-13T00:00:00Z",
+  created_at: "2026-06-01T00:00:00Z",
+  deleted_at: null,
+};
+
+const PROJECT_MATCHES = Array.from({ length: 10 }, (_, i) => ({
+  opportunity_id: `opp-${i}`,
+  slug: `worst-case-${i + 1}`,
+  title: worstCaseOpportunity(i + 1).title,
+  organisation_name: "Example Foundation for African Innovation",
+  deadline_at: worstCaseOpportunity(i + 1).deadline_at,
+  deadline_precision: "date_only",
+  is_rolling: false,
+  cost: "free",
+  verdict: i % 3 === 0 ? "likely_eligible" : "eligible",
+  score: 0.9 - i / 50,
+  rank: i + 1,
+  reasons: [
+    SUBJECTS[i % SUBJECTS.length]!,
+    "you're eligible",
+    `closes in ${i + 3} days`,
+    "team entry",
+  ],
+  tracked: i % 4 === 0,
+}));
+
+const PUBLIC_PROJECTS = Array.from({ length: 40 }, (_, i) => ({
+  slug: `public-project-${i}`,
+  title: `${SUBJECTS[i % SUBJECTS.length]} project number ${i + 1}`,
+  pitch: (LONG_PITCH + ` number ${i}`).slice(0, 200),
+  state: ["idea", "building", "testing", "looking_for_collaborators"][i % 4]!,
+  country_iso2: ["ZW", "NG", "KE", "GH"][i % 4]!,
+  last_activity_at: "2026-09-13T00:00:00Z",
+}));
+
+const RELATED_PROJECTS = Array.from({ length: 6 }, (_, i) => ({
+  slug: `related-project-${i}`,
+  title: `${SUBJECTS[i % SUBJECTS.length]} build ${i + 1}`,
+  pitch: (LONG_PITCH + ` related ${i}`).slice(0, 200),
+  state: "building",
+  roles_needed: ["frontend", "data", "hardware"],
+  country_iso2: "ZW",
+}));
+
+const TAG_VOCABULARY = ["skill", "technology", "industry", "role"].flatMap((kind) =>
+  Array.from({ length: 10 }, (_, i) => ({
+    id: `${kind}-${i}-2222-2222-2222-222222222222`,
+    name: `${kind} option number ${i + 1}`,
+    kind,
+  })),
+);
+
+const COUNTRY_LIST = Array.from({ length: 54 }, (_, i) => ({
+  iso2: String.fromCharCode(65 + (i % 26), 65 + Math.floor(i / 26)),
+  name: `Country number ${i + 1} with a long name`,
+}));
+
 /** Every RPC the Phase 5 pages call, with a filled-to-the-cap answer for each. */
 const ROOM_RPC: Record<string, unknown> = {
   room_state: [{ state: "open", intent_count: 14, team_count: 6, reason: "room is open" }],
@@ -307,6 +399,10 @@ const ROOM_RPC: Record<string, unknown> = {
   my_threads: THREAD_ROWS,
   thread_view: THREAD_HEADER,
   handoff_identifiers: [],
+  project_matches: PROJECT_MATCHES,
+  project_browse_state: [{ state: "open", public_projects: 47, floor: 40 }],
+  projects_for_opportunity: RELATED_PROJECTS,
+  project_interest_target: [],
 };
 
 /**
@@ -331,6 +427,22 @@ const TABLE_ROWS: Record<string, unknown[]> = {
     },
   ],
   team_members: [{ user_id: "owner-0" }],
+  projects: [PROJECT_ROW, ...PUBLIC_PROJECTS],
+  project_members: Array.from({ length: 5 }, (_, i) => ({
+    user_id: `member-${i}`,
+    is_owner: i === 0,
+    joined_at: "2026-07-01T00:00:00Z",
+    users: { display_name: `Member number ${i + 1}` },
+    tags: { name: "frontend" },
+  })),
+  project_submissions: Array.from({ length: 4 }, (_, i) => ({
+    opportunity_id: `opp-${i}`,
+    outcome: ["submitted", "finalist", "winner", "not_selected"][i]!,
+    recorded_at: "2026-08-01T00:00:00Z",
+    opportunities: { slug: `worst-case-${i + 1}`, title: worstCaseOpportunity(i + 1).title },
+  })),
+  tags: TAG_VOCABULARY,
+  countries: COUNTRY_LIST,
   notification_preferences: [
     "deadline_reminder", "opportunity_changed", "opportunity_closed", "digest",
     "request_received", "team_update", "moderation_outcome",
@@ -482,6 +594,7 @@ vi.mock("../src/lib/db", () => ({
   // the page renders its decision state, which is the state with content in it.
   getOpportunitiesByIds: vi.fn(async () => PAGE_OF_ROWS),
   getClient: vi.fn(() => ({
+    from: (table: string) => tableStub(table),
     rpc: async (fn: string) =>
       fn === "describe_unsubscribe_token"
         ? { data: [{ type: "digest", already_used: false, digest_frequency: "daily" }], error: null }
@@ -722,6 +835,36 @@ beforeAll(async () => {
     { id: "thread-0" },
     "https://example.invalid/threads/thread-0",
     true,
+  );
+  await render(
+    "projectBrowse",
+    () => import("../src/pages/projects/index.astro"),
+    {},
+    "https://example.invalid/projects",
+  );
+  await render(
+    "projectNew",
+    () => import("../src/pages/projects/new.astro"),
+    {},
+    "https://example.invalid/projects/new",
+  );
+  await render(
+    "projectDetail",
+    () => import("../src/pages/projects/[slug].astro"),
+    { slug: PROJECT_ROW.slug },
+    `https://example.invalid/projects/${PROJECT_ROW.slug}`,
+  );
+  await render(
+    "projectEdit",
+    () => import("../src/pages/projects/[slug]/edit.astro"),
+    { slug: PROJECT_ROW.slug },
+    `https://example.invalid/projects/${PROJECT_ROW.slug}/edit`,
+  );
+  await render(
+    "myProjects",
+    () => import("../src/pages/you/projects.astro"),
+    {},
+    "https://example.invalid/you/projects",
   );
   await render(
     "unsubscribe",

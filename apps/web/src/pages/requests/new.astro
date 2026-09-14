@@ -23,6 +23,7 @@ import {
   type RequestAllowance,
   type RoomBuilder,
 } from "../../lib/rooms";
+import { getInterestTarget } from "../../lib/projects";
 
 export const prerender = false;
 
@@ -42,16 +43,21 @@ Astro.response.headers.set("cache-control", "private, no-store");
 
 const teamId = Astro.url.searchParams.get("team");
 const builderId = Astro.url.searchParams.get("builder");
+const projectId = Astro.url.searchParams.get("project");
 
 interface Target {
-  context: "team_request" | "opportunity_intent";
+  context: "team_request" | "opportunity_intent" | "project_role";
   teamId: string | null;
-  opportunityId: string;
-  opportunitySlug: string;
-  opportunityTitle: string;
+  projectId: string | null;
+  /** Null for a project: interest in a project is not attached to an opportunity. */
+  opportunityId: string | null;
+  opportunitySlug: string | null;
+  opportunityTitle: string | null;
   targetUserId: string;
-  /** What the composer is writing TO — a team's name, or a person's. */
+  /** What the composer is writing TO — a team's name, a project's, or a person's. */
   label: string;
+  /** Where "back" goes, which differs per context. */
+  backHref: string;
   roles: string[];
   seatsLeft: number | null;
 }
@@ -96,11 +102,13 @@ if (client) {
         target = {
           context: "team_request",
           teamId: row.id,
+          projectId: null,
           opportunityId: row.opportunity_id,
           opportunitySlug: row.opportunities.slug,
           opportunityTitle: row.opportunities.title,
           targetUserId: row.owner_user_id,
           label: row.name,
+          backHref: `/opportunities/${row.opportunities.slug}/room`,
           roles: row.roles_needed ?? [],
           seatsLeft: typeof count === "number" ? Math.max(0, row.max_size - count) : null,
         };
@@ -126,16 +134,38 @@ if (client) {
             target = {
               context: "opportunity_intent",
               teamId: null,
+              projectId: null,
               opportunityId: opp.id,
               opportunitySlug: opp.slug,
               opportunityTitle: opp.title,
               targetUserId: who.user_id,
               label: builderName(who.display_name),
+              backHref: `/opportunities/${opp.slug}/room`,
               roles: who.roles_offered ?? [],
               seatsLeft: null,
             };
           }
         }
+      }
+    } else if (projectId) {
+      // COLLABORATION_SYSTEM.md §2.1's third context. The gate is the same shape as the
+      // room's: project_interest_target returns nothing for a private project, for your own
+      // project, or where either side has blocked the other.
+      const who = await getInterestTarget(client, projectId);
+      if (who && !who.already_member) {
+        target = {
+          context: "project_role",
+          teamId: null,
+          projectId: who.project_id,
+          opportunityId: null,
+          opportunitySlug: null,
+          opportunityTitle: null,
+          targetUserId: who.owner_user_id,
+          label: who.title,
+          backHref: `/projects/${who.slug}`,
+          roles: who.roles_needed ?? [],
+          seatsLeft: null,
+        };
       }
     }
 
@@ -159,6 +189,7 @@ if (client) {
           const { error } = await client.from("collaboration_requests").insert({
             context: target.context,
             team_id: target.teamId,
+            project_id: target.projectId,
             opportunity_id: target.context === "opportunity_intent" ? target.opportunityId : null,
             requester_user_id: user.id,
             target_user_id: target.targetUserId,
@@ -213,7 +244,7 @@ const nextSlot = allowance?.next_slot_at
         <p class="prose-measure mt-3 text-body text-ink-2">
           {failed
             ? "Something on our side is unavailable. Nothing has been sent."
-            : "Either that team or person is no longer in the room, or you haven't said you're going for the same thing. A room only shows people to other people who are going for it."}
+            : "Either that team, person or project is no longer reachable, or you haven't said you're going for the same thing. A room only shows people to other people going for it, and a private project shows nothing to anyone."}
         </p>
         <p class="mt-4"><a href="/opportunities" class="text-brand">Browse what's open →</a></p>
       </>

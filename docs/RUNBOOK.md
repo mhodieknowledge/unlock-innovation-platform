@@ -235,7 +235,61 @@ It prints what it changed, and it is safe to run by hand at any time.
 
 ---
 
-## 10. What has NOT been exercised
+## 10. Projects: matching, and the two flags
+
+Projects work with the flags OFF and with nobody else on the platform — that is
+`COLLABORATION_SYSTEM.md` §1.1 `[PR]`, and it is why `/projects/new` and
+`/projects/<slug>` are always live while `/projects` (browse) is a 404 until its floor is
+met. Two separate flags, both seeded `false`:
+
+| Flag | Surface | Floor |
+|---|---|---|
+| `public_project_browse` | `/projects` | 40 public projects |
+| `related_projects_on_opportunity` | "Projects aiming at this" on an opportunity | 3 matching public projects |
+
+Check before flipping either:
+
+```sql
+SELECT * FROM project_browse_state();     -- state, public_projects, floor
+```
+
+Matching runs in two places and must agree: the request tier on save (§1.2's `[PR]`
+immediacy) and the nightly batch. Both call `project_match_candidates` in the database and
+score with `packages/config/src/project-matching.mjs`, so a change to the weights is a
+deploy, not a migration.
+
+```
+DATABASE_URL=... npm run match:projects            # all live projects
+DATABASE_URL=... npm run match:projects -- --project <uuid> --dry-run
+DATABASE_URL=... npm run projects:sweep            # §1.3 inactivity: prompt at 120d, pause at 180d
+DATABASE_URL=... npm run embed                     # gives new projects a vector
+```
+
+If a project's matches look thin, the usual cause is not the ranking. The gate is the
+OWNER'S eligibility verdict, and an opportunity whose rules we could not extract evaluates
+to `unclear`, which is deliberately not matched — a match says "this is for you", so it has
+to be true. Check with:
+
+```sql
+SELECT count(*) FILTER (WHERE v.verdict = 'eligible')      AS eligible,
+       count(*) FILTER (WHERE v.verdict = 'likely_eligible') AS likely,
+       count(*) FILTER (WHERE v.verdict = 'unclear')       AS unclear,
+       count(*) FILTER (WHERE v.verdict = 'not_eligible')  AS not_eligible
+  FROM opportunities o
+  CROSS JOIN LATERAL user_verdicts(
+    (SELECT owner_user_id FROM projects WHERE slug = 'the-project-slug'), ARRAY[o.id]) v
+ WHERE o.status = 'published';
+```
+
+A high `unclear` count is an extraction-quality problem, not a matching one.
+
+Projects are never auto-deleted. §1.3's sweep prompts once at 120 days and pauses at 180,
+and a paused project keeps receiving matches — so "my project disappeared" always means
+someone deleted it, and the `deleted_at` column says when.
+
+---
+
+## 11. What has NOT been exercised
 
 Stated because a runbook that implies more coverage than it has is worse than a short
 one.
@@ -250,3 +304,5 @@ one.
 | An LLM provider call against a live API | Never run in this environment — no key present. The provider layer is unit-tested against the OpenAI and Gemini response shapes with an injected fetch, and the NO_AI path is tested end to end. |
 | Team rooms with real people in them | Never. Every rule is asserted in `supabase/tests/collaboration.sql` (109 assertions) and the route behaviour in `apps/web/test/room-route.test.ts`, but no two humans have used a room to form a team, and the flags are off. The first real room will teach us something the tests cannot. |
 | The thread poller against a real browser | The endpoint's 304 path is not covered by a test that drives a browser; the handler is straightforward and the page degrades to "reload to see replies" if the script never runs. |
+| Project matching against a real catalogue | The scorer is unit-tested and the whole path was run end to end against fixture rows in a local Postgres (two opportunities, one project, embeddings from the local model). What has never happened is a match over a real catalogue with real eligibility rules, which is the only thing that will show whether the weights in §1.5 are right. |
+| Workers AI embedding in the request tier | Never called. `PROJECT_EMBEDDING_MODEL` is unset, so project creation stores no vector and the first-pass match ranks on tags and urgency — a supported degraded state, and the batch embedder fills the vector in overnight. |

@@ -11,6 +11,7 @@ export {
 export type { RouteBudget } from "./budgets.js";
 
 export { HOST_PLATFORMS, hostPlatformFor } from "./host-platforms.js";
+export { projectMatchReasons, scoreProjectMatches } from "./project-matching.mjs";
 export type { HostPlatform } from "./host-platforms.js";
 
 export {
@@ -28,13 +29,18 @@ export {
   FRESHNESS_PENALTY,
   RECOMMENDATIONS_STORED,
   RECOMMENDATION_HORIZON_DAYS,
+  PROJECT_MATCHES_STORED,
+  PROJECT_MATCH_WEIGHTS,
   RECOMMENDATION_WEIGHTS,
   RRF_K,
   SURFACE_CAPS,
   URGENCY,
   VERIFICATION_QUALITY,
+  TAG_OVERLAP_SATURATION,
   applyDiversity,
+  capPerOrganisation,
   rrfScore,
+  tagOverlapScore,
   urgencyBoost,
 } from "./ranking.mjs";
 

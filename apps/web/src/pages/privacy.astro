@@ -28,6 +28,10 @@ const COLLECT: [string, string][] = [
     "Messages you send another person here",
     "So the two of you can arrange to work together. Only the two of you can read them.",
   ],
+  [
+    "Projects you write down",
+    "To match them against open calls you can enter. Private is the default, and a private project is matched exactly the same — that is the point of the feature.",
+  ],
 ];
 
 const NEVER: string[] = [
@@ -140,6 +144,12 @@ const RETENTION: [string, string][] = [
       No contact detail is ever exchanged before both of you agree to it. If you accept someone's
       request, a short conversation opens here; moving to Telegram, WhatsApp or email needs an
       explicit yes from each of you, and only the one channel you both chose is shared.
+    </p>
+    <p class="mt-2 text-dense">
+      A project is private unless you change it. Private and unlisted projects are never
+      indexed; a public one is indexed only if you tick that separately. Whatever you choose,
+      the matching works the same — we compare your project against open calls and show you
+      the ones you are eligible for, and that comparison never leaves our own systems.
     </p>
     <p class="mt-2 text-dense">
       Blocking someone is immediate and absolute. They disappear from every surface the two of

@@ -67,6 +67,10 @@ const fullTitle = title === BRAND.name ? title : `${title} | ${BRAND.name}`;
             user ? (
               <>
                 <a href="/tracker" class="text-brand">Tracker</a>
+                <!-- Projects are a private tool first (COLLABORATION_SYSTEM.md §1.1), so
+                     this link is not behind a density flag the way a social surface is.
+                     /projects — the browse surface — is the one that disappears. -->
+                <a href="/you/projects" class="text-brand">Projects</a>
                 <a href="/you/inbox" class="text-brand">
                   Messages{unread > 0 ? ` (${unread})` : ""}
                 </a>

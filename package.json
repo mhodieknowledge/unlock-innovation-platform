@@ -35,7 +35,9 @@
     "backup": "node scripts/backup.mjs",
     "golden:record": "node scripts/record-golden.mjs",
     "embed": "node scripts/embed.mjs",
-    "recommend": "node scripts/recommend.mjs"
+    "recommend": "node scripts/recommend.mjs",
+    "match:projects": "node scripts/match-projects.mjs",
+    "projects:sweep": "node scripts/match-projects.mjs --sweep"
   },
   "devDependencies": {
     "@huggingface/transformers": "^4.2.0",

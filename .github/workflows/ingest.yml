@@ -18,7 +18,7 @@ on:
     - cron: "20 */6 * * *"   # link health: §5.2 says every 6 hours
     - cron: "50 * * * *"     # re-verify: hourly, the per-record cadence does the rest
     - cron: "10 3 * * *"     # sweep and health: daily
-    - cron: "30 3 * * *"     # embeddings, then recommendations: daily, after the sweep
+    - cron: "30 3 * * *"     # embeddings, recommendations, project matches: daily, after the sweep
   workflow_dispatch:
     inputs:
       job:
@@ -26,7 +26,7 @@ on:
         required: true
         default: ingest
         type: choice
-        options: [ingest, links, reverify, sweep, health, check-sources, embed, recommend]
+        options: [ingest, links, reverify, sweep, health, check-sources, embed, recommend, match-projects, project-sweep]
       dry_run:
         description: Render without writing
         required: false
@@ -115,11 +115,13 @@ jobs:
           path: ~/.cache/huggingface
           key: embedding-model-${{ hashFiles('package-lock.json') }}
 
-      - name: Embed new records, then recompute recommendations
+      - name: Embed new records, then recompute recommendations and project matches
         if: github.event.schedule == '30 3 * * *'
         run: |
           npm run embed
           npm run recommend
+          npm run match:projects
+          npm run projects:sweep
 
       - name: Manual run
         if: github.event_name == 'workflow_dispatch'
@@ -133,5 +135,7 @@ jobs:
             check-sources) npm run sources:check ;;
             embed)         npm run embed -- $DRY ;;
             recommend)     npm run recommend -- $DRY ;;
+            match-projects) npm run match:projects -- $DRY ;;
+            project-sweep) npm run projects:sweep -- $DRY ;;
             *)             npm run reverify -- "$JOB" $DRY ;;
           esac

@@ -1,0 +1,595 @@
+---
+// One project. UX_FLOWS.md §9.2, COLLABORATION_SYSTEM.md §1.
+//
+// The hierarchy is §9.2's, and the order matters more here than on most pages:
+// title and pitch → state → MATCHED OPPORTUNITIES → problem and solution → tags →
+// roles → members → links. §1.1 puts "it unlocks opportunities" first in the list of
+// what a project is for, and this page is where that claim is either kept or quietly
+// broken by putting a progressive prompt above the matches.
+//
+// Right after creation (?created=1) the matches are all there is, followed by the
+// prompts. §9.1 `[PR]`: "nothing may be inserted before it."
+
+import Base from "../../layouts/Base.astro";
+import { createAuthClient, getSessionUser, socialWritesAllowed } from "../../lib/auth";
+import { countdownLabel, deadlineFacts } from "../../lib/deadline";
+import { reportError } from "../../lib/errors";
+import { VERDICTS, type Verdict } from "../../lib/verdict";
+import {
+  PROJECT_STATES,
+  PROJECT_VISIBILITIES,
+  SUBMISSION_OUTCOMES,
+  getProjectBySlug,
+  getProjectMatches,
+  getProjectMembers,
+  getProjectSubmissions,
+  refreshProjectMatches,
+  stateLabel,
+  type ProjectMatch,
+  type ProjectMember,
+  type ProjectRow,
+  type ProjectSubmission,
+} from "../../lib/projects";
+
+export const prerender = false;
+
+const { slug } = Astro.params;
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const user = await getSessionUser(Astro.cookies, env);
+const client = createAuthClient(Astro.cookies, env);
+
+const justCreated = Astro.url.searchParams.get("created") === "1";
+
+let project: ProjectRow | null = null;
+let matches: ProjectMatch[] = [];
+let members: ProjectMember[] = [];
+let submissions: ProjectSubmission[] = [];
+let notice: string | null = null;
+let failed = false;
+
+if (client && slug) {
+  try {
+    project = await getProjectBySlug(client, slug);
+
+    if (project && Astro.request.method === "POST" && user && project.owner_user_id === user.id) {
+      const form = await Astro.request.formData();
+
+      if (form.get("state")) {
+        const next = String(form.get("state"));
+        if (PROJECT_STATES.some((s) => s.value === next)) {
+          const { error } = await client.from("projects").update({ state: next }).eq("id", project.id);
+          notice = error ? "We couldn't change that just now." : `Now: ${stateLabel(next as never)}.`;
+        }
+      } else if (form.get("visibility")) {
+        const next = String(form.get("visibility"));
+        const indexable = form.get("indexable") !== null && next === "public";
+        if (PROJECT_VISIBILITIES.some((v) => v.value === next)) {
+          const { error } = await client
+            .from("projects")
+            .update({ visibility: next, indexable })
+            .eq("id", project.id);
+          // The database refuses indexable on anything but public, and refuses any
+          // non-private visibility without 18+ confirmation. Its message is the honest one.
+          notice = error
+            ? error.message.replace(/^[a-z ]*error:?\s*/i, "")
+            : next === "private"
+              ? "Private again. It still gets matched."
+              : `Visibility: ${next}.`;
+        }
+      } else if (form.get("rematch")) {
+        const n = await refreshProjectMatches(client, project.id);
+        notice =
+          n === null
+            ? "We couldn't recompute the matches just now."
+            : n === 0
+              ? "Nothing open matches this that you're eligible for. That is the honest answer."
+              : `${n} match${n === 1 ? "" : "es"}, recomputed just now.`;
+      } else if (form.get("submitted_opportunity")) {
+        const opportunityId = String(form.get("submitted_opportunity"));
+        const outcome = String(form.get("outcome") ?? "submitted");
+        const { error } = await client
+          .from("project_submissions")
+          .upsert(
+            { project_id: project.id, opportunity_id: opportunityId, outcome },
+            { onConflict: "project_id,opportunity_id" },
+          );
+        notice = error ? "We couldn't record that just now." : "Recorded.";
+      } else if (form.get("remove_member")) {
+        const memberId = String(form.get("remove_member"));
+        const { error } = await client
+          .from("project_members")
+          .delete()
+          .eq("project_id", project.id)
+          .eq("user_id", memberId);
+        notice = error ? "We couldn't do that just now." : "Removed.";
+      } else if (form.get("delete") === "DELETE") {
+        const { error } = await client
+          .from("projects")
+          .update({ deleted_at: new Date().toISOString() })
+          .eq("id", project.id);
+        if (!error) return Astro.redirect("/you/projects?deleted=1", 303);
+        notice = "We couldn't delete that just now.";
+      }
+
+      // Re-read, so the page reflects what just happened rather than what it loaded.
+      project = await getProjectBySlug(client, slug);
+    }
+
+    if (project) {
+      const isOwner = user?.id === project.owner_user_id;
+      [matches, members, submissions] = await Promise.all([
+        isOwner ? getProjectMatches(client, project.id) : Promise.resolve([]),
+        getProjectMembers(client, project.id),
+        getProjectSubmissions(client, project.id),
+      ]);
+    }
+  } catch (err) {
+    await reportError(err, { route: "/projects/[slug]", tags: { slug: slug ?? "" } }, env);
+    failed = true;
+  }
+}
+
+if (!project) Astro.response.status = 404;
+
+Astro.response.headers.set("cache-control", "private, no-store");
+
+const isOwner = Boolean(user && project && project.owner_user_id === user.id);
+const isMember = Boolean(user && members.some((m) => m.user_id === user.id));
+const writes = socialWritesAllowed(user);
+
+// §1.4: indexable is a separate opt-in ON TOP of public. Anything else is noindex.
+const indexable = Boolean(project?.visibility === "public" && project.indexable);
+
+const roleNames = (ids: string[]): string => (ids.length === 0 ? "" : `${ids.length}`);
+
+const dateOf = (iso: string) =>
+  new Date(iso).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: user?.timezone ?? "UTC",
+  });
+
+/** §9.2's progressive prompts, in the order §1.2 gives them. */
+const nextPrompt = (p: ProjectRow): { label: string; field: string } | null => {
+  if (!p.pitch) return { label: "Add a one-line pitch", field: "pitch" };
+  if (!p.problem) return { label: "What problem does it solve?", field: "problem" };
+  if (!p.solution) return { label: "How does it work?", field: "solution" };
+  if (p.category_ids.length + p.industry_ids.length + p.skill_ids.length + p.technology_ids.length === 0)
+    return { label: "Tag it, so the matches get sharper", field: "tags" };
+  if (p.roles_needed.length === 0) return { label: "Who do you need?", field: "roles" };
+  if (!p.repo_url && !p.demo_url && !p.docs_url) return { label: "Add a link", field: "links" };
+  return null;
+};
+---
+
+{
+  !project ? (
+    <Base title="Project not found" noindex user={user}>
+      <h1 class="text-title font-semibold">
+        {failed ? "We can't load this right now" : "That project isn't here"}
+      </h1>
+      <p class="prose-measure mt-3 text-body text-ink-2">
+        {failed
+          ? "Something on our side is unavailable. Nothing has been lost."
+          : "It may have been deleted, or it may be private. A private project is visible only to the person who made it."}
+      </p>
+      <p class="mt-4"><a href="/you/projects" class="text-brand">Your projects →</a></p>
+    </Base>
+  ) : (
+    <Base
+      title={project.title}
+      description={project.pitch ?? undefined}
+      noindex={!indexable}
+      canonical={indexable ? `/projects/${project.slug}` : undefined}
+      user={user}
+    >
+      {
+        notice && (
+          <p class="mb-4 max-w-prose border-l-[3px] border-brand bg-brand-wash p-3 text-dense">
+            {notice}
+          </p>
+        )
+      }
+
+      {/* §9.2's paused banner, with the date — not a vague "inactive". */}
+      {
+        project.state === "paused" && (
+          <div class="mb-4 max-w-prose border-l-[3px] border-line-strong bg-sunken p-3">
+            <p class="text-dense font-semibold">
+              Paused since {dateOf(project.state_changed_at)}.
+            </p>
+            <p class="mt-1 text-dense text-ink-2">
+              It's hidden from anyone else, and it still gets matched to open calls. Nothing has
+              been deleted.
+            </p>
+          </div>
+        )
+      }
+
+      <h1 class="text-title font-semibold">{project.title}</h1>
+      {project.pitch && <p class="mt-2 max-w-prose text-body">{project.pitch}</p>}
+
+      <p class="mt-2 text-meta text-ink-2">
+        {stateLabel(project.state)}
+        <span aria-hidden="true"> · </span>
+        {project.visibility === "private"
+          ? "Private to you"
+          : project.visibility === "unlisted"
+            ? "Anyone with the link"
+            : "Public"}
+        {project.country_iso2 ? ` · ${project.country_iso2}` : ""}
+      </p>
+
+      {/* ── The matches. First, always, for the owner. §1.1 and §9.1 `[PR]`. ── */}
+      {
+        isOwner && (
+          <section class="mt-6" aria-labelledby="matches">
+            <h2 id="matches" class="text-subtitle font-semibold">
+              {justCreated ? "Open calls this matches" : "Matched open calls"}
+            </h2>
+            {matches.length > 0 ? (
+              <>
+                <p class="mt-1 max-w-prose text-dense text-ink-2">
+                  {matches.length} open call{matches.length === 1 ? "" : "s"} match this project and
+                  you're eligible for {matches.filter((m) => m.verdict === "eligible").length} of
+                  them. Ranked by fit, urgency and how much they overlap with your tags.
+                </p>
+                <ul class="mt-3 divide-y divide-line border-y border-line">
+                  {matches.map((match) => {
+                    const facts = deadlineFacts({
+                      deadline_at: match.deadline_at,
+                      deadline_precision: match.deadline_precision as never,
+                      opens_at: null,
+                      is_rolling: match.is_rolling,
+                    });
+                    return (
+                      <li class="py-3">
+                        <a
+                          href={`/opportunities/${match.slug}`}
+                          class="text-dense font-semibold text-ink no-underline hover:underline"
+                          >{match.title}</a
+                        >
+                        <p class="mt-1 text-micro text-ink-2">
+                          {/* §1.5: "templated reasons... Each carries the eligibility verdict
+                              for the owner and a one-tap track action." */}
+                          {match.reasons.join(" · ")}
+                          {match.organisation_name ? ` · ${match.organisation_name}` : ""}
+                        </p>
+                        <p class="mt-1 flex flex-wrap items-center gap-3 text-micro">
+                          {/* The eligibility ramp is the only place colour is spent
+                              (DESIGN_SYSTEM.md §1.2), and the glyph carries the same
+                              meaning for a reader who cannot see it. */}
+                          <span class={VERDICTS[(match.verdict as Verdict) ?? "unknown"].ink}>
+                            <span aria-hidden="true">
+                              {VERDICTS[(match.verdict as Verdict) ?? "unknown"].glyph}
+                            </span>{" "}
+                            {VERDICTS[(match.verdict as Verdict) ?? "unknown"].label}
+                          </span>
+                          <span class="text-ink-2">{countdownLabel(facts)}</span>
+                          {match.tracked ? (
+                            <span class="text-ink-2">In your tracker</span>
+                          ) : (
+                            <a href={`/tracker?add=${match.slug}`} class="text-brand">Track it</a>
+                          )}
+                          <form method="post" class="inline">
+                            <input type="hidden" name="submitted_opportunity" value={match.opportunity_id} />
+                            <input type="hidden" name="outcome" value="submitted" />
+                            <button type="submit" class="text-ink-2 underline">I entered this</button>
+                          </form>
+                        </p>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            ) : (
+              <div class="mt-3 max-w-prose rounded-sheet border border-line bg-surface p-4">
+                <p class="text-dense font-semibold">
+                  {project.matched_at
+                    ? "Nothing open matches this that you're eligible for."
+                    : "We haven't matched this yet."}
+                </p>
+                <p class="mt-1 text-dense text-ink-2">
+                  {project.matched_at
+                    ? "That is the honest answer rather than a padded list. Adding tags and a problem statement gives the matcher more to work with, and it runs again every night as new calls open."
+                    : "The matcher runs on save and again every night. Try it now if you like."}
+                </p>
+                <form method="post" class="mt-3">
+                  <button
+                    type="submit"
+                    name="rematch"
+                    value="1"
+                    class="min-h-11 rounded-row border border-line-strong bg-surface px-4 text-dense font-semibold"
+                    >Match it now</button
+                  >
+                </form>
+              </div>
+            )}
+          </section>
+        )
+      }
+
+      {/* ── The progressive prompts, AFTER the matches. §9.1's ordering. ── */}
+      {
+        isOwner && nextPrompt(project) && (
+          <p class="mt-4 max-w-prose text-dense">
+            <a href={`/projects/${project.slug}/edit`} class="text-brand font-semibold">
+              {nextPrompt(project)!.label} →
+            </a>
+            <span class="text-ink-2"> Each one sharpens the matches above.</span>
+          </p>
+        )
+      }
+
+      {
+        (project.problem || project.solution || project.target_users) && (
+          <section class="mt-8 max-w-prose">
+            {project.problem && (
+              <>
+                <h2 class="text-subtitle font-semibold">The problem</h2>
+                <p class="mt-2 whitespace-pre-wrap text-body">{project.problem}</p>
+              </>
+            )}
+            {project.solution && (
+              <>
+                <h2 class="mt-6 text-subtitle font-semibold">How it works</h2>
+                <p class="mt-2 whitespace-pre-wrap text-body">{project.solution}</p>
+              </>
+            )}
+            {project.target_users && (
+              <>
+                <h2 class="mt-6 text-subtitle font-semibold">Who it's for</h2>
+                <p class="mt-2 text-body">{project.target_users}</p>
+              </>
+            )}
+          </section>
+        )
+      }
+
+      {
+        project.roles_needed.length > 0 && (
+          <section class="mt-8 max-w-prose">
+            <h2 class="text-subtitle font-semibold">Roles needed</h2>
+            <p class="mt-2 text-dense text-ink-2">
+              {roleNames(project.roles_needed)} open — see the interest form below.
+            </p>
+          </section>
+        )
+      }
+
+      {
+        members.length > 0 && (
+          <section class="mt-8 max-w-prose">
+            <h2 class="text-subtitle font-semibold">People</h2>
+            <ul class="mt-2 divide-y divide-line border-t border-line">
+              {members.map((member) => (
+                <li class="flex items-center justify-between py-2 text-dense">
+                  <span>
+                    {member.display_name ?? "A builder"}
+                    {member.is_owner ? " · owner" : member.role_name ? ` · ${member.role_name}` : ""}
+                  </span>
+                  {isOwner && !member.is_owner && (
+                    <form method="post">
+                      <button
+                        type="submit"
+                        name="remove_member"
+                        value={member.user_id}
+                        class="min-h-11 text-micro text-ink-2 underline">Remove</button
+                      >
+                    </form>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )
+      }
+
+      {
+        (project.repo_url || project.demo_url || project.docs_url) && (
+          <section class="mt-8 max-w-prose">
+            <h2 class="text-subtitle font-semibold">Links</h2>
+            <ul class="mt-2 space-y-1 text-dense">
+              {[
+                ["Code", project.repo_url],
+                ["Demo", project.demo_url],
+                ["Docs", project.docs_url],
+              ]
+                .filter(([, url]) => Boolean(url))
+                .map(([label, url]) => (
+                  <li>
+                    <a
+                      href={url as string}
+                      rel="noopener noreferrer nofollow ugc"
+                      target="_blank"
+                      class="text-brand">{label}</a
+                    >
+                  </li>
+                ))}
+            </ul>
+          </section>
+        )
+      }
+
+      {
+        submissions.length > 0 && (
+          <section class="mt-8 max-w-prose">
+            <h2 class="text-subtitle font-semibold">Entered</h2>
+            <ul class="mt-2 divide-y divide-line border-t border-line">
+              {submissions.map((s) => (
+                <li class="py-2 text-dense">
+                  {s.slug ? (
+                    <a href={`/opportunities/${s.slug}`} class="text-brand">{s.title}</a>
+                  ) : (
+                    <span>An opportunity</span>
+                  )}
+                  <span class="text-ink-2">
+                    {" "}
+                    · {SUBMISSION_OUTCOMES.find((o) => o.value === s.outcome)?.label ?? s.outcome} ·{" "}
+                    {dateOf(s.recorded_at)}
+                  </span>
+                  {isOwner && (
+                    <form method="post" class="mt-1 flex flex-wrap items-center gap-2">
+                      <input type="hidden" name="submitted_opportunity" value={s.opportunity_id} />
+                      <select
+                        name="outcome"
+                        class="min-h-11 rounded-row border border-line px-2 text-micro">
+                        {SUBMISSION_OUTCOMES.map((o) => (
+                          <option value={o.value} selected={o.value === s.outcome}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                      <button type="submit" class="min-h-11 text-micro text-brand underline">
+                        Update
+                      </button>
+                    </form>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )
+      }
+
+      {/* ── Visitor action: §2.1's project_role context ── */}
+      {
+        !isOwner && !isMember && user && project.visibility !== "private" && (
+          <section class="mt-8 max-w-prose rounded-sheet border border-line bg-surface p-4">
+            <p class="text-dense font-semibold">Want to work on this?</p>
+            <p class="mt-1 text-dense text-ink-2">
+              Say which part you'd take and why. Nothing of yours is shared unless they accept —
+              not your email, not your phone.
+            </p>
+            <p class="mt-3">
+              {writes.allowed ? (
+                <a
+                  href={`/requests/new?project=${project.id}`}
+                  class="inline-flex min-h-11 items-center rounded-row bg-brand px-4 font-semibold text-surface"
+                  >Express interest</a
+                >
+              ) : (
+                <span class="text-dense text-ink-2">{writes.reason}</span>
+              )}
+            </p>
+          </section>
+        )
+      }
+
+      {/* ── Owner controls, at the bottom: the page is about the work, not the settings ── */}
+      {
+        isOwner && (
+          <section class="mt-10 max-w-prose border-t border-line pt-6">
+            <h2 class="text-subtitle font-semibold">Settings</h2>
+
+            <p class="mt-3">
+              <a href={`/projects/${project.slug}/edit`} class="text-brand text-dense"
+                >Edit the details →</a
+              >
+            </p>
+
+            <form method="post" class="mt-5">
+              <label for="state" class="block text-dense font-semibold">Where it's at</label>
+              <span class="mt-1 block text-micro text-ink-2">
+                You choose this. Nothing moves it for you — except a pause after six months of
+                silence, which you can undo here.
+              </span>
+              <span class="mt-2 flex flex-wrap gap-2">
+                <select
+                  id="state"
+                  name="state"
+                  class="min-h-11 rounded-row border border-line-strong px-3 text-dense">
+                  {PROJECT_STATES.map((s) => (
+                    <option value={s.value} selected={s.value === project!.state}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="submit"
+                  class="min-h-11 rounded-row border border-line-strong bg-surface px-4 text-dense font-semibold"
+                  >Save</button
+                >
+              </span>
+            </form>
+
+            <form method="post" class="mt-6">
+              <label for="visibility" class="block text-dense font-semibold">Who can see it</label>
+              <ul class="mt-2 space-y-2">
+                {PROJECT_VISIBILITIES.map((v) => (
+                  <li>
+                    <label class="flex min-h-11 items-start gap-3 text-dense">
+                      <input
+                        type="radio"
+                        name="visibility"
+                        value={v.value}
+                        checked={v.value === project!.visibility}
+                        class="mt-1"
+                      />
+                      <span>
+                        <span class="block font-semibold">{v.label}</span>
+                        <span class="block text-ink-2">{v.meaning}</span>
+                      </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+              <label class="mt-3 flex min-h-11 items-start gap-3 text-dense">
+                <input
+                  type="checkbox"
+                  name="indexable"
+                  value="1"
+                  checked={project.indexable}
+                  class="mt-1"
+                />
+                <span>
+                  <span class="block font-semibold">Let search engines index it</span>
+                  <span class="block text-ink-2">
+                    Public only, and off unless you tick it. This is a separate decision from
+                    being visible here.
+                  </span>
+                </span>
+              </label>
+              <button
+                type="submit"
+                class="mt-3 min-h-11 rounded-row border border-line-strong bg-surface px-4 text-dense font-semibold"
+                >Save visibility</button
+              >
+            </form>
+
+            <form method="post" class="mt-8 border-t border-line pt-4">
+              <p class="text-dense font-semibold">Delete this project</p>
+              <p class="mt-1 text-dense text-ink-2">
+                It disappears from your list and from anyone else's view. Type DELETE to confirm.
+              </p>
+              <span class="mt-2 flex flex-wrap gap-2">
+                <input
+                  type="text"
+                  name="delete"
+                  placeholder="DELETE"
+                  class="min-h-11 rounded-row border border-line-strong px-3 text-dense"
+                />
+                <button
+                  type="submit"
+                  class="min-h-11 rounded-row border border-danger bg-surface px-4 text-dense font-semibold text-danger"
+                  >Delete</button
+                >
+              </span>
+            </form>
+          </section>
+        )
+      }
+
+      {
+        !isOwner && (
+          <p class="mt-10 text-micro text-ink-2">
+            <a href={`/report?about=project&subject=${project.slug}`} class="underline">
+              Report this project
+            </a>
+          </p>
+        )
+      }
+    </Base>
+  )
+}

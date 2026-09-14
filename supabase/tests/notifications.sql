@@ -262,6 +262,30 @@ SELECT assert_eq(
   true);
 
 -- ── §1.2 caps: pushes are capped, records never are ─────────────────────────
+--
+-- THIS BLOCK USED TO DEPEND ON THE TIME OF DAY, and it is worth saying how, because the
+-- shape recurs. It counted pushes of ONE type and expected 3 — which only held when the
+-- user's earlier reminder happened to be in a state the cap did not count. That reminder is
+-- scheduled through notif_quiet_adjusted, so outside quiet hours it was due, was claimed by
+-- the step above, and disappeared from the count; inside quiet hours it stayed queued and
+-- counted. The suite passed all afternoon and failed at 22:05 UTC.
+--
+-- The cap is a rule about the TOTAL of non-exempt pushes in a day, so that is what is
+-- asserted now, through the same function enqueue_notification consults. Migration 0020
+-- fixed the underlying defect: 'claimed' deliveries were not counted at all.
+
+-- Deterministic starting point, whatever the hour: this user's other queued push is put
+-- into the in-flight state a dispatcher would have left it in.
+UPDATE notification_deliveries d SET state = 'claimed'
+  FROM notifications n
+ WHERE n.id = d.notification_id
+   AND n.user_id = '44444444-4444-4444-4444-444444444441'
+   AND d.channel = 'telegram' AND d.state = 'queued';
+
+SELECT assert_eq(
+  'a delivery a dispatcher is holding counts toward the cap (migration 0020)',
+  notif_pushes_today('44444444-4444-4444-4444-444444444441') > 0,
+  true);
 
 DO $$
 DECLARE i int;
@@ -275,11 +299,16 @@ END $$;
 
 SELECT assert_eq(
   'the push cap holds at 3 non-exempt messages a day (NOTIFICATIONS.md §1.2)',
+  notif_pushes_today('44444444-4444-4444-4444-444444444441'),
+  3);
+
+SELECT assert_eq(
+  'and the cap is reached by pushing, not by refusing to record',
   (SELECT count(*)::int FROM notification_deliveries d
      JOIN notifications n ON n.id = d.notification_id
     WHERE n.user_id = '44444444-4444-4444-4444-444444444441'
-      AND n.type = 'opportunity_closed' AND d.channel <> 'in_app'),
-  3);
+      AND n.type = 'opportunity_closed' AND d.channel <> 'in_app') > 0,
+  true);
 
 SELECT assert_eq(
   'but nothing is lost: all five exist in-app (NOTIFICATIONS.md §2, §10)',

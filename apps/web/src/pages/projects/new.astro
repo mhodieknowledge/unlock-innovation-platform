@@ -1,0 +1,161 @@
+---
+// Creating a project. UX_FLOWS.md §9.1, COLLABORATION_SYSTEM.md §1.2.
+//
+// TWO FIELDS. "Minimum to create: title and one-line pitch. Everything else is
+// progressive." And then, immediately: "Immediately after creation, BEFORE ANY OTHER
+// PROMPT, the matched-opportunities list renders... That moment is the feature's
+// entire hook; nothing may be inserted before it." `[PR]`
+//
+// So this page does the whole of it on POST — insert, embed, match, store — and
+// redirects to the project page with ?created=1, which renders the matches at the
+// top and the progressive prompts underneath. Nothing is queued, and there is no
+// "we'll email you when we've found some": a queue would move the hook to a moment
+// the person is no longer in.
+
+import Base from "../../layouts/Base.astro";
+import { createAuthClient, getSessionUser, personalWritesAllowed } from "../../lib/auth";
+import { reportError } from "../../lib/errors";
+import {
+  embedProjectText,
+  projectEmbeddingText,
+  refreshProjectMatches,
+} from "../../lib/projects";
+
+export const prerender = false;
+
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const runtime = (Astro.locals as { runtime?: { env?: Record<string, unknown> } }).runtime?.env ?? {};
+const user = await getSessionUser(Astro.cookies, env);
+
+if (!user) {
+  return Astro.redirect(`/signin?returnTo=${encodeURIComponent("/projects/new")}`, 302);
+}
+
+const client = createAuthClient(Astro.cookies, env);
+Astro.response.headers.set("cache-control", "private, no-store");
+
+let problem: string | null = null;
+
+// §1.1: a project is a private tool first, so a read-only account may still keep one.
+// Only making it visible to other people needs more (enforced in the database).
+const allowed = personalWritesAllowed(user);
+
+if (Astro.request.method === "POST" && client) {
+  try {
+    if (!allowed) {
+      problem = "This account is not active, so it cannot create a project.";
+    } else {
+      const form = await Astro.request.formData();
+      const title = String(form.get("title") ?? "").trim().slice(0, 120);
+      const pitch = String(form.get("pitch") ?? "").trim().slice(0, 200);
+
+      if (title.length < 2) {
+        problem = "Give it a name — two characters or more.";
+      } else {
+        const { data, error } = await client
+          .from("projects")
+          .insert({ owner_user_id: user.id, title, pitch: pitch === "" ? null : pitch })
+          .select("id, slug")
+          .maybeSingle();
+
+        if (error || !data) {
+          problem = error
+            ? error.message.replace(/^[a-z ]*error:?\s*/i, "")
+            : "We couldn't create that just now.";
+        } else {
+          const created = data as unknown as { id: string; slug: string };
+
+          // The embedding is an OPTIMISATION of the match, not a precondition for it. If
+          // Workers AI is not configured or fails, the project is stored without a vector,
+          // the database returns a neutral similarity, and the first pass ranks on tags and
+          // urgency — the nightly embedder fills the vector in later.
+          const vector = await embedProjectText(
+            projectEmbeddingText({ title, pitch }),
+            runtime as never,
+          );
+          if (vector) {
+            await client
+              .from("projects")
+              .update({ embedding: `[${vector.join(",")}]` })
+              .eq("id", created.id);
+          }
+
+          await refreshProjectMatches(client, created.id);
+
+          return Astro.redirect(`/projects/${created.slug}?created=1`, 303);
+        }
+      }
+    }
+  } catch (err) {
+    await reportError(err, { route: "/projects/new" }, env);
+    problem = "Something on our side failed. Nothing has been saved — try again.";
+  }
+}
+---
+
+<Base title="Start a project" noindex user={user}>
+  <h1 class="text-title font-semibold">Start a project</h1>
+  <p class="mt-2 max-w-prose text-dense text-ink-2">
+    Two fields is enough. The moment you save, we show you the open calls it matches and
+    whether you're eligible for them — that is what a project is for here, not a portfolio
+    page.
+  </p>
+
+  {
+    problem && (
+      <p class="mt-4 max-w-prose border-l-[3px] border-danger bg-noteligible-wash p-3 text-dense">
+        {problem}
+      </p>
+    )
+  }
+
+  <form method="post" class="mt-6 max-w-prose">
+    <p>
+      <label for="title" class="block text-dense font-semibold">What is it called?</label>
+      <input
+        id="title"
+        name="title"
+        type="text"
+        required
+        minlength="2"
+        maxlength="120"
+        autofocus
+        class="mt-2 min-h-11 w-full rounded-row border border-line-strong px-3"
+      />
+    </p>
+
+    <p class="mt-5">
+      <label for="pitch" class="block text-dense font-semibold">
+        One line about it <span class="font-normal text-ink-2">(optional, but it improves the matches)</span>
+      </label>
+      <span class="mt-1 block text-micro text-ink-2">Up to 200 characters.</span>
+      <input
+        id="pitch"
+        name="pitch"
+        type="text"
+        maxlength="200"
+        placeholder="Soil moisture sensors that work without a data plan"
+        class="mt-2 min-h-11 w-full rounded-row border border-line-strong px-3"
+      />
+    </p>
+
+    <p class="mt-6 flex flex-wrap gap-3">
+      <button
+        type="submit"
+        class="inline-flex min-h-11 items-center rounded-row bg-brand px-4 font-semibold text-surface"
+        >Create it and show me the matches</button
+      >
+      <a
+        href="/you/projects"
+        class="inline-flex min-h-11 items-center rounded-row border border-line-strong bg-surface px-4 font-semibold"
+        >Cancel</a
+      >
+    </p>
+  </form>
+
+  <p class="mt-8 max-w-prose text-micro text-ink-2">
+    It starts private, and private projects still get matched — that is deliberate. You can
+    make it visible to other people later, or never. Nothing about it is shown to anyone until
+    you choose to.
+  </p>
+</Base>

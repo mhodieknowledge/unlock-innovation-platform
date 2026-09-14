@@ -1,0 +1,313 @@
+---
+// Editing a project. UX_FLOWS.md §9.2's owner actions, COLLABORATION_SYSTEM.md §1.2's
+// field list.
+//
+// Everything on this form is optional except the title. §1.2's "everything else is
+// progressive" is a promise about the shape of the work: a person who wrote two fields
+// six weeks ago should be able to add a problem statement today without being made to
+// fill in nine others first.
+//
+// Saving re-embeds and re-matches, because the whole point of the extra fields is that
+// they sharpen the matches — and a form that says so and then makes you wait until
+// tomorrow to see it has broken its own promise.
+
+import Base from "../../../layouts/Base.astro";
+import { createAuthClient, getSessionUser } from "../../../lib/auth";
+import { reportError } from "../../../lib/errors";
+import {
+  embedProjectText,
+  getProjectBySlug,
+  projectEmbeddingText,
+  refreshProjectMatches,
+  type ProjectRow,
+} from "../../../lib/projects";
+
+export const prerender = false;
+
+const { slug } = Astro.params;
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const runtime = (Astro.locals as { runtime?: { env?: Record<string, unknown> } }).runtime?.env ?? {};
+const user = await getSessionUser(Astro.cookies, env);
+
+if (!user) {
+  return Astro.redirect(
+    `/signin?returnTo=${encodeURIComponent(Astro.url.pathname)}`,
+    302,
+  );
+}
+
+const client = createAuthClient(Astro.cookies, env);
+Astro.response.headers.set("cache-control", "private, no-store");
+
+interface TagOption {
+  id: string;
+  name: string;
+  kind: string;
+}
+
+let project: ProjectRow | null = null;
+let tags: TagOption[] = [];
+let countries: { iso2: string; name: string }[] = [];
+let problem: string | null = null;
+let failed = false;
+
+const ids = (form: FormData, field: string): string[] =>
+  form
+    .getAll(field)
+    .map(String)
+    .filter((v) => /^[0-9a-f-]{36}$/i.test(v))
+    .slice(0, 12);
+
+if (client && slug) {
+  try {
+    project = await getProjectBySlug(client, slug);
+
+    if (project && project.owner_user_id !== user.id) {
+      // Not "forbidden": a project you cannot edit is a project you should not be told
+      // exists in an editable form.
+      project = null;
+    }
+
+    if (project && Astro.request.method === "POST") {
+      const form = await Astro.request.formData();
+      const title = String(form.get("title") ?? "").trim().slice(0, 120);
+
+      if (title.length < 2) {
+        problem = "The name can't be empty.";
+      } else {
+        const text = (field: string, max: number) => {
+          const value = String(form.get(field) ?? "").trim().slice(0, max);
+          return value === "" ? null : value;
+        };
+
+        const update = {
+          title,
+          pitch: text("pitch", 200),
+          problem: text("problem", 2000),
+          solution: text("solution", 2000),
+          target_users: text("target_users", 500),
+          category_ids: ids(form, "category_ids"),
+          industry_ids: ids(form, "industry_ids"),
+          skill_ids: ids(form, "skill_ids"),
+          technology_ids: ids(form, "technology_ids"),
+          roles_needed: ids(form, "roles_needed"),
+          repo_url: text("repo_url", 500),
+          demo_url: text("demo_url", 500),
+          docs_url: text("docs_url", 500),
+          country_iso2: String(form.get("country_iso2") ?? "").trim().slice(0, 2) || null,
+        };
+
+        const { error } = await client.from("projects").update(update).eq("id", project.id);
+
+        if (error) {
+          problem = error.message.replace(/^[a-z ]*error:?\s*/i, "");
+        } else {
+          const vector = await embedProjectText(
+            projectEmbeddingText({
+              title: update.title,
+              pitch: update.pitch,
+              problem: update.problem,
+              target_users: update.target_users,
+              country_iso2: update.country_iso2,
+            }),
+            runtime as never,
+          );
+          if (vector) {
+            await client
+              .from("projects")
+              .update({ embedding: `[${vector.join(",")}]` })
+              .eq("id", project.id);
+          }
+          await refreshProjectMatches(client, project.id);
+          return Astro.redirect(`/projects/${project.slug}`, 303);
+        }
+      }
+    }
+
+    if (project) {
+      const [tagResult, countryResult] = await Promise.all([
+        client.from("tags").select("id, name, kind").eq("is_active", true).order("name"),
+        client.from("countries").select("iso2, name").order("name"),
+      ]);
+      tags = (tagResult.data ?? []) as unknown as TagOption[];
+      countries = (countryResult.data ?? []) as unknown as { iso2: string; name: string }[];
+    }
+  } catch (err) {
+    await reportError(err, { route: "/projects/[slug]/edit", tags: { slug: slug ?? "" } }, env);
+    failed = true;
+  }
+}
+
+if (!project) Astro.response.status = 404;
+
+const byKind = (kind: string) => tags.filter((t) => t.kind === kind);
+const selected = (list: string[] | undefined, id: string) => (list ?? []).includes(id);
+
+/** Each tag group is a multi-select: a checkbox grid of 10 options costs less than a script. */
+const GROUPS: [string, string, keyof ProjectRow][] = [
+  ["industry", "Industries", "industry_ids"],
+  ["skill", "Skills it uses", "skill_ids"],
+  ["technology", "Technologies", "technology_ids"],
+  ["role", "Roles you need", "roles_needed"],
+];
+---
+
+{
+  !project ? (
+    <Base title="Project not found" noindex user={user}>
+      <h1 class="text-title font-semibold">
+        {failed ? "We can't load this right now" : "That project isn't yours to edit"}
+      </h1>
+      <p class="mt-4"><a href="/you/projects" class="text-brand">Your projects →</a></p>
+    </Base>
+  ) : (
+    <Base title={`Edit ${project.title}`} noindex user={user}>
+      <p class="text-micro uppercase tracking-wide text-ink-2">Editing</p>
+      <h1 class="mt-1 text-title font-semibold">
+        <a href={`/projects/${project.slug}`} class="text-ink no-underline">{project.title}</a>
+      </h1>
+      <p class="mt-2 max-w-prose text-dense text-ink-2">
+        Every field here is optional, and each one makes the matches above it sharper. Saving
+        recomputes them straight away.
+      </p>
+
+      {
+        problem && (
+          <p class="mt-4 max-w-prose border-l-[3px] border-danger bg-noteligible-wash p-3 text-dense">
+            {problem}
+          </p>
+        )
+      }
+
+      <form method="post" class="mt-6 max-w-prose">
+        <p>
+          <label for="title" class="block text-dense font-semibold">Name</label>
+          <input
+            id="title"
+            name="title"
+            type="text"
+            required
+            minlength="2"
+            maxlength="120"
+            value={project.title}
+            class="mt-2 min-h-11 w-full rounded-row border border-line-strong px-3"
+          />
+        </p>
+
+        <p class="mt-5">
+          <label for="pitch" class="block text-dense font-semibold">One line about it</label>
+          <input
+            id="pitch"
+            name="pitch"
+            type="text"
+            maxlength="200"
+            value={project.pitch ?? ""}
+            class="mt-2 min-h-11 w-full rounded-row border border-line-strong px-3"
+          />
+        </p>
+
+        <p class="mt-5">
+          <label for="problem" class="block text-dense font-semibold">The problem</label>
+          <span class="mt-1 block text-micro text-ink-2">Up to 2,000 characters.</span>
+          <textarea
+            id="problem"
+            name="problem"
+            rows="5"
+            maxlength="2000"
+            class="mt-2 w-full rounded-row border border-line-strong p-3">{project.problem ?? ""}</textarea>
+        </p>
+
+        <p class="mt-5">
+          <label for="solution" class="block text-dense font-semibold">How it works</label>
+          <textarea
+            id="solution"
+            name="solution"
+            rows="5"
+            maxlength="2000"
+            class="mt-2 w-full rounded-row border border-line-strong p-3">{project.solution ?? ""}</textarea>
+        </p>
+
+        <p class="mt-5">
+          <label for="target_users" class="block text-dense font-semibold">Who it's for</label>
+          <textarea
+            id="target_users"
+            name="target_users"
+            rows="2"
+            maxlength="500"
+            class="mt-2 w-full rounded-row border border-line-strong p-3">{project.target_users ?? ""}</textarea>
+        </p>
+
+        {
+          GROUPS.map(([kind, label, field]) => (
+            <fieldset class="mt-6 border-0 p-0">
+              <legend class="text-dense font-semibold">{label}</legend>
+              <ul class="mt-2 flex flex-wrap gap-x-4 gap-y-2">
+                {byKind(kind).map((tag) => (
+                  <li>
+                    <label class="flex min-h-11 items-center gap-2 text-dense">
+                      <input
+                        type="checkbox"
+                        name={field}
+                        value={tag.id}
+                        checked={selected(project![field] as string[], tag.id)}
+                      />
+                      {tag.name}
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </fieldset>
+          ))
+        }
+
+        <p class="mt-6">
+          <label for="country_iso2" class="block text-dense font-semibold">Where you're building it</label>
+          <select
+            id="country_iso2"
+            name="country_iso2"
+            class="mt-2 min-h-11 w-full rounded-row border border-line-strong px-3">
+            <option value="">Not saying</option>
+            {countries.map((c) => (
+              <option value={c.iso2} selected={c.iso2 === project!.country_iso2}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </p>
+
+        {
+          [
+            ["repo_url", "Code", project.repo_url],
+            ["demo_url", "Demo", project.demo_url],
+            ["docs_url", "Docs or write-up", project.docs_url],
+          ].map(([field, label, value]) => (
+            <p class="mt-5">
+              <label for={field as string} class="block text-dense font-semibold">{label}</label>
+              <input
+                id={field as string}
+                name={field as string}
+                type="url"
+                maxlength="500"
+                value={(value as string) ?? ""}
+                class="mt-2 min-h-11 w-full rounded-row border border-line-strong px-3"
+              />
+            </p>
+          ))
+        }
+
+        <p class="mt-6 flex flex-wrap gap-3">
+          <button
+            type="submit"
+            class="inline-flex min-h-11 items-center rounded-row bg-brand px-4 font-semibold text-surface"
+            >Save and rematch</button
+          >
+          <a
+            href={`/projects/${project.slug}`}
+            class="inline-flex min-h-11 items-center rounded-row border border-line-strong bg-surface px-4 font-semibold"
+            >Cancel</a
+          >
+        </p>
+      </form>
+    </Base>
+  )
+}

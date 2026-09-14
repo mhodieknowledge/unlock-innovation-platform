@@ -1,0 +1,132 @@
+---
+// Your projects. The owner's list, which exists whatever the browse floor says.
+//
+// /projects (discovery) is absent below 40 public projects — UX_FLOWS.md §9.3 `[PR]` — but
+// a person's own projects are not a discovery surface and must not disappear with it. That
+// distinction is the whole reason this route exists separately: §1.1's claim is that a
+// project is useful with nobody else on the platform, and a tool you cannot reach is not.
+
+import Base from "../../layouts/Base.astro";
+import { createAuthClient, getSessionUser } from "../../lib/auth";
+import { reportError } from "../../lib/errors";
+import { getMyProjects, stateLabel, type ProjectRow } from "../../lib/projects";
+
+export const prerender = false;
+
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const user = await getSessionUser(Astro.cookies, env);
+
+if (!user) {
+  return Astro.redirect(`/signin?returnTo=${encodeURIComponent("/you/projects")}`, 302);
+}
+
+const client = createAuthClient(Astro.cookies, env);
+Astro.response.headers.set("cache-control", "private, no-store");
+
+let projects: ProjectRow[] = [];
+let failed = false;
+
+if (client) {
+  try {
+    projects = await getMyProjects(client);
+  } catch (err) {
+    await reportError(err, { route: "/you/projects" }, env);
+    failed = true;
+  }
+}
+
+const deleted = Astro.url.searchParams.get("deleted") === "1";
+
+const dateOf = (iso: string) =>
+  new Date(iso).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    timeZone: user.timezone,
+  });
+---
+
+<Base title="Your projects" noindex user={user}>
+  <h1 class="text-title font-semibold">Your projects</h1>
+  <p class="mt-2 max-w-prose text-dense text-ink-2">
+    A project here is a matching key, not a portfolio page: we compare it against every open
+    call and tell you which ones you're eligible for. Private is the default and private still
+    gets matched.
+  </p>
+
+  {
+    deleted && (
+      <p class="mt-4 max-w-prose border-l-[3px] border-line-strong bg-sunken p-3 text-dense">
+        Deleted.
+      </p>
+    )
+  }
+
+  {
+    failed && (
+      <p class="mt-4 max-w-prose border-l-[3px] border-danger bg-noteligible-wash p-3 text-dense">
+        We couldn't load your projects just now. Nothing has been lost — try again in a moment.
+      </p>
+    )
+  }
+
+  {
+    !failed && projects.length === 0 && (
+      <div class="mt-6 max-w-prose rounded-sheet border border-line bg-surface p-4">
+        <p class="text-dense font-semibold">Nothing yet.</p>
+        <p class="mt-1 text-dense text-ink-2">
+          Two fields and you'll see which open calls match it — usually within a few seconds.
+        </p>
+        <p class="mt-3">
+          <a
+            href="/projects/new"
+            class="inline-flex min-h-11 items-center rounded-row bg-brand px-4 font-semibold text-surface"
+            >Start a project</a
+          >
+        </p>
+      </div>
+    )
+  }
+
+  {
+    projects.length > 0 && (
+      <>
+        <ul class="mt-6 max-w-prose divide-y divide-line border-y border-line">
+          {projects.map((project) => (
+            <li class="py-4">
+              <p class="text-dense font-semibold">
+                <a href={`/projects/${project.slug}`} class="text-ink">{project.title}</a>
+              </p>
+              <p class="text-micro text-ink-2">
+                {stateLabel(project.state)}
+                <span aria-hidden="true"> · </span>
+                {project.visibility === "private"
+                  ? "private"
+                  : project.visibility === "unlisted"
+                    ? "unlisted"
+                    : "public"}
+                <span aria-hidden="true"> · </span>
+                {project.matched_at
+                  ? `matched ${dateOf(project.matched_at)}`
+                  : "not matched yet"}
+              </p>
+              {project.pitch && <p class="mt-1 text-dense text-ink-2">{project.pitch}</p>}
+            </li>
+          ))}
+        </ul>
+
+        <p class="mt-6">
+          <a
+            href="/projects/new"
+            class="inline-flex min-h-11 items-center rounded-row border border-line-strong bg-surface px-4 font-semibold"
+            >Start another</a
+          >
+        </p>
+      </>
+    )
+  }
+
+  <p class="mt-10 text-micro text-ink-2">
+    Quiet for four months and we'll ask once whether it's still going; quiet for six and it
+    pauses itself. A paused project keeps getting matches and is never deleted.
+  </p>
+</Base>
