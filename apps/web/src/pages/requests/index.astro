@@ -1,0 +1,327 @@
+---
+// Deciding on requests. UX_FLOWS.md §11.2.
+//
+// "Bulk decline available; bulk accept deliberately is not." That asymmetry is the
+// whole design of this page: declining ten things you will never do is housekeeping,
+// while accepting ten people in one click is how a team becomes a mailing list. So
+// the decline control takes checkboxes and the accept control is one button on one
+// request.
+//
+// §2.5: declines take no reason, and none is stored. The requester is told the
+// outcome and nothing else — never who else was accepted.
+
+import Base from "../../layouts/Base.astro";
+import { createAuthClient, getSessionUser, socialWritesAllowed } from "../../lib/auth";
+import { reportError } from "../../lib/errors";
+import { builderName, getMyRequests, type RequestRow } from "../../lib/rooms";
+
+export const prerender = false;
+
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const user = await getSessionUser(Astro.cookies, env);
+if (!user) {
+  return Astro.redirect(`/signin?returnTo=${encodeURIComponent(Astro.url.pathname)}`, 302);
+}
+
+const client = createAuthClient(Astro.cookies, env);
+const writes = socialWritesAllowed(user);
+
+Astro.response.headers.set("cache-control", "private, no-store");
+
+let incoming: RequestRow[] = [];
+let outgoing: RequestRow[] = [];
+let failed = false;
+let notice: string | null = Astro.url.searchParams.get("sent") === "1"
+  ? "Sent. You'll get a message either way — and if they don't reply, it expires on its own."
+  : null;
+let openedThread: string | null = null;
+
+if (client) {
+  try {
+    if (Astro.request.method === "POST") {
+      const form = await Astro.request.formData();
+
+      // Blocking comes here from the room, the request list and the thread, because §4
+      // says it is one tap from every one of them and a second copy of the handler is a
+      // second place to get it wrong.
+      const blockUserId = String(form.get("block_user_id") ?? "");
+      const declineIds = form.getAll("decline").map(String).filter(Boolean);
+      const acceptId = String(form.get("accept") ?? "");
+      const withdrawId = String(form.get("withdraw") ?? "");
+
+      if (blockUserId) {
+        if (!writes.allowed) {
+          notice = writes.reason;
+        } else {
+          // The trigger cancels the pending requests and closes the threads in the same
+          // transaction (§4: "absolute and immediate", not "on the next cron run").
+          const { error } = await client
+            .from("blocks")
+            .insert({ blocker_user_id: user.id, blocked_user_id: blockUserId });
+          notice = error
+            ? "We couldn't do that just now."
+            : "Blocked. They're gone from every surface you share, and they're told nothing.";
+          const back = String(form.get("returnTo") ?? "");
+          if (!error && back.startsWith("/") && !back.startsWith("//")) {
+            return Astro.redirect(back, 303);
+          }
+        }
+      } else if (acceptId) {
+        const { data, error } = await client.rpc("accept_request", { p_request_id: acceptId });
+        if (error) {
+          notice = error.message.replace(/^[a-z ]*error:?\s*/i, "");
+        } else {
+          openedThread = typeof data === "string" ? data : null;
+          notice = "Accepted. A short conversation is open — that's where you two sort the rest out.";
+        }
+      } else if (declineIds.length > 0) {
+        let declined = 0;
+        for (const id of declineIds) {
+          const { data } = await client.rpc("decline_request", { p_request_id: id });
+          if (data === true) declined += 1;
+        }
+        notice =
+          declined === 0
+            ? "Nothing to decline — those may have expired already."
+            : `Declined ${declined}. They're told the answer and nothing else.`;
+      } else if (withdrawId) {
+        const { error } = await client
+          .from("collaboration_requests")
+          .update({ state: "withdrawn", decided_at: new Date().toISOString() })
+          .eq("id", withdrawId)
+          .eq("requester_user_id", user.id)
+          .eq("state", "pending");
+        notice = error ? "We couldn't withdraw that just now." : "Withdrawn.";
+      }
+    }
+
+    [incoming, outgoing] = await Promise.all([
+      getMyRequests(client, "in"),
+      getMyRequests(client, "out"),
+    ]);
+  } catch (err) {
+    await reportError(err, { route: "/requests" }, env);
+    failed = true;
+  }
+}
+
+const pendingIn = incoming.filter((r) => r.state === "pending");
+const decidedIn = incoming.filter((r) => r.state !== "pending");
+const pendingOut = outgoing.filter((r) => r.state === "pending");
+const decidedOut = outgoing.filter((r) => r.state !== "pending");
+
+const CONTEXT_LABEL: Record<string, string> = {
+  team_request: "Asking to join a team",
+  opportunity_intent: "Asking to team up",
+  project_role: "Asking about a project",
+};
+
+/** Grouped by context, per §11.2. */
+function byContext(rows: RequestRow[]): [string, RequestRow[]][] {
+  const groups = new Map<string, RequestRow[]>();
+  for (const row of rows) {
+    const key = CONTEXT_LABEL[row.context] ?? "Request";
+    groups.set(key, [...(groups.get(key) ?? []), row]);
+  }
+  return [...groups.entries()];
+}
+
+const dateOf = (iso: string) =>
+  new Date(iso).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    timeZone: user.timezone,
+  });
+
+const daysLeft = (iso: string) =>
+  Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000));
+---
+
+<Base title="Requests" noindex user={user}>
+  <h1 class="text-title font-semibold">Requests</h1>
+  <p class="mt-2 max-w-prose text-dense text-ink-2">
+    People who asked to work with you, and the asks you've sent. Nothing here is public, and no
+    decision you make is shown to anyone but the person it concerns.
+  </p>
+
+  {
+    notice && (
+      <p class="mt-4 max-w-prose border-l-[3px] border-brand bg-brand-wash p-3 text-dense">
+        {notice}
+        {openedThread && (
+          <>
+            {" "}
+            <a href={`/threads/${openedThread}`} class="text-brand">Open it →</a>
+          </>
+        )}
+      </p>
+    )
+  }
+
+  {
+    failed && (
+      <p class="mt-4 max-w-prose border-l-[3px] border-danger bg-noteligible-wash p-3 text-dense">
+        We couldn't load your requests just now. Nothing has been decided — try again in a moment.
+      </p>
+    )
+  }
+
+  {
+    !failed && pendingIn.length === 0 && pendingOut.length === 0 && decidedIn.length === 0 && decidedOut.length === 0 && (
+      <div class="mt-6 max-w-prose rounded-sheet border border-line bg-surface p-4">
+        <p class="text-dense font-semibold">Nothing waiting.</p>
+        <p class="mt-1 text-dense text-ink-2">
+          Requests only exist inside an opportunity — there's no way to message someone out of the
+          blue here, by design. Say you're going for something and the room will show you who else
+          is.
+        </p>
+        <p class="mt-3"><a href="/opportunities" class="text-brand">Find something →</a></p>
+      </div>
+    )
+  }
+
+  {/* ── Waiting for you ─────────────────────────────────────────────────── */}
+  {
+    pendingIn.length > 0 && (
+      <form method="post" class="mt-8">
+        <h2 class="text-subtitle font-semibold">Waiting for your answer</h2>
+        {byContext(pendingIn).map(([label, rows]) => (
+          <>
+            <h3 class="mt-4 text-micro uppercase tracking-wide text-ink-2">{label}</h3>
+            <ul class="mt-2 divide-y divide-line border-t border-line">
+              {rows.map((r) => (
+                <li class="py-4">
+                  <p class="text-dense font-semibold">
+                    {builderName(r.counterpart_display_name)}
+                    {r.counterpart_country && (
+                      <span class="ml-2 text-micro font-normal text-ink-2">
+                        {r.counterpart_country}
+                      </span>
+                    )}
+                  </p>
+                  {r.counterpart_headline && (
+                    <p class="text-dense text-ink-2">{r.counterpart_headline}</p>
+                  )}
+                  <p class="mt-1 text-micro text-ink-2">
+                    {r.team_name ? `${r.team_name} · ` : ""}
+                    {r.opportunity_title ?? "an opportunity"}
+                    {r.role ? ` · as ${r.role}` : ""}
+                    <span aria-hidden="true"> · </span>
+                    {daysLeft(r.expires_at)} day{daysLeft(r.expires_at) === 1 ? "" : "s"} before it
+                    expires
+                  </p>
+                  {r.message && <p class="mt-2 text-dense">{r.message}</p>}
+
+                  <p class="mt-3 flex flex-wrap items-center gap-3">
+                    {/* One at a time. There is no bulk accept, on purpose. */}
+                    <button
+                      type="submit"
+                      name="accept"
+                      value={r.request_id}
+                      disabled={!writes.allowed}
+                      class="inline-flex min-h-11 items-center rounded-row bg-brand px-4 text-dense font-semibold text-surface"
+                      >Accept</button
+                    >
+                    <label class="inline-flex min-h-11 items-center gap-2 text-dense">
+                      <input type="checkbox" name="decline" value={r.request_id} />
+                      Decline
+                    </label>
+                    <button
+                      type="submit"
+                      name="block_user_id"
+                      value={r.counterpart_user_id}
+                      class="min-h-11 text-dense text-ink-2 underline">Block</button
+                    >
+                    <a
+                      href={`/report?about=person&subject=${r.opportunity_slug ?? ""}`}
+                      class="min-h-11 text-dense text-ink-2 underline">Report</a
+                    >
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </>
+        ))}
+
+        <p class="mt-4">
+          <button
+            type="submit"
+            class="min-h-11 rounded-row border border-line-strong bg-surface px-4 text-dense font-semibold"
+            >Decline the ticked ones</button
+          >
+        </p>
+        <p class="mt-2 max-w-prose text-micro text-ink-2">
+          A decline says only that the answer was no. No reason is asked for and none is stored.
+        </p>
+      </form>
+    )
+  }
+
+  {/* ── Yours, waiting on someone else ──────────────────────────────────── */}
+  {
+    pendingOut.length > 0 && (
+      <section class="mt-10">
+        <h2 class="text-subtitle font-semibold">You're waiting on</h2>
+        <ul class="mt-3 divide-y divide-line border-t border-line">
+          {pendingOut.map((r) => (
+            <li class="py-4">
+              <p class="text-dense font-semibold">
+                {r.team_name ?? builderName(r.counterpart_display_name)}
+              </p>
+              <p class="text-micro text-ink-2">
+                {r.opportunity_title ?? "an opportunity"} <span aria-hidden="true">·</span> sent{" "}
+                {dateOf(r.created_at)} <span aria-hidden="true">·</span> expires in{" "}
+                {daysLeft(r.expires_at)} day{daysLeft(r.expires_at) === 1 ? "" : "s"}
+              </p>
+              {r.message && <p class="mt-2 text-dense text-ink-2">{r.message}</p>}
+              <form method="post" class="mt-2">
+                <button
+                  type="submit"
+                  name="withdraw"
+                  value={r.request_id}
+                  class="min-h-11 text-dense text-ink-2 underline">Withdraw this</button
+                >
+              </form>
+            </li>
+          ))}
+        </ul>
+        <p class="mt-3 max-w-prose text-micro text-ink-2">
+          Withdrawing frees one of your five pending slots. Silence here usually means a busy week,
+          not a no.
+        </p>
+      </section>
+    )
+  }
+
+  {/* ── Already decided ─────────────────────────────────────────────────── */}
+  {
+    (decidedIn.length > 0 || decidedOut.length > 0) && (
+      <section class="mt-10">
+        <h2 class="text-subtitle font-semibold">Already decided</h2>
+        <ul class="mt-3 divide-y divide-line border-t border-line">
+          {[...decidedIn, ...decidedOut].map((r) => (
+            <li class="py-3 text-dense">
+              <span class="font-semibold">
+                {r.team_name ?? builderName(r.counterpart_display_name)}
+              </span>
+              <span class="text-ink-2">
+                {" "}
+                · {r.state === "accepted" ? "accepted" : "declined"} · {dateOf(r.created_at)}
+              </span>
+              {r.state === "accepted" && (
+                <>
+                  {" "}
+                  <a href="/threads" class="text-brand">Open the conversation →</a>
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+
+  <p class="mt-10 text-micro text-ink-2">
+    <a href="/threads" class="underline">Your conversations →</a>
+  </p>
+</Base>

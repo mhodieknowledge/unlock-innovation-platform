@@ -8,6 +8,7 @@
  *   digest      assemble and enqueue digests   — §5, per timezone bucket
  *   dispatch    send what the budget allows    — §4, every 15 minutes
  *   retention   purge_expired_data()           — PRIVACY_AND_COMPLIANCE.md §8
+ *   collaboration expire_collaboration()       — TEAM_FORMATION.md §4.2, §5.1
  *
  * WHY SO LITTLE LOGIC IS HERE. The caps, the priorities, the quiet hours, the
  * budget rules and the send-time cancellation all live in Postgres functions
@@ -23,7 +24,7 @@
 
 import pg from "pg";
 
-const MODES = ["reminders", "digest", "dispatch", "retention"];
+const MODES = ["reminders", "digest", "dispatch", "retention", "collaboration"];
 
 const mode = process.argv[2];
 const dryRun = process.argv.includes("--dry-run");
@@ -277,6 +278,24 @@ async function runRetention() {
 }
 
 /**
+ * Collaboration expiry. TEAM_FORMATION.md §5.1 and §4.2's `[PR]`.
+ *
+ * "Auto-expire 72h before the deadline, or after 14 days", and "owner inactive for 14 days
+ * with pending requests → requests expire, so nobody waits on a dead team."
+ *
+ * Hourly, for the same reason reminders are hourly: a request that expired three hours ago
+ * but still shows as pending is occupying one of the requester's five slots, and the whole
+ * point of the rule is that nobody waits on something dead.
+ */
+async function runCollaboration() {
+  const { rows } = await client.query("SELECT expire_collaboration() AS report");
+  console.log("Collaboration expiry (TEAM_FORMATION.md §4.2, §5.1):");
+  for (const [k, v] of Object.entries(rows[0].report)) {
+    console.log(`  ${k}: ${v}`);
+  }
+}
+
+/**
  * §5: assembled nightly, "delivered per timezone bucket at 06:00 local".
  *
  * The bucket is computed from each user's own timezone rather than a fixed hour in
@@ -475,6 +494,10 @@ try {
       break;
     case "retention":
       await runRetention();
+      break;
+
+    case "collaboration":
+      await runCollaboration();
       break;
   }
 

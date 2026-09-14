@@ -188,7 +188,54 @@ degrades the bot to public catalogue reads rather than opening anything up.
 
 ---
 
-## 9. What has NOT been exercised
+## 9. Turning team rooms on, and off again
+
+Rooms ship dark. `feature_flags` has `team_room_entry` and `intent_count_visible` seeded
+`false`, and every room surface checks the flag AND the density condition — so with the
+flags off, `/opportunities/<slug>/room` is a 404 and the opportunity page shows no CTA and
+no count. That is the intended launch state (`PRODUCT_SPEC.md` §24, invariant 4).
+
+To turn them on, once there is enough real catalogue for a room to have anyone in it:
+
+```sql
+UPDATE feature_flags SET enabled = true WHERE key = 'team_room_entry';
+UPDATE feature_flags SET enabled = true WHERE key = 'intent_count_visible';
+```
+
+Check what it will look like before flipping anything — the counts come back even while the
+flag is off, which is what makes this a dry run rather than a guess:
+
+```sql
+SELECT o.slug, r.state, r.intent_count, r.team_count
+  FROM opportunities o, room_state(o.id) r
+ WHERE o.status = 'published'
+ ORDER BY r.intent_count DESC
+ LIMIT 20;
+```
+
+`state` reads `disabled` for every row until the flag is on; `intent_count` and
+`team_count` are live. A room opens at 3 intents or 1 team, so rows at 2 are the ones worth
+watching.
+
+To turn it off: set the flag back to `false`. Nothing is deleted — intents, teams, requests
+and threads stay exactly where they are, the routes 404 again, and flipping it back on
+restores the rooms as they were. `TEAM_FORMATION.md` §8's kill criterion (under 15% of
+enabled rooms reaching 3+ intents after three months) is a decision to make with this
+switch, not a code change.
+
+The hourly `collaboration` job (`npm run notify -- collaboration`, in the Notifications
+workflow) expires requests and marks dead teams stale. If it stops, requests keep sitting
+in people's five pending slots after they should have lapsed:
+
+```
+DATABASE_URL=... npm run notify -- collaboration
+```
+
+It prints what it changed, and it is safe to run by hand at any time.
+
+---
+
+## 10. What has NOT been exercised
 
 Stated because a runbook that implies more coverage than it has is worse than a short
 one.
@@ -201,3 +248,5 @@ one.
 | Telegram webhook against the real API | Never run. No bot token has been configured. |
 | Brevo send | Never run. No sending domain verified. |
 | An LLM provider call against a live API | Never run in this environment — no key present. The provider layer is unit-tested against the OpenAI and Gemini response shapes with an injected fetch, and the NO_AI path is tested end to end. |
+| Team rooms with real people in them | Never. Every rule is asserted in `supabase/tests/collaboration.sql` (109 assertions) and the route behaviour in `apps/web/test/room-route.test.ts`, but no two humans have used a room to form a team, and the flags are off. The first real room will teach us something the tests cannot. |
+| The thread poller against a real browser | The endpoint's 304 path is not covered by a test that drives a browser; the handler is straightforward and the page degrades to "reload to see replies" if the script never runs. |

@@ -51,18 +51,30 @@ interface Action {
 
 let windowItems: WindowItem[] = [];
 let actions: Action[] = [];
+let pendingRequests = 0;
 let failed = false;
 
 if (client) {
   try {
-    const [windowResult, actionResult] = await Promise.all([
+    const [windowResult, actionResult, requestResult] = await Promise.all([
       client.rpc("your_window", { p_user_id: user.id, p_limit: SURFACE_CAPS.yourWindow }),
       client.rpc("next_actions_capped", { p_user_id: user.id, p_limit: SURFACE_CAPS.nextActions }),
+      // Someone waiting for an answer is the one collaboration thing that belongs on this
+      // page: another person's next fortnight depends on it, and a request nobody sees
+      // expires (COLLABORATION_SYSTEM.md §2.3). Not a badge, not a count in the title —
+      // one line, and only when there is something behind it.
+      client.rpc("my_requests", { p_direction: "in" }),
     ]);
     if (windowResult.error) throw new Error(windowResult.error.message);
     if (actionResult.error) throw new Error(actionResult.error.message);
     windowItems = (windowResult.data ?? []) as unknown as WindowItem[];
     actions = (actionResult.data ?? []) as unknown as Action[];
+    // A failure here must not cost the page: the two capped surfaces above are the point
+    // of §14, and this line is an aside.
+    pendingRequests = requestResult.error
+      ? 0
+      : ((requestResult.data ?? []) as { state: string }[]).filter((r) => r.state === "pending")
+          .length;
   } catch (err) {
     await reportError(err, { route: "/you" }, env);
     failed = true;
@@ -216,6 +228,17 @@ const today = new Date().toLocaleDateString("en-GB", {
           <a href="/opportunities" class="text-brand">See everything we have →</a>
         </p>
       </div>
+    )
+  }
+
+  {
+    pendingRequests > 0 && (
+      <p class="mt-8 max-w-prose border-l-[3px] border-brand bg-brand-wash p-3 text-dense">
+        <a href="/requests" class="text-brand font-semibold">
+          {pendingRequests} {pendingRequests === 1 ? "person is" : "people are"} waiting for your
+          answer →
+        </a>
+      </p>
     )
   }
 

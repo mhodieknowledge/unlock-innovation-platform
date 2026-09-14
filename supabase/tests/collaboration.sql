@@ -288,6 +288,21 @@ SELECT assert_eq(
     WHERE r.requester_user_id = 'c2000000-0000-0000-0000-000000000004'),
   true);
 
+-- §5.1: the target is told a request arrived. Without this the flow has a silent gap —
+-- the request sits in a room nobody was told to open, and expires.
+SELECT assert_eq(
+  'a new request notifies the person it was sent to (§5.1)',
+  (SELECT count(*)::int FROM notifications
+    WHERE user_id = 'c2000000-0000-0000-0000-000000000001' AND type = 'request_received'),
+  1);
+
+SELECT assert_eq(
+  'and the message carries no name and no quoted text of theirs',
+  (SELECT bool_and(reason NOT ILIKE '%joiner%' AND payload::text NOT ILIKE '%interfaces%')
+     FROM notifications
+    WHERE user_id = 'c2000000-0000-0000-0000-000000000001' AND type = 'request_received'),
+  true);
+
 SELECT assert_raises(
   'one pending request per target and context (§2.4)',
   $q$INSERT INTO collaboration_requests (context, team_id, requester_user_id, target_user_id, message)
@@ -524,6 +539,409 @@ SELECT assert_eq(
       AND (column_name LIKE '%follower%' OR column_name LIKE '%like_count%'
            OR column_name = 'profile_views' OR column_name = 'is_online')),
   0);
+
+-- ── Migration 0017: what the pages read, and the limits they show ───────────
+--
+-- IMPLEMENTATION_PLAN.md §7's fifth `[PR]` criterion is "rate limits enforced and visible
+-- to the user before composing". Two code paths, one rule — so the strongest available
+-- assertion is that the sentence the compose page would show is character-for-character the
+-- sentence the INSERT raises. That is asserted below by catching the exception and
+-- comparing it to the function's own blocked_reason.
+
+-- A requester with a clean sheet: the page can say what is left before anything is typed.
+DO $$
+DECLARE a record;
+BEGIN
+  PERFORM set_config('request.jwt.claim.sub', 'c2000000-0000-0000-0000-000000000005', true);
+  SELECT * INTO a FROM request_allowance_for('c2000000-0000-0000-0000-000000000005');
+  PERFORM assert_eq('the daily limit is 10 (§2.4 [PR])', a.day_limit, 10);
+  PERFORM assert_eq('the hourly limit is 3', a.hour_limit, 3);
+  PERFORM assert_eq('and 5 may be pending at once', a.pending_limit, 5);
+  PERFORM assert_eq('nothing blocks a requester who has sent nothing', a.blocked_reason, NULL::text);
+  PERFORM set_config('request.jwt.claim.sub', NULL, true);
+END $$;
+
+-- request_allowance() is the callable half: it reports on the CALLER and on nobody else, so
+-- a signed-in user cannot use it to learn how much someone else has been asking around.
+DO $$
+DECLARE n int;
+BEGIN
+  PERFORM set_config('request.jwt.claim.sub', NULL, true);
+  SELECT count(*)::int INTO n FROM request_allowance();
+  PERFORM assert_eq('an anonymous caller gets no allowance row at all', n, 0);
+END $$;
+
+-- The one that matters. Three sent this hour, then the fourth is refused — and the refusal
+-- text is the text the form was already showing.
+DO $$
+DECLARE
+  a record;
+  v_message text;
+  i int;
+BEGIN
+  INSERT INTO users (id, email, age_confirmed_18)
+  VALUES ('c7000000-0000-0000-0000-000000000001','allowance@example.invalid', true);
+
+  FOR i IN 1..3 LOOP
+    INSERT INTO users (id, email, age_confirmed_18)
+    VALUES (('c7000000-0000-0000-0000-00000000001' || i)::uuid,
+            'allowance-target' || i || '@example.invalid', true);
+    INSERT INTO collaboration_requests (context, opportunity_id, requester_user_id, target_user_id, message)
+    VALUES ('opportunity_intent','c1000000-0000-0000-0000-000000000001',
+            'c7000000-0000-0000-0000-000000000001',
+            ('c7000000-0000-0000-0000-00000000001' || i)::uuid,
+            'A distinct note for person number ' || i);
+  END LOOP;
+
+  SELECT * INTO a FROM request_allowance_for('c7000000-0000-0000-0000-000000000001');
+  PERFORM assert_eq('three sent counts as three used', a.hour_used, 3);
+  PERFORM assert_eq('and the page is told why it cannot offer the form',
+                    a.blocked_reason IS NOT NULL, true);
+  PERFORM assert_eq('with a time the next slot opens, not just a refusal',
+                    a.next_slot_at > now(), true);
+
+  INSERT INTO users (id, email, age_confirmed_18)
+  VALUES ('c7000000-0000-0000-0000-000000000099','allowance-target9@example.invalid', true);
+
+  BEGIN
+    INSERT INTO collaboration_requests (context, opportunity_id, requester_user_id, target_user_id, message)
+    VALUES ('opportunity_intent','c1000000-0000-0000-0000-000000000001',
+            'c7000000-0000-0000-0000-000000000001',
+            'c7000000-0000-0000-0000-000000000099','One more, which must not be accepted');
+    RAISE EXCEPTION 'FAIL  the fourth request in an hour was ACCEPTED';
+  EXCEPTION WHEN others THEN
+    v_message := SQLERRM;
+  END;
+
+  PERFORM assert_eq(
+    'the limit the page SHOWS and the limit the database ENFORCES are the same sentence (criterion 5 [PR])',
+    v_message, a.blocked_reason);
+END $$;
+
+-- ── The room, as a page reads it ────────────────────────────────────────────
+
+-- Fixtures: countries and headlines, so the five permitted fields have values to leak.
+INSERT INTO profiles (user_id, visibility, headline, country_iso2) VALUES
+  ('c2000000-0000-0000-0000-000000000001','private','Builds irrigation sensors','ZW'),
+  ('c2000000-0000-0000-0000-000000000002','private','Front-end for low-end Android','NG'),
+  ('c2000000-0000-0000-0000-000000000003','private','Data and dashboards','KE');
+
+SELECT assert_eq(
+  'a viewer with no intent on this opportunity sees no builders — §2.2: only inside the room',
+  (SELECT count(*)::int FROM room_builders('c1000000-0000-0000-0000-000000000001')),
+  0);
+
+-- §2.1: `going_solo` and `just_interested` are "counted only". Only the two team-seeking
+-- stances are listed, and this fixture set contains both kinds.
+DO $$
+DECLARE n int; r record;
+BEGIN
+  PERFORM set_config('request.jwt.claim.sub', 'c2000000-0000-0000-0000-000000000001', true);
+
+  SELECT count(*)::int INTO n FROM room_builders('c1000000-0000-0000-0000-000000000001');
+  PERFORM assert_eq('a co-present viewer sees the builders looking for a team', n > 0, true);
+
+  PERFORM assert_eq(
+    'and nobody who is only watching or going alone is listed (§2.1)',
+    (SELECT count(*)::int FROM room_builders('c1000000-0000-0000-0000-000000000001')
+      WHERE stance NOT IN ('looking_for_team','have_team_looking_for_roles')),
+    0);
+
+  PERFORM assert_eq(
+    'the viewer is not listed to themselves',
+    (SELECT count(*)::int FROM room_builders('c1000000-0000-0000-0000-000000000001')
+      WHERE user_id = 'c2000000-0000-0000-0000-000000000001'),
+    0);
+
+  SELECT * INTO r FROM room_builders('c1000000-0000-0000-0000-000000000001')
+   WHERE user_id = 'c2000000-0000-0000-0000-000000000002';
+  PERFORM assert_eq('a builder card carries the country §2.2 permits', r.country_iso2, 'NG'::char(2));
+  PERFORM assert_eq('and the headline', r.headline, 'Front-end for low-end Android');
+
+  PERFORM set_config('request.jwt.claim.sub', NULL, true);
+END $$;
+
+-- §2.2 `[PR]`: "It exposes: display name, country, headline, roles offered and the note.
+-- Nothing else, ever." Asserted against the function's RESULT TYPE, so adding an email or a
+-- handle to the room card fails here rather than in review.
+DO $$
+DECLARE cols text;
+BEGIN
+  SELECT pg_get_function_result(p.oid) INTO cols
+    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'room_builders';
+
+  IF cols IS NULL THEN
+    RAISE EXCEPTION 'FAIL  room_builders not found — the assertion is vacuous';
+  END IF;
+  IF cols ~* '(email|handle|last_seen|phone|telegram|view_count|birth|age)' THEN
+    RAISE EXCEPTION 'FAIL  room_builders returns more than §2.2 permits: %', cols;
+  END IF;
+  RAISE NOTICE 'PASS  a builder card can return nothing beyond the five fields §2.2 permits';
+END $$;
+
+-- §4: a block removes the person from the shared surface, in both directions, silently.
+DO $$
+BEGIN
+  INSERT INTO blocks (blocker_user_id, blocked_user_id)
+  VALUES ('c2000000-0000-0000-0000-000000000001','c2000000-0000-0000-0000-000000000003');
+
+  PERFORM set_config('request.jwt.claim.sub', 'c2000000-0000-0000-0000-000000000001', true);
+  PERFORM assert_eq(
+    'a blocked builder is gone from the blocker''s room (§4)',
+    (SELECT count(*)::int FROM room_builders('c1000000-0000-0000-0000-000000000001')
+      WHERE user_id = 'c2000000-0000-0000-0000-000000000003'),
+    0);
+
+  PERFORM set_config('request.jwt.claim.sub', 'c2000000-0000-0000-0000-000000000003', true);
+  PERFORM assert_eq(
+    'and the blocker is gone from theirs — absence, never an explanation',
+    (SELECT count(*)::int FROM room_builders('c1000000-0000-0000-0000-000000000001')
+      WHERE user_id = 'c2000000-0000-0000-0000-000000000001'),
+    0);
+
+  PERFORM set_config('request.jwt.claim.sub', NULL, true);
+  DELETE FROM blocks WHERE blocker_user_id = 'c2000000-0000-0000-0000-000000000001'
+                       AND blocked_user_id = 'c2000000-0000-0000-0000-000000000003';
+END $$;
+
+-- Team cards: §3.2 item 2's fields, and §4.2's staleness.
+DO $$
+DECLARE t record;
+BEGIN
+  PERFORM set_config('request.jwt.claim.sub', 'c2000000-0000-0000-0000-000000000003', true);
+
+  SELECT * INTO t FROM room_teams('c1000000-0000-0000-0000-000000000001')
+   WHERE team_id = 'c3000000-0000-0000-0000-000000000001';
+
+  PERFORM assert_eq('a team card carries the size against the maximum', t.max_size, 3);
+  PERFORM assert_eq('and counts the members it has', t.member_count > 0, true);
+  PERFORM assert_eq('and the country mix, as a distinct list', t.countries @> ARRAY['ZW']::char(2)[], true);
+  PERFORM assert_eq('a fresh owner is not marked stale', t.owner_stale, false);
+
+  UPDATE teams SET owner_last_seen_at = now() - interval '20 days'
+   WHERE id = 'c3000000-0000-0000-0000-000000000001';
+  PERFORM assert_eq(
+    'an owner absent for over 14 days is marked stale in the room (§4.2 [PR])',
+    (SELECT owner_stale FROM room_teams('c1000000-0000-0000-0000-000000000001')
+      WHERE team_id = 'c3000000-0000-0000-0000-000000000001'),
+    true);
+  UPDATE teams SET owner_last_seen_at = now()
+   WHERE id = 'c3000000-0000-0000-0000-000000000001';
+
+  PERFORM set_config('request.jwt.claim.sub', NULL, true);
+END $$;
+
+SELECT assert_eq(
+  'and a viewer with no intent sees no teams either',
+  (SELECT count(*)::int FROM room_teams('c1000000-0000-0000-0000-000000000001')),
+  0);
+
+-- "Your status" — one row for a signed-in viewer, whatever they have or have not done.
+DO $$
+DECLARE s record;
+BEGIN
+  PERFORM set_config('request.jwt.claim.sub', 'c2000000-0000-0000-0000-000000000001', true);
+  SELECT * INTO s FROM my_room_status('c1000000-0000-0000-0000-000000000001');
+  PERFORM assert_eq('your status knows your stance', s.stance::text, 'have_team_looking_for_roles');
+  PERFORM assert_eq('and your team', s.my_team_id, 'c3000000-0000-0000-0000-000000000001'::uuid);
+  PERFORM assert_eq('and that you own it', s.i_own_my_team, true);
+
+  PERFORM set_config('request.jwt.claim.sub', 'c2000000-0000-0000-0000-000000000004', true);
+  SELECT * INTO s FROM my_room_status('c1000000-0000-0000-0000-000000000001');
+  PERFORM assert_eq(
+    'someone with an intent and no team still gets a row, with nulls rather than nothing',
+    s.stance IS NOT NULL AND s.my_team_id IS NULL, true);
+
+  PERFORM set_config('request.jwt.claim.sub', NULL, true);
+END $$;
+
+-- The bug this last case exists for: a member of a team on ANOTHER opportunity, with intent
+-- here and no team here. The first version of my_room_status joined team_members into the
+-- same row as the intent, so those memberships produced rows the filter then dropped — and
+-- the room told someone who HAD declared intent that they had said nothing at all.
+DO $$
+DECLARE s record; n int;
+BEGIN
+  INSERT INTO opportunities
+    (id, slug, title, category_id, organisation_id, status, verification, last_verified_at,
+     cost, source_url, deadline_at, deadline_precision, published_at, eligibility_scope,
+     eligible_countries, link_ok)
+  VALUES
+    ('c1000000-0000-0000-0000-000000000004', 'collab-elsewhere', 'A different hackathon entirely',
+     (SELECT id FROM categories WHERE code='hackathon'), 'c0000000-0000-0000-0000-000000000001',
+     'published', 'verified', now(), 'free', 'https://collab.example/elsewhere',
+     now() + interval '40 days', 'date_only', now(), 'africa_wide', ARRAY[]::char(2)[], true);
+
+  INSERT INTO intents (user_id, opportunity_id, stance)
+  VALUES ('c2000000-0000-0000-0000-000000000004','c1000000-0000-0000-0000-000000000004','have_team_looking_for_roles');
+
+  INSERT INTO teams (opportunity_id, owner_user_id, name, max_size)
+  VALUES ('c1000000-0000-0000-0000-000000000004','c2000000-0000-0000-0000-000000000004','Elsewhere Crew',3);
+
+  PERFORM set_config('request.jwt.claim.sub', 'c2000000-0000-0000-0000-000000000004', true);
+
+  SELECT count(*)::int INTO n FROM my_room_status('c1000000-0000-0000-0000-000000000001');
+  PERFORM assert_eq('a team in another room does not erase your status in this one', n, 1);
+
+  SELECT * INTO s FROM my_room_status('c1000000-0000-0000-0000-000000000001');
+  PERFORM assert_eq('your intent here is still reported', s.stance IS NOT NULL, true);
+  PERFORM assert_eq('and the other room''s team is not shown as yours here',
+                    s.my_team_id, NULL::uuid);
+
+  SELECT * INTO s FROM my_room_status('c1000000-0000-0000-0000-000000000004');
+  PERFORM assert_eq('while in that room it is', s.my_team_id IS NOT NULL, true);
+
+  PERFORM set_config('request.jwt.claim.sub', NULL, true);
+END $$;
+
+-- The decide list, and the same §2.2 limit on what it may return.
+DO $$
+DECLARE cols text; n int;
+BEGIN
+  SELECT pg_get_function_result(p.oid) INTO cols
+    FROM pg_proc p JOIN pg_namespace n2 ON n2.oid = p.pronamespace
+   WHERE n2.nspname = 'public' AND p.proname = 'my_requests';
+  IF cols IS NULL THEN
+    RAISE EXCEPTION 'FAIL  my_requests not found — the assertion is vacuous';
+  END IF;
+  IF cols ~* '(email|phone|telegram|whatsapp|identifier)' THEN
+    RAISE EXCEPTION
+      'FAIL  the decide list returns a contact detail before acceptance (criterion 3 [PR]): %', cols;
+  END IF;
+  RAISE NOTICE 'PASS  the decide list carries no contact detail — criterion 3 holds on this endpoint too';
+
+  PERFORM set_config('request.jwt.claim.sub', NULL, true);
+  SELECT count(*)::int INTO n FROM my_requests('in');
+  PERFORM assert_eq('an anonymous caller has no requests to decide', n, 0);
+
+  PERFORM set_config('request.jwt.claim.sub', 'c2000000-0000-0000-0000-000000000001', true);
+  SELECT count(*)::int INTO n FROM my_requests('sideways');
+  PERFORM assert_eq('and a direction that is neither in nor out returns nothing', n, 0);
+  PERFORM set_config('request.jwt.claim.sub', NULL, true);
+END $$;
+
+-- §2.3's state machine, and the hole 0017 closed: a requester deciding their own request.
+DO $$
+DECLARE chk text; qual text;
+BEGIN
+  SELECT coalesce(pg_get_expr(p.polwithcheck, p.polrelid), ''),
+         coalesce(pg_get_expr(p.polqual, p.polrelid), '')
+    INTO chk, qual
+    FROM pg_policy p JOIN pg_class c ON c.oid = p.polrelid
+   WHERE c.relname = 'collaboration_requests' AND p.polcmd = 'w';
+
+  IF chk IS NULL THEN
+    RAISE EXCEPTION 'FAIL  no UPDATE policy on collaboration_requests — the assertion is vacuous';
+  END IF;
+  IF chk NOT ILIKE '%withdrawn%' THEN
+    RAISE EXCEPTION
+      'FAIL  the UPDATE policy lets a participant write any state, including accepting their own request: %',
+      chk;
+  END IF;
+  RAISE NOTICE 'PASS  the only state a requester may write directly is withdrawn (§2.3)';
+END $$;
+
+-- Handoff, from the other end: proposing is not exchanging.
+DO $$
+DECLARE v_thread uuid; v_proposal uuid; v_view record; n int;
+BEGIN
+  SELECT th.id INTO v_thread FROM threads th
+    JOIN collaboration_requests r ON r.id = th.request_id
+   WHERE r.id = 'c6000000-0000-0000-0000-000000000002';
+
+  PERFORM set_config('request.jwt.claim.sub', 'c2000000-0000-0000-0000-000000000001', true);
+
+  SELECT * INTO v_view FROM thread_view(v_thread);
+  PERFORM assert_eq('the thread header names the other person, not you',
+                    v_view.counterpart_display_name, 'Joiner');
+  PERFORM assert_eq('and says what the conversation is about',
+                    v_view.context_label, 'Irrigation Crew');
+
+  -- This thread already reached an accepted handoff earlier in the suite, so a second
+  -- proposal is refused rather than quietly stacking another channel on top.
+  BEGIN
+    v_proposal := propose_handoff(v_thread, 'whatsapp', '+263700000000');
+    RAISE EXCEPTION 'FAIL  a second handoff was accepted after contacts were already swapped';
+  EXCEPTION WHEN others THEN
+    IF SQLERRM LIKE 'FAIL %' THEN RAISE; END IF;
+    RAISE NOTICE 'PASS  once contacts are swapped there is nothing left to propose (refused: %)',
+      left(SQLERRM, 60);
+  END;
+
+  PERFORM set_config('request.jwt.claim.sub', 'c2000000-0000-0000-0000-000000000005', true);
+  SELECT count(*)::int INTO n FROM thread_view(v_thread);
+  PERFORM assert_eq('someone outside the thread cannot read its header either', n, 0);
+
+  PERFORM assert_eq('and cannot propose a handoff into it',
+                    propose_handoff(v_thread, 'telegram', '@stranger'), NULL::uuid);
+
+  PERFORM set_config('request.jwt.claim.sub', NULL, true);
+END $$;
+
+-- A fresh thread, to exercise the propose → decline → propose path §3.3 describes.
+DO $$
+DECLARE v_thread uuid; v_proposal uuid; v_view record; n int;
+BEGIN
+  INSERT INTO intents (user_id, opportunity_id, stance)
+  VALUES ('c2000000-0000-0000-0000-000000000007','c1000000-0000-0000-0000-000000000001','looking_for_team')
+  ON CONFLICT (user_id, opportunity_id) DO UPDATE SET stance = 'looking_for_team';
+
+  INSERT INTO collaboration_requests
+    (id, context, opportunity_id, requester_user_id, target_user_id, message)
+  VALUES ('c6000000-0000-0000-0000-000000000004','opportunity_intent',
+          'c1000000-0000-0000-0000-000000000001',
+          'c2000000-0000-0000-0000-000000000007','c2000000-0000-0000-0000-000000000003',
+          'Fancy entering this together?');
+
+  PERFORM set_config('request.jwt.claim.sub', 'c2000000-0000-0000-0000-000000000003', true);
+  v_thread := accept_request('c6000000-0000-0000-0000-000000000004');
+
+  v_proposal := propose_handoff(v_thread, 'telegram', '@third');
+  PERFORM assert_eq('a handoff can be proposed in an open thread', v_proposal IS NOT NULL, true);
+
+  SELECT count(*)::int INTO n FROM handoff_identifiers(v_thread);
+  PERFORM assert_eq('and still releases nothing on its own (§3.3 [PR])', n, 0);
+
+  SELECT * INTO v_view FROM thread_view(v_thread);
+  PERFORM assert_eq('the banner knows a proposal is outstanding', v_view.handoff_state, 'proposed');
+  PERFORM assert_eq('and that it is the viewer''s own', v_view.handoff_is_mine, true);
+
+  -- §3.3: "Either side can decline without explanation. Declining does not close the thread."
+  PERFORM set_config('request.jwt.claim.sub', 'c2000000-0000-0000-0000-000000000007', true);
+  PERFORM assert_eq('the other side can decline it', decline_handoff(v_proposal), true);
+
+  SELECT * INTO v_view FROM thread_view(v_thread);
+  PERFORM assert_eq('declining leaves no live proposal', v_view.handoff_state, NULL::text);
+  PERFORM assert_eq('and does not close the thread', v_view.state, 'open');
+
+  SELECT count(*)::int INTO n FROM handoff_identifiers(v_thread);
+  PERFORM assert_eq('and nothing was released by the attempt', n, 0);
+
+  -- A declined proposal does not consume the option: either side may try again.
+  v_proposal := propose_handoff(v_thread, 'whatsapp', '+263700000001');
+  PERFORM assert_eq('and either side may propose again afterwards', v_proposal IS NOT NULL, true);
+
+  PERFORM set_config('request.jwt.claim.sub', NULL, true);
+END $$;
+
+-- The thread list, which is the only way to find a conversation again.
+DO $$
+DECLARE r record; n int;
+BEGIN
+  PERFORM set_config('request.jwt.claim.sub', 'c2000000-0000-0000-0000-000000000007', true);
+  SELECT count(*)::int INTO n FROM my_threads();
+  PERFORM assert_eq('your threads are listed for you', n, 1);
+
+  SELECT * INTO r FROM my_threads();
+  PERFORM assert_eq('with the other person''s name', r.counterpart_display_name, 'Third');
+  PERFORM assert_eq('and what it was about', r.context_label, 'A hackathon with team rules');
+
+  PERFORM set_config('request.jwt.claim.sub', 'c2000000-0000-0000-0000-000000000005', true);
+  SELECT count(*)::int INTO n FROM my_threads();
+  PERFORM assert_eq('and nobody else''s are', n, 0);
+  PERFORM set_config('request.jwt.claim.sub', NULL, true);
+END $$;
 
 -- ── Expiry ──────────────────────────────────────────────────────────────────
 

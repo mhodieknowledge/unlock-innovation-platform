@@ -1,0 +1,454 @@
+---
+// Team room. UX_FLOWS.md §10, TEAM_FORMATION.md §3.
+//
+// The route's most important behaviour is what it does when there is nobody here.
+// IMPLEMENTATION_PLAN.md §7 `[PR]`: "A room below its floor is NEVER RENDERED — the
+// route returns the opportunity page with a single CTA." So below the floor this
+// route does not render a thinner room, or an empty list, or a "be the first!"
+// page of its own: it rewrites to the opportunity page, which carries the one CTA.
+// An empty room is worse than no room, because it tells a visitor the product is
+// deserted and tells the next visitor the same thing.
+//
+// Three distinct absences, three different responses:
+//   disabled   → 404. The flag is off; the surface does not exist (§24, invariant 4).
+//   below_floor→ the opportunity page, with the CTA.
+//   archived   → the room, read-only (§3.3: "Nothing is deleted").
+
+import Base from "../../../layouts/Base.astro";
+import { createAuthClient, getSessionUser, socialWritesAllowed } from "../../../lib/auth";
+import { getOpportunity } from "../../../lib/db";
+import { countdownLabel, deadlineFacts } from "../../../lib/deadline";
+import { reportError } from "../../../lib/errors";
+import {
+  builderName,
+  getMyRoomStatus,
+  getRequestAllowance,
+  getRoomBuilders,
+  getRoomState,
+  getRoomTeams,
+  type MyRoomStatus,
+  type RequestAllowance,
+  type RoomBuilder,
+  type RoomTeam,
+} from "../../../lib/rooms";
+import { hostPlatformFor } from "@mbele/config";
+
+export const prerender = false;
+
+const { slug } = Astro.params;
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+
+const user = await getSessionUser(Astro.cookies, env);
+if (!user) {
+  // A room is other people's intent. UX_FLOWS.md §1 asks for sign-in "only at the
+  // point of a personal action" — being shown who else is going is one.
+  return Astro.redirect(`/signin?returnTo=${encodeURIComponent(Astro.url.pathname)}`, 302);
+}
+
+const found = await getOpportunity(slug!, env);
+const opp = found.ok ? found.data.opportunity : null;
+const client = createAuthClient(Astro.cookies, env);
+
+// Never cached: everything below is specific to one reader, and §3.2's country mix
+// and request states change under them.
+Astro.response.headers.set("cache-control", "private, no-store");
+
+let failed = false;
+let roomState = "disabled";
+let intentCount = 0;
+let teams: RoomTeam[] = [];
+let builders: RoomBuilder[] = [];
+let status: MyRoomStatus | null = null;
+let allowance: RequestAllowance | null = null;
+
+if (opp && client) {
+  try {
+    const room = await getRoomState(client, opp.id);
+    roomState = room.state;
+    intentCount = room.intent_count;
+
+    if (room.state === "open" || room.state === "archived") {
+      [teams, builders, status, allowance] = await Promise.all([
+        getRoomTeams(client, opp.id),
+        getRoomBuilders(client, opp.id),
+        getMyRoomStatus(client, opp.id),
+        getRequestAllowance(client),
+      ]);
+    }
+  } catch (err) {
+    await reportError(err, { route: "/opportunities/[slug]/room", tags: { slug: slug ?? "" } }, env);
+    failed = true;
+  }
+}
+
+if (!opp || roomState === "absent") {
+  Astro.response.status = 404;
+} else if (roomState === "below_floor") {
+  // The acceptance criterion, in one line: the reader ends up on the opportunity page,
+  // which carries the single CTA. A redirect rather than a rewrite so the address bar
+  // agrees with what is on screen — a rewrite would leave someone on /room looking at a
+  // different page, and reloading or sharing that URL would confuse them twice.
+  //
+  // 302, never 301: this room opens the moment a third person says they are going, and a
+  // permanent redirect is cached by browsers long after that.
+  return Astro.redirect(`/opportunities/${slug}`, 302);
+} else if (roomState === "disabled" && !failed) {
+  // The flag is off. Not an empty room, not an explanation — the route is absent.
+  Astro.response.status = 404;
+}
+
+const archived = roomState === "archived";
+const writes = socialWritesAllowed(user);
+const hasIntent = status?.stance != null;
+const facts = opp
+  ? deadlineFacts({
+      deadline_at: opp.deadline_at,
+      deadline_precision: opp.deadline_precision as never,
+      opens_at: opp.opens_at,
+      is_rolling: opp.is_rolling,
+    })
+  : null;
+
+const host = hostPlatformFor(opp?.apply_url ?? opp?.official_url ?? opp?.source_url);
+
+const teamRule =
+  opp?.team_size_min && opp?.team_size_max
+    ? `Teams of ${opp.team_size_min} to ${opp.team_size_max}`
+    : opp?.team_required === true
+      ? "Teams required; the size isn't stated"
+      : opp?.team_required === false
+        ? "This one is entered individually"
+        : "The team rule isn't stated on the source page";
+
+const countryNames = (codes: string[]): string =>
+  codes.length === 0 ? "Countries not given" : codes.join(" · ");
+
+/** The remaining-requests line, shown BEFORE any compose form (§11.1 `[PR]`). */
+const allowanceLine = (a: RequestAllowance | null): string | null => {
+  if (!a) return null;
+  if (a.blocked_reason) {
+    return a.next_slot_at
+      ? `${a.blocked_reason[0]!.toUpperCase()}${a.blocked_reason.slice(1)}. You can send another after ${new Date(
+          a.next_slot_at,
+        ).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: user.timezone })}.`
+      : `${a.blocked_reason[0]!.toUpperCase()}${a.blocked_reason.slice(1)}.`;
+  }
+  const left = Math.min(a.day_limit - a.day_used, a.hour_limit - a.hour_used);
+  return `${left} request${left === 1 ? "" : "s"} left right now · ${a.pending_limit - a.pending_used} of ${a.pending_limit} pending slots free`;
+};
+---
+
+{
+  !opp || roomState === "absent" || (roomState === "disabled" && !failed) ? (
+    <Base title="Not found" noindex user={user}>
+      <h1 class="text-display font-bold">There's no room here</h1>
+      <p class="prose-measure mt-3 text-body text-ink-2">
+        Either this opportunity doesn't exist, or team rooms aren't switched on. Nothing is
+        missing from your account.
+      </p>
+      <p class="mt-4"><a href="/opportunities" class="text-brand">Browse what's open →</a></p>
+    </Base>
+  ) : (
+    <Base title={`Team room — ${opp.title}`} noindex user={user}>
+      {/* ── Header: §3.2 item 1 ─────────────────────────────────────────── */}
+      <p class="text-micro uppercase tracking-wide text-ink-2">Team room</p>
+      <h1 class="mt-1 text-title font-semibold">
+        <a href={`/opportunities/${opp.slug}`} class="text-ink no-underline">{opp.title}</a>
+      </h1>
+      <p class="mt-1 text-meta text-ink-2">
+        {facts ? countdownLabel(facts) : "Deadline not stated"} <span aria-hidden="true">·</span>{" "}
+        {teamRule}
+      </p>
+
+      {
+        archived && (
+          <div class="mt-4 border-l-[3px] border-line-strong bg-sunken p-3">
+            <p class="text-dense font-semibold">This has closed, so the room is read-only.</p>
+            <p class="mt-1 text-dense text-ink-2">
+              Teams and their records are kept. Nothing here is deleted.
+            </p>
+          </div>
+        )
+      }
+
+      {
+        failed && (
+          <p class="mt-4 max-w-prose border-l-[3px] border-danger bg-noteligible-wash p-3 text-dense">
+            We couldn't load the room just now. Nothing has changed — try again in a moment.
+          </p>
+        )
+      }
+
+      {/* Move 3 `[PR]`: don't fight the host platform. */}
+      {
+        host && (
+          <div class="mt-4 max-w-prose border-l-[3px] border-brand bg-brand-wash p-3">
+            <p class="text-dense">
+              This one is hosted on {host.name}, which has its own {host.toolName}.{" "}
+              <a
+                href={opp.apply_url ?? opp.official_url ?? opp.source_url ?? "#"}
+                rel="noopener noreferrer nofollow ugc"
+                target="_blank"
+                class="text-brand">Use it there</a
+              >. This room is for builders in your region planning to enter.
+            </p>
+          </div>
+        )
+      }
+
+      {/* ── Your status: §3.2 item 4 ────────────────────────────────────── */}
+      <section class="mt-6 max-w-prose rounded-sheet border border-line bg-surface p-4">
+        <h2 class="text-subtitle font-semibold">You</h2>
+        {
+          !writes.allowed ? (
+            <p class="mt-2 text-dense text-ink-2">{writes.reason}</p>
+          ) : hasIntent ? (
+            <>
+              <p class="mt-2 text-dense">
+                You've said: <strong>{
+                  status!.stance === "looking_for_team"
+                    ? "you're looking for a team"
+                    : status!.stance === "have_team_looking_for_roles"
+                      ? "you have a team and need people"
+                      : status!.stance === "going_solo"
+                        ? "you're entering alone"
+                        : "you're watching this one"
+                }</strong>
+              </p>
+              {
+                status!.roles_offered.length > 0 && (
+                  <p class="mt-1 text-dense text-ink-2">
+                    Roles you offered: {status!.roles_offered.join(", ")}
+                  </p>
+                )
+              }
+              {
+                status!.my_team_id && (
+                  <p class="mt-1 text-dense text-ink-2">
+                    Your team here: <strong>{status!.my_team_name}</strong>
+                    {status!.i_own_my_team ? " (you own it)" : ""}
+                  </p>
+                )
+              }
+              <p class="mt-1 text-dense text-ink-2">
+                {
+                  status!.intent_expires_at
+                    ? `This lapses on its own at the deadline — ${new Date(
+                        status!.intent_expires_at,
+                      ).toLocaleDateString("en-GB", { day: "numeric", month: "long" })}. Intent is never permanent.`
+                    : ""
+                }
+              </p>
+              {
+                (status!.requests_in > 0 || status!.requests_out > 0) && (
+                  <p class="mt-2 text-dense">
+                    <a href="/requests" class="text-brand">
+                      {status!.requests_in > 0
+                        ? `${status!.requests_in} request${status!.requests_in === 1 ? "" : "s"} waiting for your answer`
+                        : `${status!.requests_out} request${status!.requests_out === 1 ? "" : "s"} you're waiting on`}
+                      {" →"}
+                    </a>
+                  </p>
+                )
+              }
+              {
+                !archived && (
+                  <p class="mt-3 flex flex-wrap gap-3">
+                    <a
+                      href={`/opportunities/${opp.slug}/intent`}
+                      class="inline-flex min-h-11 items-center rounded-row border border-line-strong bg-surface px-4 text-dense font-semibold"
+                      >Change or withdraw</a
+                    >
+                    {
+                      !status!.my_team_id && (
+                        <a
+                          href={`/opportunities/${opp.slug}/teams/new`}
+                          class="inline-flex min-h-11 items-center rounded-row bg-brand px-4 text-dense font-semibold text-surface"
+                          >Start a team</a
+                        >
+                      )
+                    }
+                  </p>
+                )
+              }
+            </>
+          ) : (
+            <>
+              <p class="mt-2 text-dense text-ink-2">
+                You haven't said anything about this one yet. Builders here can only be seen by
+                other builders going for the same thing — that's the only thing that makes anyone
+                visible in a room.
+              </p>
+              {
+                !archived && (
+                  <p class="mt-3">
+                    <a
+                      href={`/opportunities/${opp.slug}/intent`}
+                      class="inline-flex min-h-11 items-center rounded-row bg-brand px-4 font-semibold text-surface"
+                      >Say you're going for this</a
+                    >
+                  </p>
+                )
+              }
+            </>
+          )
+        }
+        {
+          hasIntent && allowanceLine(allowance) && (
+            /* §11.1 `[PR]`: rate-limit state is shown BEFORE composing, not discovered
+               on submit. */
+            <p class="mt-3 border-t border-line pt-3 text-micro text-ink-2">
+              {allowanceLine(allowance)}
+            </p>
+          )
+        }
+      </section>
+
+      {/* ── Open teams: §3.2 item 2 ─────────────────────────────────────── */}
+      {
+        hasIntent && teams.length > 0 && (
+          <>
+            <h2 class="mt-8 text-subtitle font-semibold">Teams</h2>
+            <ul class="mt-3 grid gap-3 md:grid-cols-2">
+              {teams.map((team) => (
+                <li class="rounded-sheet border border-line bg-surface p-4">
+                  <p class="text-dense font-semibold">{team.name}</p>
+                  <p class="mt-1 text-micro text-ink-2">
+                    {team.member_count} of {team.max_size} <span aria-hidden="true">·</span>{" "}
+                    {countryNames(team.countries)}
+                    {team.state === "full" ? " · full" : ""}
+                    {team.state === "submitted" ? " · entered" : ""}
+                  </p>
+                  {team.pitch && <p class="mt-2 text-dense">{team.pitch}</p>}
+                  {team.roles_needed.length > 0 && (
+                    <p class="mt-2 text-dense text-ink-2">
+                      Looking for: {team.roles_needed.join(", ")}
+                    </p>
+                  )}
+                  {team.owner_stale && (
+                    /* §4.2 `[PR]`: nobody should wait on a dead team. */
+                    <p class="mt-2 text-micro text-warning">
+                      {builderName(team.owner_display_name)} hasn't been here in over two weeks.
+                      Requests to this team may go unanswered.
+                    </p>
+                  )}
+                  {!archived && (
+                    <p class="mt-3">
+                      {team.i_own_it ? (
+                        <a href="/requests" class="text-brand text-dense">Your team — see requests →</a>
+                      ) : team.i_am_member ? (
+                        <span class="text-dense text-ink-2">You're in this team.</span>
+                      ) : team.my_request_state === "pending" ? (
+                        <span class="text-dense text-ink-2">You've asked to join. Waiting.</span>
+                      ) : team.my_request_state === "declined" ? (
+                        <span class="text-dense text-ink-2">You asked once; the answer was no.</span>
+                      ) : team.state === "full" ? (
+                        <span class="text-dense text-ink-2">No seats free.</span>
+                      ) : allowance?.blocked_reason ? (
+                        <span class="text-dense text-ink-2">
+                          You can't send another request just now.
+                        </span>
+                      ) : (
+                        <a
+                          href={`/requests/new?team=${team.team_id}`}
+                          class="inline-flex min-h-11 items-center rounded-row border border-line-strong bg-surface px-4 text-dense font-semibold"
+                          >Request to join</a
+                        >
+                      )}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </>
+        )
+      }
+
+      {
+        hasIntent && teams.length === 0 && !archived && (
+          <p class="mt-8 max-w-prose text-dense text-ink-2">
+            No teams here yet. {intentCount > 1 ? "Other people are going" : "You're early"} — starting
+            one is how the room fills up.
+          </p>
+        )
+      }
+
+      {/* ── Builders looking for a team: §3.2 item 3 ─────────────────────── */}
+      {
+        hasIntent && builders.length > 0 && (
+          <>
+            <h2 class="mt-8 text-subtitle font-semibold">Builders looking for a team</h2>
+            <ul class="mt-3 divide-y divide-line border-t border-line">
+              {builders.map((b) => (
+                <li class="py-4">
+                  <p class="text-dense font-semibold">
+                    {builderName(b.display_name)}
+                    {b.country_iso2 && (
+                      <span class="ml-2 text-micro font-normal text-ink-2">{b.country_iso2}</span>
+                    )}
+                  </p>
+                  {b.headline && <p class="text-dense text-ink-2">{b.headline}</p>}
+                  {b.roles_offered.length > 0 && (
+                    <p class="mt-1 text-dense">Can do: {b.roles_offered.join(", ")}</p>
+                  )}
+                  {b.note && <p class="mt-1 text-dense text-ink-2">{b.note}</p>}
+                  {b.leads_a_team && (
+                    <p class="mt-1 text-micro text-ink-2">Has a team in this room.</p>
+                  )}
+                  {!archived && (
+                    <p class="mt-2 flex flex-wrap gap-3">
+                      {b.request_state === "pending" ? (
+                        <span class="text-dense text-ink-2">You've written to them. Waiting.</span>
+                      ) : b.request_state === "accepted" ? (
+                        <a href="/threads" class="text-brand text-dense">You're connected →</a>
+                      ) : b.request_state === "declined" ? (
+                        <span class="text-dense text-ink-2">You asked once; the answer was no.</span>
+                      ) : allowance?.blocked_reason ? (
+                        <span class="text-dense text-ink-2">
+                          You can't send another request just now.
+                        </span>
+                      ) : (
+                        <a
+                          href={`/requests/new?builder=${b.user_id}&opportunity=${opp.slug}`}
+                          class="inline-flex min-h-11 items-center rounded-row border border-line-strong bg-surface px-4 text-dense font-semibold"
+                          >Send a request</a
+                        >
+                      )}
+                      {/* §4: blocking is one tap from every room listing. */}
+                      <form method="post" action="/requests?block" class="inline">
+                        <input type="hidden" name="block_user_id" value={b.user_id} />
+                        <input type="hidden" name="returnTo" value={Astro.url.pathname} />
+                        <button
+                          type="submit"
+                          class="min-h-11 text-dense text-ink-2 underline">Block</button
+                        >
+                      </form>
+                      <a
+                        href={`/report?subject=${opp.slug}&about=person`}
+                        class="min-h-11 text-dense text-ink-2 underline">Report</a
+                      >
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </>
+        )
+      }
+
+      {
+        hasIntent && builders.length === 0 && (
+          <p class="mt-8 max-w-prose text-dense text-ink-2">
+            Nobody here is looking for a team right now. People who are entering alone or just
+            watching aren't listed — that's deliberate.
+          </p>
+        )
+      }
+
+      <p class="mt-10 max-w-prose text-micro text-ink-2">
+        No chat, no feeds, no follower counts, no "who viewed you". A room exists to find two or
+        three people before a deadline, and then to get out of the way.
+      </p>
+    </Base>
+  )
+}

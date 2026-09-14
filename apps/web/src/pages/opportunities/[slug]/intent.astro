@@ -1,0 +1,266 @@
+---
+// Declaring intent. TEAM_FORMATION.md §2, which calls intent "the primitive" `[PR]`.
+//
+// One stance, optional roles, an optional note of at most 300 characters, and a
+// withdrawal that is immediate and complete. Everything else about a person stays
+// where it was: §2.2 is explicit that declaring intent "does not create a public
+// profile", and this page says so on the page rather than in a policy nobody opens.
+//
+// A plain form, posting to itself. No island: the whole interaction is four radio
+// buttons and a text area, and an island here would cost bytes on the page whose
+// audience is most likely to be on a metered connection.
+
+import Base from "../../../layouts/Base.astro";
+import { createAuthClient, getSessionUser, socialWritesAllowed } from "../../../lib/auth";
+import { getOpportunity } from "../../../lib/db";
+import { countdownLabel, deadlineFacts } from "../../../lib/deadline";
+import { reportError } from "../../../lib/errors";
+import { getMyRoomStatus, STANCES, type MyRoomStatus, type Stance } from "../../../lib/rooms";
+
+export const prerender = false;
+
+const { slug } = Astro.params;
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+
+const user = await getSessionUser(Astro.cookies, env);
+if (!user) {
+  return Astro.redirect(`/signin?returnTo=${encodeURIComponent(Astro.url.pathname)}`, 302);
+}
+
+const found = await getOpportunity(slug!, env);
+const opp = found.ok ? found.data.opportunity : null;
+const client = createAuthClient(Astro.cookies, env);
+const writes = socialWritesAllowed(user);
+
+Astro.response.headers.set("cache-control", "private, no-store");
+
+let status: MyRoomStatus | null = null;
+let problem: string | null = null;
+let done: "declared" | "withdrawn" | null = null;
+
+/** Roles come in as free text. Split, trim, cap — a role is a word, not an essay. */
+function parseRoles(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((r) => r.trim().slice(0, 80))
+    .filter((r) => r.length > 0)
+    .slice(0, 6);
+}
+
+if (opp && client) {
+  try {
+    if (Astro.request.method === "POST") {
+      if (!writes.allowed) {
+        problem = writes.reason;
+      } else {
+        const form = await Astro.request.formData();
+
+        if (form.get("withdraw") !== null) {
+          // §2.2: "Withdrawable at any time, immediately and completely."
+          const { error } = await client
+            .from("intents")
+            .update({ withdrawn_at: new Date().toISOString() })
+            .eq("user_id", user.id)
+            .eq("opportunity_id", opp.id);
+          if (error) throw new Error(error.message);
+          done = "withdrawn";
+        } else {
+          const stance = String(form.get("stance") ?? "");
+          if (!STANCES.some((s) => s.value === stance)) {
+            problem = "Choose one of the four.";
+          } else {
+            const note = String(form.get("note") ?? "").trim().slice(0, 300);
+            const { error } = await client.from("intents").upsert(
+              {
+                user_id: user.id,
+                opportunity_id: opp.id,
+                stance,
+                roles_offered: parseRoles(String(form.get("roles") ?? "")),
+                note: note === "" ? null : note,
+                // Changing your mind is an update, not a second intent, and it un-withdraws.
+                withdrawn_at: null,
+              },
+              { onConflict: "user_id,opportunity_id" },
+            );
+            if (error) throw new Error(error.message);
+            done = "declared";
+          }
+        }
+      }
+    }
+
+    status = await getMyRoomStatus(client, opp.id);
+  } catch (err) {
+    await reportError(err, { route: "/opportunities/[slug]/intent", tags: { slug: slug ?? "" } }, env);
+    problem =
+      "We couldn't save that. It may be that this opportunity has closed — nothing else has changed.";
+  }
+}
+
+if (!opp) Astro.response.status = 404;
+
+const facts = opp
+  ? deadlineFacts({
+      deadline_at: opp.deadline_at,
+      deadline_precision: opp.deadline_precision as never,
+      opens_at: opp.opens_at,
+      is_rolling: opp.is_rolling,
+    })
+  : null;
+
+const current: Stance | null = status?.stance ?? null;
+const closed = opp?.status !== "published";
+---
+
+{
+  !opp ? (
+    <Base title="Not found" noindex user={user}>
+      <h1 class="text-display font-bold">That opportunity isn't here</h1>
+      <p class="mt-4"><a href="/opportunities" class="text-brand">Browse what's open →</a></p>
+    </Base>
+  ) : (
+    <Base title={`Going for this — ${opp.title}`} noindex user={user}>
+      <p class="text-micro uppercase tracking-wide text-ink-2">Say you're going</p>
+      <h1 class="mt-1 text-title font-semibold">
+        <a href={`/opportunities/${opp.slug}`} class="text-ink no-underline">{opp.title}</a>
+      </h1>
+      <p class="mt-1 text-meta text-ink-2">{facts ? countdownLabel(facts) : "Deadline not stated"}</p>
+
+      {
+        problem && (
+          <p class="mt-4 max-w-prose border-l-[3px] border-danger bg-noteligible-wash p-3 text-dense">
+            {problem}
+          </p>
+        )
+      }
+
+      {
+        done === "declared" && (
+          <div class="mt-4 max-w-prose border-l-[3px] border-success bg-eligible-wash p-3">
+            <p class="text-dense font-semibold">Saved.</p>
+            <p class="mt-1 text-dense">
+              <a href={`/opportunities/${opp.slug}/room`} class="text-brand">Open the room →</a>
+            </p>
+          </div>
+        )
+      }
+
+      {
+        done === "withdrawn" && (
+          <p class="mt-4 max-w-prose border-l-[3px] border-line-strong bg-sunken p-3 text-dense">
+            Withdrawn. You're no longer listed anywhere for this one, and nothing about it is kept.
+          </p>
+        )
+      }
+
+      {
+        !writes.allowed ? (
+          <p class="prose-measure mt-6 text-body text-ink-2">{writes.reason}</p>
+        ) : closed ? (
+          <p class="prose-measure mt-6 text-body text-ink-2">
+            This one is closed, so there's nothing to declare. You can still read everything about
+            it.
+          </p>
+        ) : (
+          <form method="post" class="mt-6 max-w-prose">
+            <fieldset class="border-0 p-0">
+              <legend class="text-subtitle font-semibold">What are you doing about this one?</legend>
+              <p class="mt-1 text-dense text-ink-2">
+                Pick one. You can change or withdraw it at any moment.
+              </p>
+
+              <ul class="mt-3 space-y-2">
+                {STANCES.map((s) => (
+                  <li>
+                    <label class="flex min-h-11 items-start gap-3 rounded-sheet border border-line bg-surface p-3">
+                      <input
+                        type="radio"
+                        name="stance"
+                        value={s.value}
+                        checked={current === s.value}
+                        required
+                        class="mt-1"
+                      />
+                      <span>
+                        <span class="block text-dense font-semibold">{s.label}</span>
+                        <span class="block text-dense text-ink-2">{s.meaning}</span>
+                      </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </fieldset>
+
+            <p class="mt-5">
+              <label for="roles" class="block text-dense font-semibold">
+                Roles you can cover <span class="font-normal text-ink-2">(optional)</span>
+              </label>
+              <span class="mt-1 block text-micro text-ink-2">
+                Separated by commas, up to six. Only shown inside this room.
+              </span>
+              <input
+                id="roles"
+                name="roles"
+                type="text"
+                maxlength="200"
+                value={status?.roles_offered.join(", ") ?? ""}
+                placeholder="backend, data, pitching"
+                class="mt-2 min-h-11 w-full rounded-row border border-line-strong px-3"
+              />
+            </p>
+
+            <p class="mt-5">
+              <label for="note" class="block text-dense font-semibold">
+                A line about what you're planning <span class="font-normal text-ink-2">(optional)</span>
+              </label>
+              <span class="mt-1 block text-micro text-ink-2">Up to 300 characters.</span>
+              <textarea
+                id="note"
+                name="note"
+                rows="3"
+                maxlength="300"
+                class="mt-2 w-full rounded-row border border-line-strong p-3">{status?.note ?? ""}</textarea>
+            </p>
+
+            <p class="mt-5 flex flex-wrap gap-3">
+              <button
+                type="submit"
+                class="inline-flex min-h-11 items-center rounded-row bg-brand px-4 font-semibold text-surface"
+                >{current ? "Save the change" : "Say I'm going"}</button
+              >
+              <a
+                href={`/opportunities/${opp.slug}`}
+                class="inline-flex min-h-11 items-center rounded-row border border-line-strong bg-surface px-4 font-semibold"
+                >Back to the opportunity</a
+              >
+            </p>
+          </form>
+        )
+      }
+
+      {
+        current && writes.allowed && (
+          <form method="post" class="mt-8 max-w-prose border-t border-line pt-4">
+            <p class="text-dense text-ink-2">
+              Withdrawing removes you from the room immediately and completely. Your tracker and
+              reminders are untouched.
+            </p>
+            <button
+              type="submit"
+              name="withdraw"
+              value="1"
+              class="mt-3 min-h-11 rounded-row border border-line-strong bg-surface px-4 text-dense font-semibold"
+              >Withdraw my intent</button
+            >
+          </form>
+        )
+      }
+
+      <p class="mt-8 max-w-prose text-micro text-ink-2">
+        Intent lapses on its own — at the deadline, or after 90 days on a rolling call. It is
+        visible only inside this room, never on a profile, never in search, never in another room.
+        It does not create a public profile.
+      </p>
+    </Base>
+  )
+}

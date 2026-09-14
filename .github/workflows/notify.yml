@@ -3,7 +3,7 @@ name: Notifications
 # The batch tier. FREE_INFRASTRUCTURE.md §2: GitHub Actions has unlimited minutes
 # on a public repository, which is what makes a scheduled tier free at all.
 #
-# Four schedules, because the jobs have genuinely different cadences:
+# Five jobs on three schedules, because they have genuinely different cadences:
 #   dispatch   every 15 minutes  — NOTIFICATIONS.md §4's dispatcher interval
 #   reminders  hourly            — §6, so a reminder window is never missed by more
 #                                  than an hour
@@ -11,6 +11,9 @@ name: Notifications
 #                                  every timezone, so the job runs hourly and only
 #                                  acts on the users for whom it is currently 06:00
 #   retention  daily             — PRIVACY_AND_COMPLIANCE.md §8
+#   collaboration hourly         — TEAM_FORMATION.md §5.1: a request that expired
+#                                  three hours ago is still occupying one of the
+#                                  requester's five pending slots
 #
 # OUTSTANDING — SECURITY.md §8 wants actions pinned to commit SHAs. See the note in
 # ci.yml: this session's GitHub access is scoped to this repository, so the SHAs for
@@ -28,7 +31,7 @@ on:
         required: true
         default: dispatch
         type: choice
-        options: [dispatch, reminders, digest, retention]
+        options: [dispatch, reminders, digest, retention, collaboration]
       dry_run:
         description: Render without sending
         required: false
@@ -74,11 +77,12 @@ jobs:
         if: github.event.schedule == '*/15 * * * *'
         run: npm run notify -- dispatch
 
-      - name: Schedule deadline reminders, then assemble digests
+      - name: Schedule deadline reminders, assemble digests, expire collaboration
         if: github.event.schedule == '7 * * * *'
         run: |
           npm run notify -- reminders
           npm run notify -- digest
+          npm run notify -- collaboration
 
       - name: Enforce retention
         if: github.event.schedule == '23 2 * * *'

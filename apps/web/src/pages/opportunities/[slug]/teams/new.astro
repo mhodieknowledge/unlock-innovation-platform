@@ -1,0 +1,240 @@
+---
+// Starting a team. TEAM_FORMATION.md §4.1.
+//
+// The acceptance criterion this page exists to keep honest is criterion 4 `[PR]`:
+// "max_size is validated against the opportunity's own team-size rule." The
+// validation lives in the database (migration 0016's teams_validate trigger) and the
+// SELECT below is generated FROM the same two columns, so the form cannot offer a
+// size the trigger will refuse. §4.1's point is that "the eligibility data directly
+// constrains the collaboration feature — the two systems are not independent", and a
+// form with a free-text size field would quietly re-separate them.
+
+import Base from "../../../../layouts/Base.astro";
+import { createAuthClient, getSessionUser, socialWritesAllowed } from "../../../../lib/auth";
+import { getOpportunity } from "../../../../lib/db";
+import { reportError } from "../../../../lib/errors";
+import { getMyRoomStatus, type MyRoomStatus } from "../../../../lib/rooms";
+
+export const prerender = false;
+
+const { slug } = Astro.params;
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+
+const user = await getSessionUser(Astro.cookies, env);
+if (!user) {
+  return Astro.redirect(`/signin?returnTo=${encodeURIComponent(Astro.url.pathname)}`, 302);
+}
+
+const found = await getOpportunity(slug!, env);
+const opp = found.ok ? found.data.opportunity : null;
+const client = createAuthClient(Astro.cookies, env);
+const writes = socialWritesAllowed(user);
+
+Astro.response.headers.set("cache-control", "private, no-store");
+
+// The opportunity's own rule, widened only by the table's own hard bounds (2..20).
+const minSize = Math.max(2, opp?.team_size_min ?? 2);
+const maxSize = Math.min(20, opp?.team_size_max ?? 8);
+const sizeOptions = Array.from(
+  { length: Math.max(0, maxSize - minSize + 1) },
+  (_, i) => minSize + i,
+);
+
+let status: MyRoomStatus | null = null;
+let problem: string | null = null;
+
+if (opp && client) {
+  try {
+    status = await getMyRoomStatus(client, opp.id);
+
+    if (Astro.request.method === "POST") {
+      if (!writes.allowed) {
+        problem = writes.reason;
+      } else {
+        const form = await Astro.request.formData();
+        const name = String(form.get("name") ?? "").trim().slice(0, 80);
+        const pitch = String(form.get("pitch") ?? "").trim().slice(0, 600);
+        const size = Number(form.get("max_size") ?? 0);
+        const roles = String(form.get("roles") ?? "")
+          .split(",")
+          .map((r) => r.trim().slice(0, 80))
+          .filter((r) => r.length > 0)
+          .slice(0, 8);
+
+        if (name.length < 2) {
+          problem = "Give the team a name — two characters or more.";
+        } else if (!sizeOptions.includes(size)) {
+          problem = `This opportunity allows teams of ${minSize} to ${maxSize}.`;
+        } else {
+          const { error } = await client.from("teams").insert({
+            opportunity_id: opp.id,
+            owner_user_id: user.id,
+            name,
+            pitch: pitch === "" ? null : pitch,
+            roles_needed: roles,
+            max_size: size,
+            // §4.2: a team with roles declared is open for them straight away. A team
+            // created and left in `forming` is invisible to the people it needs.
+            state: roles.length > 0 ? "open_for_roles" : "forming",
+          });
+
+          if (error) {
+            // The trigger's message is the honest one — it names the opportunity's own
+            // rule. Surfaced rather than replaced.
+            problem = error.message.replace(/^[a-z ]*error:?\s*/i, "");
+          } else {
+            return Astro.redirect(`/opportunities/${opp.slug}/room`, 303);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    await reportError(err, { route: "/opportunities/[slug]/teams/new", tags: { slug: slug ?? "" } }, env);
+    problem = "We couldn't create the team just now. Nothing has been saved.";
+  }
+}
+
+if (!opp) Astro.response.status = 404;
+
+const hasIntent = status?.stance != null;
+const alreadyHasTeam = status?.my_team_id != null;
+---
+
+{
+  !opp ? (
+    <Base title="Not found" noindex user={user}>
+      <h1 class="text-display font-bold">That opportunity isn't here</h1>
+      <p class="mt-4"><a href="/opportunities" class="text-brand">Browse what's open →</a></p>
+    </Base>
+  ) : (
+    <Base title={`Start a team — ${opp.title}`} noindex user={user}>
+      <p class="text-micro uppercase tracking-wide text-ink-2">Start a team</p>
+      <h1 class="mt-1 text-title font-semibold">
+        <a href={`/opportunities/${opp.slug}`} class="text-ink no-underline">{opp.title}</a>
+      </h1>
+      <p class="mt-1 text-meta text-ink-2">
+        {
+          opp.team_size_min && opp.team_size_max
+            ? `This one takes teams of ${opp.team_size_min} to ${opp.team_size_max}. That rule comes from the opportunity itself, so it's the rule here too.`
+            : "The source page doesn't state a team size, so the general limits apply."
+        }
+      </p>
+
+      {
+        problem && (
+          <p class="mt-4 max-w-prose border-l-[3px] border-danger bg-noteligible-wash p-3 text-dense">
+            {problem}
+          </p>
+        )
+      }
+
+      {
+        !writes.allowed ? (
+          <p class="prose-measure mt-6 text-body text-ink-2">{writes.reason}</p>
+        ) : !hasIntent ? (
+          <div class="mt-6 max-w-prose rounded-sheet border border-line bg-surface p-4">
+            <p class="text-dense font-semibold">Say you're going for this first.</p>
+            <p class="mt-1 text-dense text-ink-2">
+              A team without its owner's intent would outlive the reason it exists.
+            </p>
+            <p class="mt-3">
+              <a
+                href={`/opportunities/${opp.slug}/intent`}
+                class="inline-flex min-h-11 items-center rounded-row bg-brand px-4 font-semibold text-surface"
+                >Say you're going</a
+              >
+            </p>
+          </div>
+        ) : alreadyHasTeam ? (
+          <div class="mt-6 max-w-prose rounded-sheet border border-line bg-surface p-4">
+            <p class="text-dense font-semibold">You already have a team here.</p>
+            <p class="mt-1 text-dense text-ink-2">
+              One team per person per opportunity — {status!.my_team_name} is yours.
+            </p>
+            <p class="mt-3">
+              <a href={`/opportunities/${opp.slug}/room`} class="text-brand">Open the room →</a>
+            </p>
+          </div>
+        ) : (
+          <form method="post" class="mt-6 max-w-prose">
+            <p>
+              <label for="name" class="block text-dense font-semibold">Team name</label>
+              <input
+                id="name"
+                name="name"
+                type="text"
+                required
+                minlength="2"
+                maxlength="80"
+                class="mt-2 min-h-11 w-full rounded-row border border-line-strong px-3"
+              />
+            </p>
+
+            <p class="mt-5">
+              <label for="pitch" class="block text-dense font-semibold">
+                What you're building <span class="font-normal text-ink-2">(optional)</span>
+              </label>
+              <span class="mt-1 block text-micro text-ink-2">
+                Up to 600 characters. This is what someone reads before asking to join.
+              </span>
+              <textarea
+                id="pitch"
+                name="pitch"
+                rows="4"
+                maxlength="600"
+                class="mt-2 w-full rounded-row border border-line-strong p-3"></textarea>
+            </p>
+
+            <p class="mt-5">
+              <label for="roles" class="block text-dense font-semibold">Roles you still need</label>
+              <span class="mt-1 block text-micro text-ink-2">
+                Separated by commas. A team with no roles listed stays private until you add some.
+              </span>
+              <input
+                id="roles"
+                name="roles"
+                type="text"
+                maxlength="200"
+                placeholder="frontend, hardware, someone who can present"
+                class="mt-2 min-h-11 w-full rounded-row border border-line-strong px-3"
+              />
+            </p>
+
+            <p class="mt-5">
+              <label for="max_size" class="block text-dense font-semibold">Team size, including you</label>
+              <select
+                id="max_size"
+                name="max_size"
+                class="mt-2 min-h-11 w-full rounded-row border border-line-strong px-3">
+                {sizeOptions.map((n) => (
+                  <option value={n} selected={n === Math.min(maxSize, Math.max(minSize, 4))}>
+                    {n} people
+                  </option>
+                ))}
+              </select>
+            </p>
+
+            <p class="mt-6 flex flex-wrap gap-3">
+              <button
+                type="submit"
+                class="inline-flex min-h-11 items-center rounded-row bg-brand px-4 font-semibold text-surface"
+                >Create the team</button
+              >
+              <a
+                href={`/opportunities/${opp.slug}/room`}
+                class="inline-flex min-h-11 items-center rounded-row border border-line-strong bg-surface px-4 font-semibold"
+                >Cancel</a
+              >
+            </p>
+          </form>
+        )
+      }
+
+      <p class="mt-8 max-w-prose text-micro text-ink-2">
+        You can accept or decline requests, remove members, hand the team over and disband it.
+        Members can leave whenever they like. When the opportunity closes, the team becomes a record
+        rather than disappearing.
+      </p>
+    </Base>
+  )
+}

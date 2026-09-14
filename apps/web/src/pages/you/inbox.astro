@@ -105,7 +105,16 @@ function headline(row: Row): string {
 }
 
 function link(row: Row): string | null {
-  const slug = (row.payload ?? {})["slug"];
+  const payload = row.payload ?? {};
+
+  // A collaboration message is useless without the action it refers to. §5.1 says the
+  // owner "gets a notification" — a notification they cannot act on is a notification that
+  // makes the request expire politely.
+  const threadId = payload["thread_id"];
+  if (typeof threadId === "string" && threadId) return `/threads/${threadId}`;
+  if (typeof payload["request_id"] === "string" && payload["request_id"]) return "/requests";
+
+  const slug = payload["slug"];
   return typeof slug === "string" && slug ? `/opportunities/${slug}` : null;
 }
 ---

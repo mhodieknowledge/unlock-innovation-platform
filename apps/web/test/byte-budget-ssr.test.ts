@@ -39,6 +39,16 @@ const BUDGETS = {
   // the tightest budget in the table.
   unsubscribe: { label: "Unsubscribe", total: 100 * KB, js: 15 * KB },
   dashboard: { label: "Your window", total: 200 * KB, js: 70 * KB },
+  // Phase 5's surfaces, each measured at the cap its own SQL enforces: 40 teams and 60
+  // builders in a room, 100 requests, 50 threads, 200 messages. A room measured with three
+  // teams in it would prove nothing about the room a successful launch produces.
+  room: { label: "Team room", total: 150 * KB, js: 40 * KB },
+  intent: { label: "Intent form", total: 100 * KB, js: 15 * KB },
+  teamNew: { label: "Team form", total: 100 * KB, js: 15 * KB },
+  requests: { label: "Requests", total: 150 * KB, js: 40 * KB },
+  compose: { label: "Request composer", total: 100 * KB, js: 15 * KB },
+  threads: { label: "Conversations", total: 120 * KB, js: 25 * KB },
+  thread: { label: "One conversation", total: 120 * KB, js: 25 * KB },
 } as const;
 
 const LONG_QUOTE =
@@ -165,12 +175,162 @@ const SESSION_USER = {
 };
 
 /**
+ * Phase 5 fixtures, at the caps migration 0017's functions enforce.
+ *
+ * Distinct text per row for the same reason the opportunity fixtures are distinct: sixty
+ * near-identical builder cards gzip to almost nothing and would flatter the budget with a
+ * compression artefact rather than measure a real room.
+ */
+const LONG_PITCH =
+  "We are building a soil-moisture logger from a microcontroller, two probes and a solar panel, and we need someone who can get the readings onto a phone over Bluetooth without a data plan. ";
+
+const ROOM_TEAMS = Array.from({ length: 40 }, (_, i) => ({
+  team_id: `team-${i}`,
+  name: `${SUBJECTS[i % SUBJECTS.length]} ${KINDS[i % KINDS.length]} crew ${i + 1}`,
+  pitch: (LONG_PITCH + SUBJECTS[i % SUBJECTS.length]).slice(0, 600),
+  roles_needed: ["frontend", "hardware", "someone who can present", "data"].slice(0, (i % 4) + 1),
+  member_count: (i % 3) + 1,
+  max_size: 4,
+  countries: ["ZW", "NG", "KE", "GH"].slice(0, (i % 4) + 1),
+  state: i % 5 === 0 ? "full" : "open_for_roles",
+  owner_user_id: `owner-${i}`,
+  owner_display_name: `Team owner number ${i + 1}`,
+  owner_stale: i % 7 === 0,
+  i_am_member: false,
+  i_own_it: false,
+  my_request_state: i % 6 === 0 ? "pending" : null,
+}));
+
+const ROOM_BUILDERS = Array.from({ length: 60 }, (_, i) => ({
+  user_id: `builder-${i}`,
+  display_name: `Builder with quite a long display name ${i + 1}`,
+  country_iso2: ["ZW", "NG", "KE", "GH", "ZA", "TZ"][i % 6]!,
+  headline: `Works on ${SUBJECTS[i % SUBJECTS.length]} and ${PLACES[i % PLACES.length]} logistics`,
+  roles_offered: ["backend", "data", "design", "pitching"].slice(0, (i % 4) + 1),
+  note: (LONG_PITCH + ` Note ${i}`).slice(0, 300),
+  stance: i % 2 === 0 ? "looking_for_team" : "have_team_looking_for_roles",
+  leads_a_team: i % 4 === 0,
+  request_state: i % 5 === 0 ? "pending" : null,
+}));
+
+const MY_ROOM_STATUS = [
+  {
+    stance: "have_team_looking_for_roles",
+    roles_offered: ["backend", "hardware"],
+    note: "Building an irrigation monitor with two other people from Harare.",
+    intent_expires_at: "2026-11-01T00:00:00Z",
+    my_team_id: "team-0",
+    my_team_name: "AgriTech Innovation Challenge crew 1",
+    i_own_my_team: true,
+    requests_in: 3,
+    requests_out: 2,
+  },
+];
+
+const ALLOWANCE = [
+  {
+    day_used: 4,
+    day_limit: 10,
+    hour_used: 1,
+    hour_limit: 3,
+    pending_used: 2,
+    pending_limit: 5,
+    next_slot_at: null,
+    blocked_reason: null,
+  },
+];
+
+const REQUEST_ROWS = Array.from({ length: 100 }, (_, i) => ({
+  request_id: `request-${i}`,
+  context: i % 2 === 0 ? "team_request" : "opportunity_intent",
+  state: i < 40 ? "pending" : i % 2 === 0 ? "accepted" : "declined",
+  role: ["frontend", "data", "hardware", null][i % 4],
+  message: (LONG_PITCH + ` I would like to help with ${SUBJECTS[i % SUBJECTS.length]}.`).slice(0, 500),
+  created_at: "2026-09-10T09:00:00Z",
+  expires_at: "2026-09-24T09:00:00Z",
+  counterpart_user_id: `person-${i}`,
+  counterpart_display_name: `Somebody with a long name number ${i + 1}`,
+  counterpart_country: ["ZW", "NG", "KE"][i % 3]!,
+  counterpart_headline: `Builds ${SUBJECTS[i % SUBJECTS.length]} things in ${PLACES[i % PLACES.length]}`,
+  counterpart_roles: ["backend", "design"],
+  opportunity_slug: `worst-case-${(i % 20) + 1}`,
+  opportunity_title: worstCaseOpportunity((i % 20) + 1).title,
+  team_id: i % 2 === 0 ? `team-${i % 40}` : null,
+  team_name: i % 2 === 0 ? ROOM_TEAMS[i % 40]!.name : null,
+}));
+
+const THREAD_ROWS = Array.from({ length: 50 }, (_, i) => ({
+  thread_id: `thread-${i}`,
+  state: i % 10 === 0 ? "closed" : "open",
+  closed_reason: i % 10 === 0 ? "left" : null,
+  last_message_at: "2026-09-13T10:00:00Z",
+  created_at: "2026-09-01T10:00:00Z",
+  counterpart_display_name: `Conversation partner number ${i + 1}`,
+  context_label: ROOM_TEAMS[i % 40]!.name,
+  opportunity_slug: `worst-case-${(i % 20) + 1}`,
+  unread_from_them: i % 3 === 0,
+}));
+
+const THREAD_HEADER = [
+  {
+    thread_id: "thread-0",
+    state: "open",
+    closed_reason: null,
+    counterpart_user_id: "person-0",
+    counterpart_display_name: "Conversation partner number 1",
+    context_label: ROOM_TEAMS[0]!.name,
+    opportunity_slug: "worst-case-1",
+    handoff_state: "proposed",
+    handoff_channel: "telegram",
+    handoff_proposal_id: "proposal-0",
+    handoff_is_mine: false,
+  },
+];
+
+// §3.2 caps a message at 2,000 characters; the page reads at most 200 of them.
+const THREAD_MESSAGES = Array.from({ length: 200 }, (_, i) => ({
+  id: `message-${i}`,
+  sender_user_id: i % 2 === 0 ? "aaaa1111-1111-1111-1111-111111111111" : "person-0",
+  body: (LONG_PITCH.repeat(12) + ` Message ${i}.`).slice(0, 2000),
+  created_at: "2026-09-13T10:00:00Z",
+}));
+
+/** Every RPC the Phase 5 pages call, with a filled-to-the-cap answer for each. */
+const ROOM_RPC: Record<string, unknown> = {
+  room_state: [{ state: "open", intent_count: 14, team_count: 6, reason: "room is open" }],
+  intent_count_public: 14,
+  room_teams: ROOM_TEAMS,
+  room_builders: ROOM_BUILDERS,
+  my_room_status: MY_ROOM_STATUS,
+  request_allowance: ALLOWANCE,
+  my_requests: REQUEST_ROWS,
+  my_threads: THREAD_ROWS,
+  thread_view: THREAD_HEADER,
+  handoff_identifiers: [],
+};
+
+/**
  * Per-table fixtures for the authenticated pages, at their WORST plausible size:
  * every notification preference row written, Telegram linked, quiet hours set. A
  * settings page measured against an empty account would flatter its budget.
  */
 const TABLE_ROWS: Record<string, unknown[]> = {
   tracker_entries: TRACKER_ROWS,
+  thread_messages: THREAD_MESSAGES,
+  intents: [{ user_id: SESSION_USER.id, stance: "have_team_looking_for_roles" }],
+  teams: [
+    {
+      id: "team-0",
+      name: ROOM_TEAMS[0]!.name,
+      roles_needed: ROOM_TEAMS[0]!.roles_needed,
+      max_size: 4,
+      state: "open_for_roles",
+      owner_user_id: "owner-0",
+      opportunity_id: "opp-1",
+      opportunities: { slug: "worst-case-1", title: worstCaseOpportunity(1).title },
+    },
+  ],
+  team_members: [{ user_id: "owner-0" }],
   notification_preferences: [
     "deadline_reminder", "opportunity_changed", "opportunity_closed", "digest",
     "request_received", "team_update", "moderation_outcome",
@@ -260,7 +420,9 @@ vi.mock("../src/lib/auth", () => ({
         ? { data: WINDOW_ROWS, error: null }
         : fn === "next_actions_capped"
           ? { data: ACTION_ROWS, error: null }
-          : { data: null, error: null },
+          : fn in ROOM_RPC
+            ? { data: ROOM_RPC[fn], error: null }
+            : { data: null, error: null },
   })),
   personalWritesAllowed: vi.fn(() => true),
   socialWritesAllowed: vi.fn(() => ({ allowed: true, reason: null })),
@@ -323,7 +485,9 @@ vi.mock("../src/lib/db", () => ({
     rpc: async (fn: string) =>
       fn === "describe_unsubscribe_token"
         ? { data: [{ type: "digest", already_used: false, digest_frequency: "daily" }], error: null }
-        : { data: null, error: null },
+        : fn in ROOM_RPC
+          ? { data: ROOM_RPC[fn], error: null }
+          : { data: null, error: null },
   })),
 }));
 
@@ -344,23 +508,45 @@ const fmt = (n: number) => `${(n / KB).toFixed(1)} KB`;
  * and a new island that pushes the shared bundle over a budget fails the build
  * rather than slipping through unattributed.
  */
-function measureBuiltAssets(): { js: number; css: number; modules: number } {
+function measureBuiltAssets(): {
+  islandJs: number;
+  pageScriptJs: number;
+  css: number;
+  islandModules: number;
+  pageScriptModules: number;
+} {
   const assetDir = join(CLIENT_DIR, "_a");
-  if (!existsSync(assetDir)) return { js: 0, css: 0, modules: 0 };
+  const empty = {
+    islandJs: 0,
+    pageScriptJs: 0,
+    css: 0,
+    islandModules: 0,
+    pageScriptModules: 0,
+  };
+  if (!existsSync(assetDir)) return empty;
 
-  let js = 0;
-  let css = 0;
-  let modules = 0;
+  const totals = { ...empty };
   for (const entry of readdirSync(assetDir)) {
     const file = join(assetDir, entry);
-    if (entry.endsWith(".js")) {
-      js += gz(readFileSync(file));
-      modules += 1;
-    } else if (entry.endsWith(".css")) {
-      css += gz(readFileSync(file));
+    if (entry.endsWith(".css")) {
+      totals.css += gz(readFileSync(file));
+      continue;
+    }
+    if (!entry.endsWith(".js")) continue;
+
+    // A page <script> is built as its own chunk, named after the page. It shares
+    // nothing with the island runtime, so charging a counter script the 15 KB Svelte
+    // runtime would fail a budget on bytes the route never sends. The two are summed
+    // separately and charged separately.
+    if (/astro_type_script/.test(entry)) {
+      totals.pageScriptJs += gz(readFileSync(file));
+      totals.pageScriptModules += 1;
+    } else {
+      totals.islandJs += gz(readFileSync(file));
+      totals.islandModules += 1;
     }
   }
-  return { js, css, modules };
+  return totals;
 }
 
 interface Measured {
@@ -375,11 +561,31 @@ interface Measured {
 
 const measured: Record<string, Measured> = {};
 
+/**
+ * Page-script bytes found in the build, recorded so the vacuity check can fail when a
+ * route claims to ship a script and the build contains none — which is what happens if
+ * Astro starts inlining page scripts again (see astro.config.mjs) and the CSP silently
+ * stops them running.
+ */
+let pageScriptBytes = 0;
+let pageScriptModules = 0;
+
 async function render(
   key: keyof typeof BUDGETS,
   importer: () => Promise<{ default: unknown }>,
   params: Record<string, string>,
   url: string,
+  /**
+   * Charge this route the client bundle even though it mounts no island.
+   *
+   * Two Phase 5 routes ship a bundled `<script>` rather than an island — a character
+   * counter and the thread poller. The container API resolves neither islands nor script
+   * assets, so `astro-island` is absent from the HTML and the JS would otherwise be
+   * measured as zero: the exact false pass the comment above warns about. Passing the flag
+   * makes the charge a deliberate decision rather than an inference from markup the
+   * container does not produce.
+   */
+  shipsScript = false,
 ) {
   const container = await AstroContainer.create();
   container.addServerRenderer({ name: "@astrojs/svelte", renderer: svelteRenderer });
@@ -398,15 +604,18 @@ async function render(
   const html = await response.text();
   const assets = measureBuiltAssets();
   const htmlBytes = gz(html);
+  pageScriptBytes = assets.pageScriptJs;
+  pageScriptModules = assets.pageScriptModules;
 
   // A route with no island ships no JS at all, so charging it the shared bundle
   // would be conservative past the point of usefulness — the organisation page
   // would sit at 76% of a budget it does not spend, and a later island would
   // fail it spuriously. Routes WITH an island are still charged the whole bundle
   // as an upper bound, since islands share the Svelte runtime.
-  const hydrates = html.includes("astro-island");
-  const js = hydrates ? assets.js : 0;
-  const modules = hydrates ? assets.modules : 0;
+  const island = html.includes("astro-island");
+  const hydrates = island || shipsScript;
+  const js = (island ? assets.islandJs : 0) + (shipsScript ? assets.pageScriptJs : 0);
+  const modules = (island ? assets.islandModules : 0) + (shipsScript ? assets.pageScriptModules : 0);
 
   measured[key] = {
     html,
@@ -471,6 +680,50 @@ beforeAll(async () => {
     "https://example.invalid/you",
   );
   await render(
+    "room",
+    () => import("../src/pages/opportunities/[slug]/room.astro"),
+    { slug: "worst-case-1" },
+    "https://example.invalid/opportunities/worst-case-1/room",
+  );
+  await render(
+    "intent",
+    () => import("../src/pages/opportunities/[slug]/intent.astro"),
+    { slug: "worst-case-1" },
+    "https://example.invalid/opportunities/worst-case-1/intent",
+  );
+  await render(
+    "teamNew",
+    () => import("../src/pages/opportunities/[slug]/teams/new.astro"),
+    { slug: "worst-case-1" },
+    "https://example.invalid/opportunities/worst-case-1/teams/new",
+  );
+  await render(
+    "requests",
+    () => import("../src/pages/requests/index.astro"),
+    {},
+    "https://example.invalid/requests",
+  );
+  await render(
+    "compose",
+    () => import("../src/pages/requests/new.astro"),
+    {},
+    "https://example.invalid/requests/new?team=team-0",
+    true,
+  );
+  await render(
+    "threads",
+    () => import("../src/pages/threads/index.astro"),
+    {},
+    "https://example.invalid/threads",
+  );
+  await render(
+    "thread",
+    () => import("../src/pages/threads/[id].astro"),
+    { id: "thread-0" },
+    "https://example.invalid/threads/thread-0",
+    true,
+  );
+  await render(
     "unsubscribe",
     () => import("../src/pages/unsubscribe.astro"),
     {},
@@ -501,6 +754,16 @@ describe("byte budgets — on-demand routes (invariant 5)", () => {
         expect(m.js, `${key}: hydrates but measured 0 bytes of JS`).toBeGreaterThan(0);
       }
     }
+
+    // Two routes ship a bundled page script (the 500-character counter and the thread
+    // poller). If the build contains no page-script chunk, either they stopped being
+    // built or Astro inlined them into the HTML — where the strict CSP blocks them. Both
+    // are silent failures in production only, so they fail here instead.
+    expect(
+      pageScriptModules,
+      "no page-script chunk in the build: a route's <script> was inlined or dropped, and an inline module script is blocked by the CSP in public/_headers",
+    ).toBeGreaterThanOrEqual(2);
+    expect(pageScriptBytes, "page scripts measured 0 bytes").toBeGreaterThan(0);
 
     // At least one route must hydrate, otherwise the JS measurement is vacuous
     // across the board and the whole check proves nothing.

@@ -9,7 +9,8 @@
 
 import Base from "../../layouts/Base.astro";
 import EligibilityCheck from "../../components/EligibilityCheck.svelte";
-import { getOpportunity } from "../../lib/db";
+import { getClient, getOpportunity } from "../../lib/db";
+import { getIntentCount, getRoomState } from "../../lib/rooms";
 import { countdownLabel, countdownWeight, deadlineFacts, freshnessLabel } from "../../lib/deadline";
 import { RULE_OUTCOME_GLYPH } from "../../lib/verdict";
 import { NO_FEE_STATEMENT } from "@mbele/config";
@@ -42,6 +43,24 @@ Astro.response.headers.set(
 const detail = found.ok ? found.data : null;
 const opp = detail?.opportunity ?? null;
 const rules = detail?.rules ?? [];
+
+/**
+ * The room entry point, and the CTA that stands in for it below the floor.
+ *
+ * Both halves of PRODUCT_SPEC.md §24 are decided in the database: room_state() returns
+ * `disabled` when the feature flag is off and `below_floor` until there are 3 intents or 1
+ * team, so this page renders an entry point, a single CTA, or nothing at all — never an
+ * empty room and never a count that flatters the product (§2.3 `[PR]`: no number below 5).
+ *
+ * Read with the anon client, because none of it depends on who is reading: the state and
+ * the count are the same for everybody, so this page stays edge-cacheable.
+ */
+const anon = getClient(env);
+const room =
+  opp && anon
+    ? await getRoomState(anon, opp.id)
+    : { state: "disabled" as const, intent_count: 0, team_count: 0, reason: "unavailable" };
+const intentCount = opp && anon && room.state !== "disabled" ? await getIntentCount(anon, opp.id) : null;
 
 const facts = opp
   ? deadlineFacts({
@@ -210,6 +229,40 @@ const factGrid: [string, string][] = opp
           >Save opportunity</a
         >
       </p>
+
+      {
+        /* §2.3 `[PR]`: the count appears at 5 or more and NOT AT ALL below that.
+           intent_count_public() returns NULL rather than a number below the floor, so
+           there is no small number here to render by accident. */
+        intentCount !== null && (
+          <p class="mt-4 text-dense">
+            {intentCount} builders have said they're going for this.
+          </p>
+        )
+      }
+
+      {
+        !isExpired && room.state === "open" && (
+          <p class="mt-4">
+            <a href={`/opportunities/${opp.slug}/room`} class="text-brand font-semibold"
+              >Team room — see who else is going →</a
+            >
+          </p>
+        )
+      }
+
+      {
+        !isExpired && room.state === "below_floor" && (
+          /* The room route rewrites HERE when it is below its floor, so this is the
+             "single CTA" the acceptance criterion asks for. One line, one action, no
+             empty list, and no count of how few people are here. */
+          <p class="mt-4">
+            <a href={`/opportunities/${opp.slug}/intent`} class="text-brand font-semibold"
+              >No one has said they're going for this yet. Say you're going →</a
+            >
+          </p>
+        )
+      }
 
       <!-- Fact grid: labelled cells separated by hairlines, not a middle-dot
            string (DESIGN_SYSTEM.md §5.6). -->

@@ -20,6 +20,14 @@ const COLLECT: [string, string][] = [
   ["Gender, only if you choose to give it", "Used only for opportunities restricted by gender. Never displayed, never used for anything else."],
   ["Your Telegram chat ID, if you link it", "So the bot can reach you."],
   ["A hashed version of your IP address", "To stop abuse. Kept 30 days, then deleted."],
+  [
+    "What you say about a particular opportunity",
+    "Your stance, the roles you offer and your note. Shown to other people going for the same thing, and nowhere else.",
+  ],
+  [
+    "Messages you send another person here",
+    "So the two of you can arrange to work together. Only the two of you can read them.",
+  ],
 ];
 
 const NEVER: string[] = [
@@ -112,6 +120,31 @@ const RETENTION: [string, string][] = [
       administrators have no access path to them — not a policy we follow, a permission that does
       not exist. They are never sent to any AI service. When a verdict is computed, the calculation
       happens where the data already is and only the verdict comes back.
+    </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">What other people see</h2>
+    <p class="mt-2 text-dense">
+      Nothing, until you say you are going for a particular opportunity. Then, and only inside
+      that one opportunity's room, other people going for the same thing can see five things:
+      your display name, your country, your headline if you wrote one, the roles you said you can
+      cover, and your note. Nothing else, ever — not your email, not your eligibility details,
+      not what else you have saved or applied for, not when you were last here.
+    </p>
+    <p class="mt-2 text-dense">
+      It is not a profile and it does not outlive the opportunity: it lapses at the deadline on
+      its own, and you can withdraw it at any moment, immediately and completely. Saying you are
+      going for something in one room does not show you in any other room, in search, or anywhere
+      public.
+    </p>
+    <p class="mt-2 text-dense">
+      No contact detail is ever exchanged before both of you agree to it. If you accept someone's
+      request, a short conversation opens here; moving to Telegram, WhatsApp or email needs an
+      explicit yes from each of you, and only the one channel you both chose is shared.
+    </p>
+    <p class="mt-2 text-dense">
+      Blocking someone is immediate and absolute. They disappear from every surface the two of
+      you share, any requests between you are cancelled, your conversation closes, and they are
+      told nothing about it.
     </p>
 
     <h2 class="mt-8 text-subtitle font-semibold">Cookies</h2>

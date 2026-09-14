@@ -1,0 +1,434 @@
+---
+// One conversation. COLLABORATION_SYSTEM.md §3, UX_FLOWS.md §11.3.
+//
+// "We are not building a messenger; we are building a doorway to one." So the
+// handoff banner is the most prominent thing after the messages themselves, and
+// it stays there until somebody acts on it (§3.3).
+//
+// Two things are deliberately missing. There are no typing indicators, read
+// receipts or presence — §3.2 rules each out by name. And message text is never
+// linkified: §3.2 allows links only after both sides have written and only "with a
+// Safe Browsing check", and that check is not wired up, so the honest implementation
+// is plain text for everyone. Astro escapes interpolated text, so that is also the
+// default rather than something a later edit could forget.
+
+import Base from "../../layouts/Base.astro";
+import { createAuthClient, getSessionUser, socialWritesAllowed } from "../../lib/auth";
+import { reportError } from "../../lib/errors";
+import {
+  builderName,
+  getHandoffIdentifiers,
+  getThreadHeader,
+  getThreadMessages,
+  HANDOFF_CHANNELS,
+  type ThreadHeader,
+  type ThreadMessage,
+} from "../../lib/rooms";
+
+export const prerender = false;
+
+const { id } = Astro.params;
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+
+const user = await getSessionUser(Astro.cookies, env);
+if (!user) {
+  return Astro.redirect(`/signin?returnTo=${encodeURIComponent(Astro.url.pathname)}`, 302);
+}
+
+const client = createAuthClient(Astro.cookies, env);
+Astro.response.headers.set("cache-control", "private, no-store");
+
+let header: ThreadHeader | null = null;
+let messages: ThreadMessage[] = [];
+let handoff: { channel: string; their_identifier: string } | null = null;
+let problem: string | null = null;
+let failed = false;
+
+const CHANNEL_LABEL: Record<string, string> = {
+  telegram: "Telegram",
+  whatsapp: "WhatsApp",
+  email: "email",
+};
+
+if (client && id) {
+  try {
+    if (Astro.request.method === "POST") {
+      const form = await Astro.request.formData();
+      const writes = socialWritesAllowed(user);
+
+      if (!writes.allowed) {
+        problem = writes.reason;
+      } else if (form.get("leave") !== null) {
+        const { data } = await client.rpc("close_thread", { p_thread_id: id });
+        if (data === true) return Astro.redirect("/threads", 303);
+        problem = "We couldn't close that just now.";
+      } else if (form.get("block") !== null) {
+        const other = String(form.get("other_user_id") ?? "");
+        const { error } = await client
+          .from("blocks")
+          .insert({ blocker_user_id: user.id, blocked_user_id: other });
+        // §4: blocking closes the thread in the same transaction, so there is nothing
+        // left here to come back to.
+        if (!error) return Astro.redirect("/threads", 303);
+        problem = "We couldn't do that just now.";
+      } else if (form.get("propose") !== null) {
+        const channel = String(form.get("channel") ?? "");
+        const identifier = String(form.get("identifier") ?? "").trim();
+        const { error } = await client.rpc("propose_handoff", {
+          p_thread_id: id,
+          p_channel: channel,
+          p_identifier: identifier,
+        });
+        problem = error ? error.message.replace(/^[a-z ]*error:?\s*/i, "") : null;
+      } else if (form.get("accept_handoff") !== null) {
+        const proposalId = String(form.get("proposal_id") ?? "");
+        const identifier = String(form.get("identifier") ?? "").trim();
+        const { error } = await client.rpc("accept_handoff", {
+          p_proposal_id: proposalId,
+          p_my_identifier: identifier,
+        });
+        problem = error ? error.message.replace(/^[a-z ]*error:?\s*/i, "") : null;
+      } else if (form.get("decline_handoff") !== null) {
+        await client.rpc("decline_handoff", {
+          p_proposal_id: String(form.get("proposal_id") ?? ""),
+        });
+      } else {
+        const body = String(form.get("body") ?? "").trim().slice(0, 2000);
+        if (body.length > 0) {
+          const { error } = await client
+            .from("thread_messages")
+            .insert({ thread_id: id, sender_user_id: user.id, body });
+          if (error) {
+            problem =
+              "That didn't send. The conversation may have closed — nothing else has changed.";
+          }
+        }
+      }
+    }
+
+    header = await getThreadHeader(client, id);
+    if (header) {
+      messages = await getThreadMessages(client, id);
+      if (header.handoff_state === "accepted") {
+        handoff = await getHandoffIdentifiers(client, id);
+      }
+    }
+  } catch (err) {
+    await reportError(err, { route: "/threads/[id]" }, env);
+    failed = true;
+  }
+}
+
+if (!header && !failed) Astro.response.status = 404;
+
+const closed = header?.state === "closed";
+const timeOf = (iso: string) =>
+  new Date(iso).toLocaleString("en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: user.timezone,
+  });
+
+const CLOSED_REASON: Record<string, string> = {
+  blocked: "one of you blocked the other",
+  left: "one of you closed it",
+  disbanded: "the team was disbanded",
+  expired: "it went quiet for 60 days",
+};
+---
+
+{
+  !header ? (
+    <Base title="Conversation not found" noindex user={user}>
+      <h1 class="text-title font-semibold">
+        {failed ? "We can't open this right now" : "That conversation isn't here"}
+      </h1>
+      <p class="prose-measure mt-3 text-body text-ink-2">
+        {failed
+          ? "Something on our side is unavailable. Nothing has been lost."
+          : "It may have been closed, or it was never yours. Conversations are only ever between two people."}
+      </p>
+      <p class="mt-4"><a href="/threads" class="text-brand">Your conversations →</a></p>
+    </Base>
+  ) : (
+    <Base title={`${builderName(header.counterpart_display_name)}`} noindex user={user}>
+      <p class="text-micro uppercase tracking-wide text-ink-2">
+        {header.context_label}
+        {
+          header.opportunity_slug && (
+            <>
+              {" · "}
+              <a href={`/opportunities/${header.opportunity_slug}`} class="text-brand"
+                >the opportunity</a
+              >
+            </>
+          )
+        }
+      </p>
+      <h1 class="mt-1 text-title font-semibold">{builderName(header.counterpart_display_name)}</h1>
+
+      {
+        problem && (
+          <p class="mt-4 max-w-prose border-l-[3px] border-danger bg-noteligible-wash p-3 text-dense">
+            {problem}
+          </p>
+        )
+      }
+
+      {/* ── The handoff banner: §3.3, persistent until acted on ──────────── */}
+      {
+        handoff ? (
+          <div class="mt-4 max-w-prose border-l-[3px] border-success bg-eligible-wash p-3">
+            <p class="text-dense font-semibold">
+              You're connected on {CHANNEL_LABEL[handoff.channel] ?? handoff.channel}.
+            </p>
+            <p class="mt-1 text-dense">
+              Their contact: <strong>{handoff.their_identifier}</strong>
+            </p>
+            <p class="mt-1 text-micro text-ink-2">
+              Carry on there — that's the point. This conversation stays here as a record.
+            </p>
+          </div>
+        ) : header.handoff_state === "proposed" && !closed ? (
+          header.handoff_is_mine ? (
+            <div class="mt-4 max-w-prose border-l-[3px] border-line-strong bg-sunken p-3">
+              <p class="text-dense">
+                You've offered to move this to{" "}
+                {CHANNEL_LABEL[header.handoff_channel ?? ""] ?? header.handoff_channel}. Nothing of
+                yours has been shared yet — it's released only if they accept and give theirs.
+              </p>
+            </div>
+          ) : (
+            <form method="post" class="mt-4 max-w-prose border-l-[3px] border-brand bg-brand-wash p-3">
+              <p class="text-dense font-semibold">
+                They've offered to move this to{" "}
+                {CHANNEL_LABEL[header.handoff_channel ?? ""] ?? header.handoff_channel}.
+              </p>
+              <p class="mt-1 text-dense">
+                Give your own and you'll both get each other's. Decline and nothing is shared —
+                the conversation stays open either way.
+              </p>
+              <input type="hidden" name="proposal_id" value={header.handoff_proposal_id ?? ""} />
+              <p class="mt-3">
+                <label for="identifier" class="block text-dense font-semibold">
+                  Your {CHANNEL_LABEL[header.handoff_channel ?? ""] ?? "contact"}
+                </label>
+                <input
+                  id="identifier"
+                  name="identifier"
+                  type="text"
+                  required
+                  maxlength="200"
+                  class="mt-2 min-h-11 w-full rounded-row border border-line-strong px-3"
+                />
+              </p>
+              <p class="mt-3 flex flex-wrap gap-3">
+                <button
+                  type="submit"
+                  name="accept_handoff"
+                  value="1"
+                  class="inline-flex min-h-11 items-center rounded-row bg-brand px-4 text-dense font-semibold text-surface"
+                  >Swap contacts</button
+                >
+                <button
+                  type="submit"
+                  name="decline_handoff"
+                  value="1"
+                  class="min-h-11 text-dense text-ink-2 underline">No thanks</button
+                >
+              </p>
+            </form>
+          )
+        ) : (
+          !closed && (
+            <details class="mt-4 max-w-prose rounded-sheet border border-line bg-surface p-3">
+              <summary class="cursor-pointer text-dense font-semibold">
+                Move this to Telegram or WhatsApp?
+              </summary>
+              <form method="post" class="mt-3">
+                <p class="text-dense text-ink-2">
+                  You give yours, they give theirs, and only then does either of you see the
+                  other's. One channel only.
+                </p>
+                <p class="mt-3">
+                  <label for="channel" class="block text-dense font-semibold">Where</label>
+                  <select
+                    id="channel"
+                    name="channel"
+                    class="mt-2 min-h-11 w-full rounded-row border border-line-strong px-3">
+                    {HANDOFF_CHANNELS.map((c) => (
+                      <option value={c}>{CHANNEL_LABEL[c]}</option>
+                    ))}
+                  </select>
+                </p>
+                <p class="mt-3">
+                  <label for="my-identifier" class="block text-dense font-semibold">
+                    Your handle, number or address
+                  </label>
+                  <input
+                    id="my-identifier"
+                    name="identifier"
+                    type="text"
+                    required
+                    maxlength="200"
+                    class="mt-2 min-h-11 w-full rounded-row border border-line-strong px-3"
+                  />
+                </p>
+                <p class="mt-3">
+                  <button
+                    type="submit"
+                    name="propose"
+                    value="1"
+                    class="inline-flex min-h-11 items-center rounded-row bg-brand px-4 text-dense font-semibold text-surface"
+                    >Offer to swap</button
+                  >
+                </p>
+              </form>
+            </details>
+          )
+        )
+      }
+
+      {
+        closed && (
+          <div class="mt-4 max-w-prose border-l-[3px] border-line-strong bg-sunken p-3">
+            <p class="text-dense font-semibold">
+              This is closed{header.closed_reason ? ` — ${CLOSED_REASON[header.closed_reason] ?? header.closed_reason}` : ""}.
+            </p>
+            <p class="mt-1 text-dense text-ink-2">
+              It stays readable for 90 days from closing, then the messages are deleted.
+            </p>
+          </div>
+        )
+      }
+
+      {/* ── Messages ─────────────────────────────────────────────────────── */}
+      <ol data-messages class="mt-6 max-w-prose space-y-4" data-thread={header.thread_id}>
+        {
+          messages.length === 0 && (
+            <li class="text-dense text-ink-2">
+              Nothing said yet. A first line about what you're actually planning to do beats "hi".
+            </li>
+          )
+        }
+        {
+          messages.map((m) => (
+            <li
+              data-id={m.id}
+              class={m.sender_user_id === user.id ? "border-l-[3px] border-brand pl-3" : "pl-3"}>
+              <p class="text-micro text-ink-2">
+                {m.sender_user_id === user.id ? "You" : builderName(header!.counterpart_display_name)}
+                <span aria-hidden="true"> · </span>
+                <time datetime={m.created_at}>{timeOf(m.created_at)}</time>
+              </p>
+              <p class="mt-1 whitespace-pre-wrap text-dense">{m.body}</p>
+            </li>
+          ))
+        }
+      </ol>
+
+      {
+        !closed && (
+          <form method="post" class="mt-6 max-w-prose">
+            <label for="body" class="block text-dense font-semibold">Your message</label>
+            <span class="mt-1 block text-micro text-ink-2">
+              Text only, up to 2,000 characters. No attachments — that's deliberate.
+            </span>
+            <textarea
+              id="body"
+              name="body"
+              rows="4"
+              required
+              maxlength="2000"
+              class="mt-2 w-full rounded-row border border-line-strong p-3"></textarea>
+            <p class="mt-3">
+              <button
+                type="submit"
+                class="inline-flex min-h-11 items-center rounded-row bg-brand px-4 font-semibold text-surface"
+                >Send</button
+              >
+            </p>
+          </form>
+        )
+      }
+
+      {/* ── Overflow: block, report, leave (§11.3) ───────────────────────── */}
+      <div class="mt-10 max-w-prose border-t border-line pt-4">
+        <form method="post" class="flex flex-wrap items-center gap-4">
+          <input type="hidden" name="other_user_id" value={header.counterpart_user_id} />
+          <button type="submit" name="block" value="1" class="min-h-11 text-dense text-ink-2 underline"
+            >Block this person</button
+          >
+          {
+            !closed && (
+              <button type="submit" name="leave" value="1" class="min-h-11 text-dense text-ink-2 underline"
+                >Close this conversation</button
+              >
+            )
+          }
+          <a
+            href={`/report?about=person&subject=${header.opportunity_slug ?? ""}`}
+            class="min-h-11 text-dense text-ink-2 underline">Report</a
+          >
+        </form>
+        <p class="mt-2 text-micro text-ink-2">
+          Blocking is immediate and absolute: they disappear from every surface you share, they're
+          told nothing, and this conversation closes. Reporting is separate and always available.
+        </p>
+      </div>
+    </Base>
+  )
+}
+
+<script>
+  // §3.2: "No realtime. Polling with If-Modified-Since on thread open and every 30
+  // seconds while the thread is focused." Focused is the important word — a tab left
+  // open in the background costs the reader nothing.
+  const list = document.querySelector<HTMLElement>("[data-messages]");
+  const threadId = list?.dataset["thread"];
+  if (list && threadId) {
+    let lastModified: string | null = null;
+    let stop = false;
+
+    const poll = async () => {
+      if (stop || !document.hasFocus()) return;
+      try {
+        const res = await fetch(`/api/v1/threads/${threadId}`, {
+          headers: lastModified ? { "if-modified-since": lastModified } : {},
+        });
+        if (res.status === 304) return;
+        if (!res.ok) {
+          // A 401 or 404 means there is nothing to poll for any more. Stop rather
+          // than hammering an endpoint that will keep saying no.
+          if (res.status === 401 || res.status === 404) stop = true;
+          return;
+        }
+        lastModified = res.headers.get("last-modified");
+        const data = (await res.json()) as {
+          messages: { id: string; mine: boolean; body: string; created_at: string }[];
+        };
+        const known = new Set([...list.querySelectorAll("[data-id]")].map((el) => (el as HTMLElement).dataset["id"]));
+        for (const m of data.messages) {
+          if (known.has(m.id)) continue;
+          const li = document.createElement("li");
+          li.dataset["id"] = m.id;
+          li.className = m.mine ? "border-l-[3px] border-brand pl-3" : "pl-3";
+          const who = document.createElement("p");
+          who.className = "text-micro text-ink-2";
+          who.textContent = m.mine ? "You" : "They";
+          const body = document.createElement("p");
+          body.className = "mt-1 whitespace-pre-wrap text-dense";
+          // textContent, never innerHTML: the body is another person's text.
+          body.textContent = m.body;
+          li.append(who, body);
+          list.append(li);
+        }
+      } catch {
+        // Offline, most likely. The next tick tries again; nothing is lost.
+      }
+    };
+
+    void poll();
+    setInterval(() => void poll(), 30_000);
+  }
+</script>

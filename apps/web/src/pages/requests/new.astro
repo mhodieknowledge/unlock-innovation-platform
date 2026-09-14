@@ -1,0 +1,388 @@
+---
+// Composing a request. UX_FLOWS.md §11.1, COLLABORATION_SYSTEM.md §2.2.
+//
+// IMPLEMENTATION_PLAN.md §7's fifth `[PR]` criterion: "Rate limits enforced and
+// visible to the user before composing." Visible BEFORE, so the allowance is read
+// first and, when nothing can be sent, the form is not rendered at all — a composer
+// that takes 500 characters and then refuses them has wasted the one thing a person
+// on a metered connection cannot get back.
+//
+// The number shown and the number enforced come from the same database function
+// (migration 0017's request_allowance_for), and the refusal sentence is the same
+// string in both places. That is deliberate: this repository has already produced
+// three bugs where one rule lived in two files.
+
+import Base from "../../layouts/Base.astro";
+import { createAuthClient, getSessionUser, socialWritesAllowed } from "../../lib/auth";
+import { reportError } from "../../lib/errors";
+import {
+  builderName,
+  getRequestAllowance,
+  getRoomBuilders,
+  stripLinks,
+  type RequestAllowance,
+  type RoomBuilder,
+} from "../../lib/rooms";
+
+export const prerender = false;
+
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const user = await getSessionUser(Astro.cookies, env);
+if (!user) {
+  return Astro.redirect(
+    `/signin?returnTo=${encodeURIComponent(Astro.url.pathname + Astro.url.search)}`,
+    302,
+  );
+}
+
+const client = createAuthClient(Astro.cookies, env);
+const writes = socialWritesAllowed(user);
+
+Astro.response.headers.set("cache-control", "private, no-store");
+
+const teamId = Astro.url.searchParams.get("team");
+const builderId = Astro.url.searchParams.get("builder");
+
+interface Target {
+  context: "team_request" | "opportunity_intent";
+  teamId: string | null;
+  opportunityId: string;
+  opportunitySlug: string;
+  opportunityTitle: string;
+  targetUserId: string;
+  /** What the composer is writing TO — a team's name, or a person's. */
+  label: string;
+  roles: string[];
+  seatsLeft: number | null;
+}
+
+let target: Target | null = null;
+let allowance: RequestAllowance | null = null;
+let problem: string | null = null;
+let failed = false;
+
+if (client) {
+  try {
+    allowance = await getRequestAllowance(client);
+
+    if (teamId) {
+      // Readable only to someone with intent on the same opportunity (0016's
+      // teams_room_read policy), so this read is itself the co-presence check.
+      const { data } = await client
+        .from("teams")
+        .select(
+          "id, name, roles_needed, max_size, state, owner_user_id, opportunity_id, opportunities(slug, title)",
+        )
+        .eq("id", teamId)
+        .maybeSingle();
+
+      const row = data as unknown as {
+        id: string;
+        name: string;
+        roles_needed: string[];
+        max_size: number;
+        state: string;
+        owner_user_id: string;
+        opportunity_id: string;
+        opportunities: { slug: string; title: string } | null;
+      } | null;
+
+      if (row?.opportunities) {
+        const { count } = await client
+          .from("team_members")
+          .select("user_id", { count: "exact", head: true })
+          .eq("team_id", row.id);
+
+        target = {
+          context: "team_request",
+          teamId: row.id,
+          opportunityId: row.opportunity_id,
+          opportunitySlug: row.opportunities.slug,
+          opportunityTitle: row.opportunities.title,
+          targetUserId: row.owner_user_id,
+          label: row.name,
+          roles: row.roles_needed ?? [],
+          seatsLeft: typeof count === "number" ? Math.max(0, row.max_size - count) : null,
+        };
+      }
+    } else if (builderId) {
+      const slug = Astro.url.searchParams.get("opportunity");
+      if (slug) {
+        const { data: oppRow } = await client
+          .from("opportunities")
+          .select("id, slug, title")
+          .eq("slug", slug)
+          .eq("status", "published")
+          .maybeSingle();
+
+        const opp = oppRow as unknown as { id: string; slug: string; title: string } | null;
+
+        if (opp) {
+          // room_builders is the gate: it returns this person only if both of you hold
+          // active intent on the same opportunity and neither has blocked the other.
+          const builders: RoomBuilder[] = await getRoomBuilders(client, opp.id);
+          const who = builders.find((b) => b.user_id === builderId);
+          if (who) {
+            target = {
+              context: "opportunity_intent",
+              teamId: null,
+              opportunityId: opp.id,
+              opportunitySlug: opp.slug,
+              opportunityTitle: opp.title,
+              targetUserId: who.user_id,
+              label: builderName(who.display_name),
+              roles: who.roles_offered ?? [],
+              seatsLeft: null,
+            };
+          }
+        }
+      }
+    }
+
+    if (Astro.request.method === "POST" && target) {
+      if (!writes.allowed) {
+        problem = writes.reason;
+      } else if (allowance?.blocked_reason) {
+        problem = `${allowance.blocked_reason[0]!.toUpperCase()}${allowance.blocked_reason.slice(1)}.`;
+      } else {
+        const form = await Astro.request.formData();
+        const role = String(form.get("role") ?? "").trim().slice(0, 80);
+        const raw = String(form.get("message") ?? "").trim();
+
+        if (raw.length < 10) {
+          problem =
+            "Write a line or two about what you'd do. A request with nothing in it is the one most likely to be ignored.";
+        } else {
+          // §2.2 `[PR]`: links are stripped from a first message, before it is stored.
+          const message = stripLinks(raw).slice(0, 500);
+
+          const { error } = await client.from("collaboration_requests").insert({
+            context: target.context,
+            team_id: target.teamId,
+            opportunity_id: target.context === "opportunity_intent" ? target.opportunityId : null,
+            requester_user_id: user.id,
+            target_user_id: target.targetUserId,
+            role: role === "" ? null : role,
+            message,
+          });
+
+          if (error) {
+            // §4: a block must not be distinguishable from a limit. The database raises
+            // 'request_not_possible' for a block on purpose; both read the same here.
+            problem = /request_not_possible/.test(error.message)
+              ? "That request can't be sent."
+              : error.message.replace(/^[a-z ]*error:?\s*/i, "");
+          } else {
+            return Astro.redirect("/requests?sent=1", 303);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    await reportError(err, { route: "/requests/new" }, env);
+    failed = true;
+  }
+}
+
+const canSend = writes.allowed && !allowance?.blocked_reason;
+const sendableNow = allowance
+  ? Math.max(
+      0,
+      Math.min(
+        allowance.day_limit - allowance.day_used,
+        allowance.hour_limit - allowance.hour_used,
+        allowance.pending_limit - allowance.pending_used,
+      ),
+    )
+  : null;
+
+const nextSlot = allowance?.next_slot_at
+  ? new Date(allowance.next_slot_at).toLocaleTimeString("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: user.timezone,
+    })
+  : null;
+---
+
+<Base title="Send a request" noindex user={user}>
+  {
+    failed || !target ? (
+      <>
+        <h1 class="text-title font-semibold">We can't open that request</h1>
+        <p class="prose-measure mt-3 text-body text-ink-2">
+          {failed
+            ? "Something on our side is unavailable. Nothing has been sent."
+            : "Either that team or person is no longer in the room, or you haven't said you're going for the same thing. A room only shows people to other people who are going for it."}
+        </p>
+        <p class="mt-4"><a href="/opportunities" class="text-brand">Browse what's open →</a></p>
+      </>
+    ) : (
+      <>
+        <p class="text-micro uppercase tracking-wide text-ink-2">
+          {target.context === "team_request" ? "Request to join" : "Ask to team up"}
+        </p>
+        <h1 class="mt-1 text-title font-semibold">{target.label}</h1>
+        <p class="mt-1 text-meta text-ink-2">
+          <a href={`/opportunities/${target.opportunitySlug}`} class="text-brand"
+            >{target.opportunityTitle}</a
+          >
+          {
+            target.seatsLeft !== null && (
+              <span>
+                <span aria-hidden="true"> · </span>
+                {target.seatsLeft === 0
+                  ? "no seats free"
+                  : `${target.seatsLeft} seat${target.seatsLeft === 1 ? "" : "s"} free`}
+              </span>
+            )
+          }
+        </p>
+
+        {/* The `[PR]` line: what is left, before anything is typed. */}
+        {
+          allowance && (
+            <p
+              class={`mt-4 max-w-prose border-l-[3px] p-3 text-dense ${
+                allowance.blocked_reason
+                  ? "border-warning bg-unclear-wash"
+                  : "border-line-strong bg-sunken"
+              }`}>
+              {allowance.blocked_reason ? (
+                <>
+                  {allowance.blocked_reason[0]!.toUpperCase()}
+                  {allowance.blocked_reason.slice(1)}.
+                  {nextSlot ? ` You can send another after ${nextSlot}.` : ""}
+                  {!nextSlot
+                    ? " This one clears when someone answers, not when time passes."
+                    : ""}
+                </>
+              ) : (
+                <>
+                  You have {sendableNow} request{sendableNow === 1 ? "" : "s"} you can send right now.
+                  Limits are {allowance.hour_limit} an hour, {allowance.day_limit} a day, and{" "}
+                  {allowance.pending_limit} waiting for an answer at once.
+                </>
+              )}
+            </p>
+          )
+        }
+
+        {
+          problem && (
+            <p class="mt-4 max-w-prose border-l-[3px] border-danger bg-noteligible-wash p-3 text-dense">
+              {problem}
+            </p>
+          )
+        }
+
+        {
+          !canSend ? (
+            <p class="mt-6 max-w-prose text-dense text-ink-2">
+              {writes.allowed
+                ? "Nothing to do here until then. The people in the room aren't going anywhere."
+                : writes.reason}
+            </p>
+          ) : (
+            <form method="post" class="mt-6 max-w-prose">
+              <p>
+                <label for="role" class="block text-dense font-semibold">
+                  What you'd do <span class="font-normal text-ink-2">(optional)</span>
+                </label>
+                {target.roles.length > 0 ? (
+                  <>
+                    <span class="mt-1 block text-micro text-ink-2">
+                      {target.context === "team_request"
+                        ? "What they said they need:"
+                        : "What they said they can do:"}{" "}
+                      {target.roles.join(", ")}
+                    </span>
+                    <input
+                      id="role"
+                      name="role"
+                      type="text"
+                      list="role-options"
+                      maxlength="80"
+                      class="mt-2 min-h-11 w-full rounded-row border border-line-strong px-3"
+                    />
+                    <datalist id="role-options">
+                      {target.roles.map((r) => (
+                        <option value={r}></option>
+                      ))}
+                    </datalist>
+                  </>
+                ) : (
+                  <input
+                    id="role"
+                    name="role"
+                    type="text"
+                    maxlength="80"
+                    placeholder="backend, design, whatever you'd own"
+                    class="mt-2 min-h-11 w-full rounded-row border border-line-strong px-3"
+                  />
+                )}
+              </p>
+
+              <p class="mt-5">
+                <label for="message" class="block text-dense font-semibold">Your message</label>
+                <span class="mt-1 block text-micro text-ink-2">
+                  Up to 500 characters. Links are removed from a first message and shown as plain
+                  words — that's an anti-phishing rule, not a judgement about you.
+                </span>
+                <textarea
+                  id="message"
+                  name="message"
+                  rows="6"
+                  required
+                  minlength="10"
+                  maxlength="500"
+                  aria-describedby="counter"
+                  class="mt-2 w-full rounded-row border border-line-strong p-3"></textarea>
+                {/* Visible counter, per §11.1. The server truncates at 500 whatever
+                    happens here, so the count is a courtesy rather than the control. */}
+                <span id="counter" data-counter class="mt-1 block text-micro text-ink-2"
+                  >0 of 500 characters</span
+                >
+              </p>
+
+              <p class="mt-6 flex flex-wrap gap-3">
+                <button
+                  type="submit"
+                  class="inline-flex min-h-11 items-center rounded-row bg-brand px-4 font-semibold text-surface"
+                  >Send it</button
+                >
+                <a
+                  href={`/opportunities/${target.opportunitySlug}/room`}
+                  class="inline-flex min-h-11 items-center rounded-row border border-line-strong bg-surface px-4 font-semibold"
+                  >Back to the room</a
+                >
+              </p>
+
+              <p class="mt-5 text-micro text-ink-2">
+                Nothing of yours is shared by sending this — not your email, not your phone, not
+                your Telegram. If they accept, a short conversation opens here, and either of you
+                can offer to move it elsewhere.
+              </p>
+            </form>
+          )
+        }
+      </>
+    )
+  }
+</Base>
+
+<script>
+  // The character counter. A bundled module, not an inline script: the CSP in
+  // public/_headers carries no 'unsafe-inline', and it should stay that way.
+  const box = document.querySelector<HTMLTextAreaElement>("#message");
+  const out = document.querySelector<HTMLElement>("[data-counter]");
+  if (box && out) {
+    const paint = () => {
+      const n = box.value.length;
+      out.textContent = `${n} of 500 characters`;
+      out.classList.toggle("text-warning", n > 450);
+    };
+    box.addEventListener("input", paint);
+    paint();
+  }
+</script>

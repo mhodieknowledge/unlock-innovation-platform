@@ -10,6 +10,9 @@ export {
 } from "./budgets.js";
 export type { RouteBudget } from "./budgets.js";
 
+export { HOST_PLATFORMS, hostPlatformFor } from "./host-platforms.js";
+export type { HostPlatform } from "./host-platforms.js";
+
 export {
   DENSITY_FLOORS,
   DENSITY_THRESHOLDS,
