@@ -157,7 +157,7 @@ export function parseJsonLoose(text) {
  * does not hold. The caller stops using that provider for the run.
  *
  * @returns {Promise<{ ok: true, data: unknown, call: Call }
- *                 | { ok: false, call: Call, permanent?: boolean }>}
+ *                 | { ok: false, call: Call, permanent?: boolean, retryAfterMs?: number }>}
  */
 export async function callProvider(row, args) {
   const started = Date.now();
@@ -226,20 +226,32 @@ export async function callProvider(row, args) {
 
     if (response.status === 429 || response.status === 503) {
       const detail = await response.text().catch(() => "");
-      return { ok: false, call: call({ outcome: "rate_limited", detail: detail.slice(0, 300) }) };
+      return {
+        ok: false,
+        // How long the provider itself asked us to wait. Groq answers a TPM overage
+        // with "Please try again in 37.5ms" and Gemini with a retryDelay; taking that
+        // at its word is the difference between skipping a beat and sitting out the
+        // rest of the run.
+        retryAfterMs: retryHintMs(response.headers, detail) ?? undefined,
+        call: call({ outcome: "rate_limited", detail: detail.slice(0, 300) }),
+      };
     }
     if (!response.ok) {
       const detail = await response.text().catch(() => "");
       return {
         ok: false,
-        // 401, 403 and 404 are the configuration answering, not the service: a missing
-        // key, a revoked key, a model that has been retired or moved behind a tier this
-        // account does not have. None of those come right if we ask again, and asking
-        // again is what we were doing — the 2026-09-15 13:53 run met three retired
-        // models and paid 404s for every one of them on every document, three calls
-        // apiece, because the breaker only ever tripped on 429. Marked permanent so the
-        // caller can stop after the first.
-        permanent: response.status === 401 || response.status === 403 || response.status === 404,
+        // 401, 402, 403 and 404 are the configuration answering, not the service: a
+        // missing key, a revoked key, an unpaid account, a model that has been retired
+        // or moved behind a tier this account does not have. None of those come right
+        // if we ask again, and asking again is what we were doing — the 13:53 run met
+        // three retired models and paid 404s for every one of them on every document,
+        // three calls apiece, because the breaker only ever tripped on 429.
+        //
+        // 402 earns its place here from the 14:22 run, where Cerebras answered every
+        // single document with "Payment required to access this resource. Visit your
+        // billing tab." A billing state does not change between two documents fetched
+        // four seconds apart.
+        permanent: [401, 402, 403, 404].includes(response.status),
         call: call({ outcome: "error", detail: `${response.status} ${detail.slice(0, 300)}` }),
       };
     }
@@ -320,6 +332,48 @@ function usageFrom(payload) {
   };
 }
 
+/** Never come back sooner than this, however eager the provider says we may be. */
+const MIN_BACKOFF_MS = 1_000;
+
+/**
+ * The wait a provider asked for, in milliseconds, or null if it did not say.
+ *
+ * Three shapes, because three providers: the Retry-After header (seconds, per RFC
+ * 9110), Groq's prose "Please try again in 37.5ms" or "in 2.5s", and Gemini's
+ * structured `retryDelay: "13s"`. Clamped at both ends — a floor so a provider cannot
+ * talk us into hammering it, and the §3.2 ceiling so a provider asking for an hour
+ * still gets revisited within one.
+ *
+ * @param {Headers} headers
+ * @param {string} body
+ * @returns {number | null}
+ */
+function retryHintMs(headers, body) {
+  // Number(null) is 0, not NaN, so an ABSENT header would read as "come back
+  // immediately" and clamp to the floor — turning every hintless 429 into a one-second
+  // pause instead of §3.2's fifteen minutes. The null check is the whole guard.
+  const raw = headers?.get?.("retry-after");
+  if (raw !== null && raw !== undefined && raw !== "") {
+    const seconds = Number(raw);
+    if (Number.isFinite(seconds) && seconds >= 0) return clampBackoff(seconds * 1000);
+  }
+
+  // "try again in 37.5ms" / "try again in 2.5s" / "retryDelay": "13s"
+  const prose = /(?:try again in|retryDelay"?\s*:\s*")\s*([\d.]+)\s*(ms|s)?/i.exec(body);
+  if (prose?.[1]) {
+    const value = Number(prose[1]);
+    if (Number.isFinite(value)) {
+      return clampBackoff(prose[2]?.toLowerCase() === "ms" ? value : value * 1000);
+    }
+  }
+  return null;
+}
+
+/** @param {number} ms */
+function clampBackoff(ms) {
+  return Math.min(BREAKER_MS, Math.max(MIN_BACKOFF_MS, Math.round(ms)));
+}
+
 /**
  * Run a task down its chain until one provider answers, then stop.
  *
@@ -384,7 +438,17 @@ export async function runTask(args) {
       return { ok: true, data: attempt.data, provider: row.provider, model: row.model, calls };
     }
 
-    if (attempt.call.outcome === "rate_limited") breakers.trip(row.provider);
+    if (attempt.call.outcome === "rate_limited") {
+      // §3.2 says a 429 trips a breaker for fifteen minutes. That is the right default
+      // for a provider that will not say when to come back, and the wrong answer when
+      // it does: on 2026-09-15 Groq reported a token-per-minute overage of five tokens
+      // — "Limit 8000, Used 4281, Requested 3724. Please try again in 37.5ms" — and the
+      // flat fifteen minutes took it out of the chain for the whole run over a gap
+      // shorter than a single request. The polite fetcher has honoured Retry-After
+      // since it was written (§2.1 rule 4); this is the same courtesy, in the direction
+      // that happens to be ours.
+      breakers.trip(row.provider, attempt.retryAfterMs ?? BREAKER_MS);
+    }
     // A misconfigured provider is out for the run, not for fifteen minutes — but the
     // breaker is the mechanism we have and a run is shorter than its window, so the
     // effect is the same and there is no second concept to maintain.

@@ -34,7 +34,7 @@ VALUES
   ('gemini', 'extract', 'gemini-3.6-flash', 10, 1400, 15, true,
    'https://generativelanguage.googleapis.com/v1beta/models', 'GEMINI_API_KEY',
    'Large context handles a full page without chunking. TRAINS ON INPUT: public web content only, never user data (§2 guardrail 5).'),
-  ('groq', 'extract', 'openai/gpt-oss-120b', 20, 14000, 30, false,
+  ('groq', 'extract', 'openai/gpt-oss-120b', 20, 950, 30, false,
    'https://api.groq.com/openai/v1/chat/completions', 'GROQ_API_KEY',
    'Fallback when Gemini is exhausted. TPM binds before RPD on long inputs.'),
   ('cerebras', 'extract', 'gpt-oss-120b', 30, 14000, 30, false,
@@ -42,7 +42,7 @@ VALUES
    'Third in the chain. Volatile catalogue — check the model name when this starts failing.'),
 
   -- ── Rule derivation: the most constrained task in the system ──────────────
-  ('groq', 'rules', 'openai/gpt-oss-20b', 10, 14000, 30, false,
+  ('groq', 'rules', 'openai/gpt-oss-20b', 10, 950, 30, false,
    'https://api.groq.com/openai/v1/chat/completions', 'GROQ_API_KEY',
    'Short, structured, high volume. Output is verbatim-quote validated regardless of model.'),
   ('cerebras', 'rules', 'gpt-oss-120b', 20, 14000, 30, false,
@@ -54,16 +54,16 @@ VALUES
   -- ── Brief decoder: long rules documents and PDFs ──────────────────────────
   ('gemini', 'brief', 'gemini-3.6-flash', 10, 1400, 15, true,
    'https://generativelanguage.googleapis.com/v1beta/models', 'GEMINI_API_KEY', NULL),
-  ('groq', 'brief', 'openai/gpt-oss-20b', 20, 14000, 30, false,
+  ('groq', 'brief', 'openai/gpt-oss-20b', 20, 950, 30, false,
    'https://api.groq.com/openai/v1/chat/completions', 'GROQ_API_KEY', NULL),
 
   -- ── Query compiler: latency matters, it runs in a request ─────────────────
-  ('groq', 'query', 'openai/gpt-oss-20b', 10, 14000, 30, false,
+  ('groq', 'query', 'openai/gpt-oss-20b', 10, 950, 30, false,
    'https://api.groq.com/openai/v1/chat/completions', 'GROQ_API_KEY',
    'The ONE LLM call permitted in a request handler, and only because it is KV-cached for 7 days.'),
 
   -- ── Dedupe adjudication: one short question ───────────────────────────────
-  ('groq', 'dedupe', 'openai/gpt-oss-20b', 10, 14000, 30, false,
+  ('groq', 'dedupe', 'openai/gpt-oss-20b', 10, 950, 30, false,
    'https://api.groq.com/openai/v1/chat/completions', 'GROQ_API_KEY',
    'Only ever asked about a pair a deterministic check already flagged (§9 step 4).'),
 

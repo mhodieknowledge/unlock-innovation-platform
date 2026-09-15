@@ -1,0 +1,22 @@
+-- 0027 Groq's daily ceiling was set seven times too high
+--
+-- 005_ai_providers.sql says the quotas are "deliberately set a little under the
+-- published figures: the accountant stops before the limit rather than learning it as a
+-- 429, and a 429 costs a retry plus a fifteen-minute breaker." Groq's row carried
+-- 14,000 — a figure that belonged to a model that is no longer in the chain. The
+-- gpt-oss models it now points at publish 1,000 requests per day.
+--
+-- At 14,000 the accountant in ai_chain_for never stops, so the ceiling is always
+-- discovered as a 429, which is exactly what the comment set out to avoid. 950 leaves
+-- the intended margin.
+--
+-- NOTE, because the number alone is misleading: requests per day is not what binds this
+-- chain. Groq publishes 8,000 tokens per minute and 200,000 per day for these models,
+-- and one extraction sends up to MAX_INPUT_CHARS (24,000 characters, roughly 6,000
+-- tokens) — so a single document can consume most of a minute's tokens, and the day's
+-- token budget runs out around thirty extractions regardless of the request count.
+-- ai_chain_for counts requests and not tokens, so it cannot see that ceiling. Gemini is
+-- first in the extract chain for this reason and Groq is the fallback; the run of
+-- 2026-09-15 14:22 hit the TPM wall on the second document it sent Groq.
+UPDATE ai_providers SET daily_request_limit = 950
+ WHERE provider = 'groq' AND daily_request_limit = 14000;
