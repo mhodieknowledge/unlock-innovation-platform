@@ -152,9 +152,11 @@ describe("the deploy binds what the app cannot work without", () => {
     expect(workflow).toMatch(/if \[ -z "\$SUPABASE_URL" \] \|\| \[ -z "\$SUPABASE_ANON_KEY" \]; then/);
   });
 
-  it("never passes a secret as a --var, because wrangler prints those", () => {
-    // `Your Worker has access to the following bindings: env.BRAND_NAME ("Mbele")` — in a log
-    // that is public on this repository.
+  it("never passes a secret as a --var, because a Cloudflare var is stored in plaintext", () => {
+    // A var is readable in the dashboard and through the account API; a secret is encrypted and
+    // write-only. (`wrangler deploy` does mask a `--var` value in its own log — it prints
+    // `env.SUPABASE_URL ("(hidden)")` — but what makes this list the wrong home for a secret is
+    // where the value ends up living, not what the log shows.)
     const step = workflow.slice(
       workflow.indexOf("Configure the Worker's environment"),
       workflow.indexOf("- name: Deploy"),

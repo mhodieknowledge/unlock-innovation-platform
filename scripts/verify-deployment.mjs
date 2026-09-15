@@ -213,6 +213,13 @@ console.log("\nPWA (PRODUCT_SPEC.md §25.3)");
     fail("manifest is valid JSON", text.slice(0, 120));
   }
 
+  // The substring each content-type must contain. Two of them are a subtype alone, because a
+  // script is served as `text/javascript` by one host and `application/javascript` by another and
+  // neither is wrong. A previous version of this took `type.split("/").pop()`, which is
+  // string | undefined and made `tsc` right to complain; splitting unconditionally then made
+  // `includes(undefined)` false and failed both scripts on a deployment that was serving them
+  // correctly. A check that fails on a working site is as much a bug as one that passes on a
+  // broken one.
   for (const [path, type] of [
     ["/sw.js", "javascript"],
     ["/sw-routes.js", "javascript"],
@@ -222,7 +229,8 @@ console.log("\nPWA (PRODUCT_SPEC.md §25.3)");
   ]) {
     const response = await get(path);
     const contentType = response.headers.get("content-type") ?? "";
-    if (response.status === 200 && contentType.includes(type.split("/")[1])) {
+    const want = type.includes("/") ? type.slice(type.indexOf("/") + 1) : type;
+    if (response.status === 200 && contentType.includes(want)) {
       pass(`${path} served as ${contentType.split(";")[0]}`);
     } else {
       fail(`${path}`, `${response.status} ${contentType}`);

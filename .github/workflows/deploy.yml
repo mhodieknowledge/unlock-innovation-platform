@@ -237,11 +237,17 @@ jobs:
       # and an unset key is skipped rather than passed empty — a `--var SENTRY_DSN:` would make
       # `if (!dsn)` false and send envelopes nowhere.
       #
-      # The split between the two lists is not a judgement call: `wrangler deploy` PRINTS the
-      # value of every var it binds, into a log that is public on this repository. So a var is
-      # here only if it is publishable. The anon key qualifies — it ships to browsers by design
-      # and RLS is the boundary (SECURITY.md §2) — and the service-role key is in neither list,
-      # because the request tier never gets it.
+      # The split between a var and a secret is not a judgement call either. A Cloudflare
+      # environment variable is stored and displayed in PLAINTEXT — in the dashboard, and to
+      # anything reading the account through the API — while a secret is encrypted and
+      # write-only. So a var is here only if it is publishable. The anon key qualifies: it ships
+      # to browsers by design and RLS is the boundary (SECURITY.md §2). The service-role key is in
+      # neither list, because the request tier never gets it at all.
+      #
+      # (`wrangler deploy` masks a `--var` value in its own output — `env.SUPABASE_URL
+      # ("(hidden)")` — and prints values that come from wrangler.jsonc in full, which is the
+      # other reason nothing sensitive belongs in that committed file. The masking is a
+      # convenience, not the reason for the split: plaintext at rest is.)
       - name: Configure the Worker's environment
         id: worker_env
         env:

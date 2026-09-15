@@ -698,8 +698,8 @@ The deploy now binds them, in a step of its own:
 
 | Where | Which keys | Why there |
 |---|---|---|
-| `--var` on `wrangler deploy`, from repository **variables** | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `TELEGRAM_BOT_HANDLE`, the three model names | `wrangler deploy` **prints the value of every var it binds**, into a log that is public on this repository. A key is only here if it is publishable. The anon key is: it ships to browsers by design and RLS is the boundary (SECURITY.md §2). |
-| `wrangler.jsonc` | `BRAND_NAME`, `ENVIRONMENT` | Committed, non-secret, the same in every deploy. |
+| `--var` on `wrangler deploy`, from repository **variables** | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `TELEGRAM_BOT_HANDLE`, the three model names | A Cloudflare **var is stored and displayed in plaintext** — in the dashboard, and to anything reading the account through the API. A key is only here if it is publishable. The anon key is: it ships to browsers by design and RLS is the boundary (SECURITY.md §2). |
+| `wrangler.jsonc` | `BRAND_NAME`, `ENVIRONMENT` | Committed, non-secret, the same in every deploy. `wrangler deploy` prints the value of a var that comes from this file in full, and masks a `--var` as `("(hidden)")` — which is the other reason nothing sensitive belongs in a committed config. |
 | Nowhere in the request tier | the service-role key | SECURITY.md §2. It exists only in GitHub Actions secrets, for the batch tier. |
 
 `SUPABASE_URL` and `SUPABASE_ANON_KEY` missing now **fails the deploy** rather than publishing a
@@ -711,7 +711,8 @@ envelopes nowhere.
 
 Secrets — `GROQ_API_KEY`, `IP_HASH_SALT`, `TURNSTILE_SECRET_KEY`, the Telegram tokens, `SENTRY_DSN`
 — are **not yet bound to the Worker at all**; the features that need them are off in production,
-which is a state each of them supports. They cannot travel by `--var` for the reason in the table.
+which is a state each of them supports. They need `wrangler secret bulk`, not `--var`, for the
+reason in the table.
 
 **What happens on a successful run**, in order: migrations, reference seed, build, byte budgets,
 decide the address, register the workers.dev subdomain if needed, bind the environment, publish,
@@ -745,7 +746,7 @@ one.
 |---|---|
 | R2 upload | **Never run.** The signing code is written and the request shape is per the S3 spec, but no R2 bucket or token has existed to send it to. First run will either work or produce a 403 from R2 naming the problem. |
 | Restore from an R2 object | Never run end to end. Restoring from a local dump file is tested on every push; the missing step is the download. |
-| Production deploy | **Done.** Migrations and the reference seed have run against the production Supabase on every deploy since the Cloudflare credentials were added. The publish step failed on the first 22 of them — no `workers.dev` subdomain and no route, and `wrangler`'s answer to that is an interactive prompt, which in CI is an exit code — and has succeeded since the address became configuration with a default (§16). The first Worker to go up served 500 on every database-backed page, because the deploy bound no Supabase configuration to it and nothing in the pipeline asked a real page whether it worked; both are fixed, and §16 says how. |
+| Production deploy | **Done and verified from outside.** `npm run verify:deployment -- https://mbele-web.mbele.workers.dev` passes all 43 checks: the board 200 with server-rendered copy and all six security headers, 55 countries and 22 categories in the sitemaps from the live database, every public route, the auth gate, the PWA assets, and an honest 404. Before that: Migrations and the reference seed have run against the production Supabase on every deploy since the Cloudflare credentials were added. The publish step failed on the first 22 of them — no `workers.dev` subdomain and no route, and `wrangler`'s answer to that is an interactive prompt, which in CI is an exit code — and has succeeded since the address became configuration with a default (§16). The first Worker to go up served 500 on every database-backed page, because the deploy bound no Supabase configuration to it and nothing in the pipeline asked a real page whether it worked; both are fixed, and §16 says how. |
 | A real browser on the live site | **Never.** Everything asserted about the deployment is asserted over HTTP by `scripts/verify-deployment.mjs` — status codes, headers, copy, XML. Nobody has opened it in a browser, so nothing visual, nothing about focus order and nothing about the install prompt has been seen on the real origin. |
 | Secrets bound to the Worker | **Never.** `GROQ_API_KEY`, `IP_HASH_SALT`, `TURNSTILE_SECRET_KEY`, the Telegram tokens and `SENTRY_DSN` are in GitHub Actions for the batch tier and are not bound to the Worker, so in production: the query compiler is heuristic-only, rate-limit keys use the coarse fallback, Turnstile verification is skipped exactly as ADR 0002 describes, no Telegram message can be sent from a request, and errors are logged rather than reported. Each is a state the code supports; none has been exercised with a real value in the request tier. |
 | Workers AI and the KV query cache in production | **Never bound.** `wrangler.jsonc` declares no `ai` binding and no `QUERY_CACHE` namespace, so hybrid search runs its FTS half and the embedding half returns null. The degraded path is asserted in `apps/web/test/search.test.ts`; what has not happened is the undegraded one on the live origin. |
