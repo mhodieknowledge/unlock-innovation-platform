@@ -658,20 +658,31 @@ as not done, and no amount of this is a substitute for them.
 The pipeline is `.github/workflows/deploy.yml`, on every push to `main`. It stops early with a
 notice when the Cloudflare credentials are absent, so a fork never fails confusingly.
 
-**The one thing it cannot decide for you** is the address the Worker publishes to. Cloudflare
-offers two and needs one of them:
+**The address** the Worker publishes to is decided in precedence order, and the last step means
+nothing has to be configured for a deploy to work at all:
 
-| Variable | Use | Result |
+| # | Source | Result |
 |---|---|---|
-| `CUSTOM_DOMAIN` | A zone already in this Cloudflare account, e.g. `mbele.africa` | Published at that domain; workers.dev is never involved |
-| `WORKERS_DEV_SUBDOMAIN` | An account-wide name, e.g. `mbele` | Published at `mbele-web.<name>.workers.dev`, registered by the workflow through the API on the first run |
+| 1 | `CUSTOM_DOMAIN` variable | Published at that domain; workers.dev is never involved |
+| 2 | `BRAND_DOMAIN` variable | Same, when it is a real domain rather than a placeholder |
+| 3 | `WORKERS_DEV_SUBDOMAIN` variable | Published at `mbele-web.<name>.workers.dev` |
+| 4 | **the brand name**, lower-cased | The default. `mbele` → `mbele-web.mbele.workers.dev` |
 
-Both are repository *variables* (Settings → Secrets and variables → Actions → Variables), not
-secrets — neither is sensitive. `CUSTOM_DOMAIN` wins when both are set.
+Steps 1–3 are repository *variables* (Settings → Secrets and variables → Actions → Variables), not
+secrets; none is sensitive.
 
-The workflow will not invent a workers.dev name. It is cosmetic and temporary, but the account
-keeps it once taken, and a name in every URL of a product that has not settled its own brand
-(README.md §6 item 1) is not a machine's decision.
+Step 4 is the reason this deploys out of the box, and it is not the workflow inventing a name: it
+reads `BRAND.name` from `packages/config/src/brand.mjs`, the one module PRODUCT_SPEC.md §1 allows
+the brand to live in. A rebrand moves the address with it instead of leaving a stale word in a
+workflow file.
+
+A workers.dev subdomain is account-wide and **permanent once registered** — Cloudflare keeps it.
+The workflow registers it through the API on the first run and does nothing on every run after.
+A name already taken by another account fails loudly, and the fix is the `WORKERS_DEV_SUBDOMAIN`
+variable.
+
+**Moving to a real domain later** costs one variable and one push. Nothing in the code carries the
+address.
 
 **What happens on a successful run**, in order: migrations, reference seed, build, byte budgets,
 publish, then a smoke test of `/api/health` against the URL the deploy itself reported — no extra

@@ -1,8 +1,18 @@
-# Cloudflare Pages/Workers response headers. SECURITY.md §5.
+# Cloudflare response headers for STATIC ASSETS. SECURITY.md §5.
 #
-# CSP carries no `unsafe-inline` — stylesheets are external (see
-# astro.config.mjs) and no inline script is emitted. `connect-src` is widened
-# per-environment at deploy time for the Supabase origin.
+# This file covers what Cloudflare's asset handler serves before the Worker runs: the
+# stylesheet, the service worker, the icon, the prerendered policy pages. It does NOT
+# cover a response the Worker generates, which is almost every page in this product —
+# those get the same headers from apps/web/src/middleware.ts.
+#
+# Both read one definition, SECURITY_HEADERS in @mbele/config, and
+# apps/web/test/security-headers.test.ts asserts the `/*` block below matches it. Edit
+# the module, not this file, and keep them in step.
+#
+# CSP carries no `unsafe-inline` — stylesheets are external (see astro.config.mjs) and no
+# executable inline script is emitted. `connect-src` stays `self`: nothing in the browser
+# talks to Supabase directly, because sign-in is a server-side form POST and the one island
+# fetches this origin.
 
 /*
   Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'self'; object-src 'none'; upgrade-insecure-requests

@@ -12,6 +12,8 @@ export type { RouteBudget } from "./budgets.js";
 
 export { HOST_PLATFORMS, hostPlatformFor } from "./host-platforms.js";
 
+export { SECURITY_HEADERS } from "./security-headers.js";
+
 export {
   DESCRIPTION_MAX,
   demonymAdjective,

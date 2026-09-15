@@ -33,6 +33,16 @@ const SESSION_USER = {
   low_data_mode: false,
 };
 
+/**
+ * "Checked today", relative to whenever this runs.
+ *
+ * A fixed date here made two assertions pass on the day they were written and fail the next
+ * morning, when `freshnessLabel` started saying "Checked yesterday" — the same shape as the
+ * notifications suite that passed all afternoon and broke at 22:05. A fixture about "today" has to
+ * be computed from today.
+ */
+const VERIFIED_TODAY = new Date().toISOString();
+
 /** Deliberately out of order, so an assertion on the rendered order proves the ORDER BY. */
 const BOARD = [
   row(0, "Harare Climate Data Challenge", "2026-09-20T21:59:00Z"),
@@ -66,7 +76,7 @@ function row(i: number, title: string, deadline: string) {
     cost: "free",
     cost_description: null,
     verification: "verified",
-    last_verified_at: "2026-09-14T06:00:00Z",
+    last_verified_at: VERIFIED_TODAY,
     source_url: "https://example.invalid/source",
     official_url: null,
     apply_url: null,
@@ -81,7 +91,7 @@ const state = {
   board: [...BOARD] as ReturnType<typeof row>[],
   boardOk: true,
   published: 312 as number | null,
-  lastVerifiedAt: "2026-09-14T06:00:00Z" as string | null,
+  lastVerifiedAt: VERIFIED_TODAY as string | null,
   signedIn: false,
   residence: null as string | null,
   /** What listOpportunities was asked for, so the country filter can be asserted. */
@@ -140,7 +150,7 @@ beforeEach(() => {
   state.board = [...BOARD];
   state.boardOk = true;
   state.published = 312;
-  state.lastVerifiedAt = "2026-09-14T06:00:00Z";
+  state.lastVerifiedAt = VERIFIED_TODAY;
   state.signedIn = false;
   state.residence = null;
   state.asked = null;

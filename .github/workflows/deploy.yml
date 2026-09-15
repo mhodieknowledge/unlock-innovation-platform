@@ -133,39 +133,76 @@ jobs:
       - name: Byte budgets
         run: npm run budget
 
-      # A Worker has to be reachable at SOME address, and Cloudflare offers two: a route on
-      # a zone you own, or a workers.dev subdomain. `wrangler deploy` with neither prompts
-      # interactively, and in CI a prompt is a failure — which is exactly how the first
-      # twenty-two deploys of this repository ended, after doing everything else correctly.
+      # A Worker has to be reachable at SOME address, and Cloudflare offers two: a route on a
+      # zone you own, or a workers.dev subdomain. `wrangler deploy` with neither prompts
+      # interactively, and in CI a prompt is an exit code — which is exactly how the first
+      # twenty-three deploys of this repository ended, after doing everything else correctly.
       #
-      # So the address is configuration, like everything else here:
+      # So the address is decided here, once, in precedence order:
       #
-      #   CUSTOM_DOMAIN             a zone in this Cloudflare account, e.g. mbele.africa.
-      #                             Preferred: it is the address the product actually wants,
-      #                             and it skips workers.dev entirely.
-      #   WORKERS_DEV_SUBDOMAIN     the account-wide workers.dev name, registered below if it
-      #                             does not exist yet. Cosmetic and temporary, but permanent
-      #                             on the account once taken — which is why this workflow
-      #                             will not invent one.
+      #   1. CUSTOM_DOMAIN            a zone in this Cloudflare account. Skips workers.dev.
+      #   2. BRAND_DOMAIN             already configured for the brand, and almost always the
+      #                               same domain. Placeholders are ignored.
+      #   3. WORKERS_DEV_SUBDOMAIN    an explicit workers.dev name.
+      #   4. the brand name itself    lower-cased, from packages/config/src/brand.mjs.
       #
-      # With neither set the step says so in one sentence and names the two ways to fix it,
-      # rather than leaving wrangler's interactive prompt to fail on its own terms.
-      - name: Register the workers.dev subdomain, if that is the chosen address
-        if: vars.CUSTOM_DOMAIN == '' && vars.WORKERS_DEV_SUBDOMAIN != ''
+      # Step 4 is why nothing has to be configured for this to deploy at all. The workers.dev name
+      # is not a new decision — it is the brand name PRODUCT_SPEC.md §1 already keeps in exactly
+      # one module, so a rebrand moves the address with it rather than leaving a stale word in a
+      # workflow file. It is account-wide and permanent once registered; the variables above exist
+      # so that can be overridden without touching code.
+      - name: Decide the address
+        id: address
+        env:
+          CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
+          BRAND_DOMAIN: ${{ vars.BRAND_DOMAIN }}
+          WORKERS_DEV_SUBDOMAIN: ${{ vars.WORKERS_DEV_SUBDOMAIN }}
+        run: |
+          domain="$CUSTOM_DOMAIN"
+
+          if [ -z "$domain" ] && [ -n "$BRAND_DOMAIN" ]; then
+            case "$BRAND_DOMAIN" in
+              *.invalid|example.*|localhost*) echo "BRAND_DOMAIN is a placeholder ($BRAND_DOMAIN); ignoring it." ;;
+              *) domain="$BRAND_DOMAIN"; echo "Using BRAND_DOMAIN as the address." ;;
+            esac
+          fi
+
+          subdomain=""
+          if [ -z "$domain" ]; then
+            subdomain="$WORKERS_DEV_SUBDOMAIN"
+            if [ -z "$subdomain" ]; then
+              # The brand name, from the one module that holds it. Lower-cased and stripped of
+              # anything workers.dev will not take.
+              subdomain=$(node --input-type=module -e \
+                'import { BRAND } from "./packages/config/src/brand.mjs"; process.stdout.write(BRAND.name.toLowerCase().replace(/[^a-z0-9-]/g, ""))')
+              echo "No address configured; using the brand name: $subdomain"
+            fi
+          fi
+
+          if [ -z "$domain" ] && [ -z "$subdomain" ]; then
+            echo "::error::No address to publish to, and the brand name resolved to nothing."
+            exit 1
+          fi
+
+          echo "domain=$domain" >> "$GITHUB_OUTPUT"
+          echo "subdomain=$subdomain" >> "$GITHUB_OUTPUT"
+
+      - name: Register the workers.dev subdomain if it does not exist
+        if: steps.address.outputs.domain == '' && steps.address.outputs.subdomain != ''
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          SUBDOMAIN: ${{ vars.WORKERS_DEV_SUBDOMAIN }}
+          SUBDOMAIN: ${{ steps.address.outputs.subdomain }}
         run: |
           set -o pipefail
           api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain"
 
-          # Already registered? Then there is nothing to do, and re-PUTting a name is not
-          # something to do casually: the account keeps it.
+          # Already registered? Nothing to do — and re-PUTting a name is not something to do
+          # casually, because the account keeps it.
           current=$(curl -fsS "$api" -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
                     | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"].get("subdomain") or "")' 2>/dev/null || true)
           if [ -n "$current" ]; then
-            echo "workers.dev subdomain already registered: $current"
+            echo "Already registered: $current"
             exit 0
           fi
 
@@ -178,8 +215,8 @@ jobs:
           if printf '%s' "$response" | grep -q '"success":true'; then
             echo "Registered."
           else
-            echo "::error::Could not register the subdomain. Cloudflare said: $response"
-            echo "::error::A name already taken by another account, or an API token without Workers Scripts:Edit, both look like this."
+            echo "::error::Could not register \"$SUBDOMAIN\". Cloudflare said: $response"
+            echo "::error::A name already taken by another account, or a token without Workers Scripts:Edit, both look like this. Set the WORKERS_DEV_SUBDOMAIN variable to try another name."
             exit 1
           fi
 
@@ -188,45 +225,22 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
-          BRAND_DOMAIN: ${{ vars.BRAND_DOMAIN }}
-          WORKERS_DEV_SUBDOMAIN: ${{ vars.WORKERS_DEV_SUBDOMAIN }}
+          DOMAIN: ${{ steps.address.outputs.domain }}
         working-directory: apps/web
         run: |
           set -o pipefail
 
-          # BRAND_DOMAIN is already configured for the brand (PRODUCT_SPEC.md §1) and is almost
-          # always the domain this is meant to be served from, so it is used when CUSTOM_DOMAIN
-          # is not set. That is following configuration rather than inventing an address: the
-          # placeholders are skipped, and a domain whose DNS is not on this Cloudflare account
-          # fails at the route with Cloudflare saying so, which is the right place to learn it.
-          if [ -z "$CUSTOM_DOMAIN" ] && [ -n "$BRAND_DOMAIN" ]; then
-            case "$BRAND_DOMAIN" in
-              *.invalid|example.*|localhost*|"")
-                echo "BRAND_DOMAIN is a placeholder ($BRAND_DOMAIN); not using it as an address." ;;
-              *)
-                echo "No CUSTOM_DOMAIN set; using BRAND_DOMAIN ($BRAND_DOMAIN)."
-                CUSTOM_DOMAIN="$BRAND_DOMAIN" ;;
-            esac
-          fi
-
-          if [ -z "$CUSTOM_DOMAIN" ] && [ -z "$WORKERS_DEV_SUBDOMAIN" ]; then
-            echo "::error::This Worker has no address to publish to, so there is nothing to deploy."
-            echo "::error::Set repository variable CUSTOM_DOMAIN to a zone in this Cloudflare account (preferred), or WORKERS_DEV_SUBDOMAIN to an account-wide workers.dev name."
-            exit 1
-          fi
-
-          if [ -n "$CUSTOM_DOMAIN" ]; then
-            # `--route` resolves the zone from the pattern, so the zone has to be in this
-            # account. A domain registered elsewhere fails here with Cloudflare saying so,
-            # which is the right place to find that out.
-            echo "Publishing to $CUSTOM_DOMAIN"
-            npx wrangler deploy --route "${CUSTOM_DOMAIN}/*" 2>&1 | tee deploy.log
-            echo "url=https://${CUSTOM_DOMAIN}" >> "$GITHUB_OUTPUT"
+          if [ -n "$DOMAIN" ]; then
+            # `--route` resolves the zone from the pattern, so the zone has to be in this account.
+            # A domain whose DNS lives elsewhere fails here with Cloudflare saying so, which is
+            # the right place to learn it.
+            echo "Publishing to $DOMAIN"
+            npx wrangler deploy --route "${DOMAIN}/*" 2>&1 | tee deploy.log
+            echo "url=https://${DOMAIN}" >> "$GITHUB_OUTPUT"
           else
             npx wrangler deploy 2>&1 | tee deploy.log
-            # The live URL, read from wrangler's own output rather than reconstructed from the
-            # worker name and the subdomain — the two can disagree, and the log is the truth.
+            # The live URL from wrangler's own output rather than rebuilt from the worker name and
+            # the subdomain — the two can disagree, and the log is the truth.
             url=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' deploy.log | head -1)
             echo "url=$url" >> "$GITHUB_OUTPUT"
           fi
