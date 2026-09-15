@@ -155,6 +155,41 @@ jobs:
           END $$;
           SQL
 
+      # THE SEED RUNS ON EVERY DEPLOY, so "idempotent" is a claim the pipeline depends on
+      # rather than a nicety. It was a comment: deploy.yml said "every seed is ON CONFLICT DO
+      # NOTHING, so it is safe to re-run", and that clause only suppresses a conflict if some
+      # constraint exists for it to conflict ON. `sources` had none, so eighteen deploys
+      # re-seeded the 24 researched sources into 432 rows, and nothing anywhere noticed —
+      # the assertion above counts countries, categories, regions and flags, which are exactly
+      # the tables that DO have natural keys.
+      #
+      # So this counts every table in the schema, re-runs the whole seed, and counts again.
+      # It is not a list that has to be kept up to date with the seeds, which is the point:
+      # the seed that breaks this next will be one nobody thought to add here.
+      - name: The seed must be idempotent
+        run: |
+          fingerprint() {
+            psql "$DATABASE_URL" -tAc "
+              SELECT string_agg(t || '=' || c, ' ' ORDER BY t)
+                FROM (
+                  SELECT table_name AS t,
+                         (xpath('/row/cnt/text()',
+                                query_to_xml(format('SELECT count(*) AS cnt FROM %I.%I', table_schema, table_name),
+                                             false, true, '')))[1]::text::int AS c
+                    FROM information_schema.tables
+                   WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+                ) x;"
+          }
+          before=$(fingerprint)
+          npm run db:seed
+          after=$(fingerprint)
+          if [ "$before" != "$after" ]; then
+            echo "::error::Re-running the seed changed the database. A seed that is not idempotent duplicates its rows on every deploy."
+            diff <(printf '%s' "$before" | tr ' ' '\n') <(printf '%s' "$after" | tr ' ' '\n') || true
+            exit 1
+          fi
+          echo "Re-running the whole seed changed nothing, across every table in the schema."
+
       # Proves the database REFUSES invariant violations (1, 2, 13), the ingestion
       # legal gates, and that owner-only tables grant no admin path. Shares one
       # script with local use so the two cannot drift.

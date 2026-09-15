@@ -14,12 +14,17 @@ BEGIN;
 INSERT INTO organisations (id, name, slug)
 VALUES ('11111111-1111-1111-1111-111111111111', 'Test Org', 'test-org-invariants');
 
+-- The caught list is deliberately SHORT rather than `WHEN others`. A typo in a column name
+-- also raises, and a test that treats any error as a pass is a test that passes for the wrong
+-- reason — it would report the invariant enforced while asserting nothing at all.
+--
+-- `unique_violation` joined it with migration 0025, which made a source's URL its identity.
 CREATE OR REPLACE FUNCTION assert_rejects(label text, stmt text)
 RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
   BEGIN
     EXECUTE stmt;
-  EXCEPTION WHEN check_violation OR not_null_violation THEN
+  EXCEPTION WHEN check_violation OR not_null_violation OR unique_violation THEN
     RAISE NOTICE 'PASS  %', label;
     RETURN;
   END;
@@ -118,28 +123,37 @@ END $$;
 SELECT assert_rejects(
   'ingestion: a source cannot be active without a passing robots check',
   $q$INSERT INTO sources (name, kind, url, is_active)
-     VALUES ('Unchecked', 'html_page', 'https://example.org/feed', true)$q$);
+     VALUES ('Unchecked', 'html_page', 'https://example.org/unchecked', true)$q$);
 
 SELECT assert_rejects(
   'ingestion: a robots-disallowed source cannot be active',
   $q$INSERT INTO sources (name, kind, url, is_active, robots_allowed, robots_checked_at)
-     VALUES ('Disallowed', 'html_page', 'https://example.org/feed', true, false, now())$q$);
+     VALUES ('Disallowed', 'html_page', 'https://example.org/disallowed', true, false, now())$q$);
 
 SELECT assert_accepts(
   'ingestion: a checked and allowed source can be active',
   $q$INSERT INTO sources (name, kind, url, is_active, robots_allowed, robots_checked_at)
-     VALUES ('Allowed', 'rss', 'https://example.org/feed', true, true, now())$q$);
+     VALUES ('Allowed', 'rss', 'https://example.org/allowed-feed', true, true, now())$q$);
 
 -- A ToS that restricts automation limits us to feeds only.
 SELECT assert_rejects(
   'ingestion: restricts_automation forbids an html_page source',
   $q$INSERT INTO sources (name, kind, url, tos_posture)
-     VALUES ('Restricted', 'html_page', 'https://example.org/page', 'restricts_automation')$q$);
+     VALUES ('Restricted', 'html_page', 'https://example.org/restricted-page', 'restricts_automation')$q$);
 
 SELECT assert_accepts(
   'ingestion: restricts_automation still permits its RSS feed',
   $q$INSERT INTO sources (name, kind, url, tos_posture)
-     VALUES ('Restricted feed', 'rss', 'https://example.org/feed', 'restricts_automation')$q$);
+     VALUES ('Restricted feed', 'rss', 'https://example.org/restricted-feed', 'restricts_automation')$q$);
+
+-- A source's URL is its identity (migration 0025). Before that constraint existed, the seed's
+-- `ON CONFLICT DO NOTHING` had nothing to conflict on and eighteen deploys turned 24 researched
+-- sources into 432 rows — eighteen fetchers of every feed, against a promise of one request per
+-- ten seconds per host (OPPORTUNITY_INGESTION.md §2.1 rule 4).
+SELECT assert_rejects(
+  'ingestion: two sources cannot share a URL',
+  $q$INSERT INTO sources (name, kind, url)
+     VALUES ('A second row for the same feed', 'rss', 'https://example.org/allowed-feed')$q$);
 
 -- MODERATION_AND_TRUST.md §2.2 — a scam or payment report must set
 -- verification='disputed' IMMEDIATELY and AUTOMATICALLY, before any human sees

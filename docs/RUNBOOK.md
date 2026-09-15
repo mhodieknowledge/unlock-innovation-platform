@@ -782,3 +782,165 @@ one.
 | The install prompt | Never seen. `beforeinstallprompt` only fires on a served origin over HTTPS with a valid manifest and an icon, and this has never been served. The manifest and the icon are asserted in the same test file; the browser's own engagement heuristics are not something a test can stand in for. |
 | Low-data mode on a metered connection | The 40 KB target is measured on every push, from real rendered HTML and the real built CSS. What has never happened is somebody browsing on a Zimbabwean prepaid bundle and telling us whether the two-fact row is still usable — which is the only question that matters about it. |
 | Workers AI embedding in the request tier | Never called. `PROJECT_EMBEDDING_MODEL` is unset, so project creation stores no vector and the first-pass match ranks on tags and urgency — a supported degraded state, and the batch embedder fills the vector in overnight. |
+
+## 18. From an empty catalogue to a public launch
+
+§16 gets a Worker serving. This section is the rest of the distance, in order, and it is written
+because the two are easy to confuse: the deployment is correct and the board is empty, and those
+are not the same problem. Nothing below is a bug.
+
+**Where it stands.** The site serves at `https://mbele-web.mbele.workers.dev`. The reference data
+is live — 55 countries, 22 categories, the region graph — which is why every country and category
+page renders. `opportunities` has zero rows, `sources` has 24 rows and **every one of them is
+inactive by design**, and no account has admin rights. So the board shows "Nothing open to
+Zimbabwe is closing yet", which is CONTENT_AND_LAUNCH.md §1 working: with nothing published, the
+honest output is no number at all.
+
+The chain from here to a row on the board is: **sign-in works → you are an admin → a source is
+active → ingestion runs → you review what it found → it publishes.** Every link is required and
+the order matters.
+
+### Step 1 — Make sign-in work `(Supabase dashboard, 2 minutes)`
+
+Authentication → URL Configuration:
+
+* **Site URL**: `https://mbele-web.mbele.workers.dev`
+* **Redirect URLs**: add `https://mbele-web.mbele.workers.dev/auth/callback`
+
+Without this the magic link completes and lands nowhere, and every step below needs an account.
+
+### Step 2 — Give yourself the admin role `(SQL editor, 1 minute)`
+
+Sign in once at `/signin` first, so the `users` row exists. Then:
+
+```sql
+UPDATE users SET is_admin = true, admin_role = 'superadmin' WHERE email = '<your email>';
+```
+
+`/admin` returns a sign-in redirect for everyone else and will keep doing so — ADMIN_SYSTEM.md's
+role gate is an RLS policy, not a page check, so there is no way to grant this from the UI. The
+three roles are `reviewer`, `moderator` and `superadmin`; take `superadmin` for the first account
+and hand out narrower ones later.
+
+### Step 3 — Set `BRAND_DOMAIN` `(repository variable, 1 minute — a decision, not a default)`
+
+Settings → Secrets and variables → Actions → **Variables** → `BRAND_DOMAIN`.
+
+Until it is set, seven live pages publish `@example.invalid` addresses and the crawler introduces
+itself with a URL that does not exist — see §16 step 2. `npm run verify:deployment` fails each of
+the seven by name, so this cannot be quietly forgotten.
+
+If the domain is also a zone in the same Cloudflare account, set `CUSTOM_DOMAIN` to it as well and
+the next deploy publishes there instead of workers.dev, with no code change (§16's table).
+
+### Step 4 — Activate at least one source `(the real gate on content)`
+
+`supabase/seed/006_source_registry.sql` seeds 24 researched sources — 7 RSS, 13 HTML pages, a
+GitHub API source, a Kaggle API source, a JSON-LD source — and every one is `is_active = false`.
+That is OPPORTUNITY_INGESTION.md §7 being honoured: *"this table is a research starting point, not
+an approval list."*
+
+Activation has two halves and only one is a machine's.
+
+**The objective half has been run.** `Actions → Ingestion → Run workflow → job: check-sources`
+fetched and recorded robots.txt for every source on 15 September 2026: **21 allow our path, 1
+disallows it, 2 could not be read** — and an unreadable robots.txt is recorded as a refusal, not
+as permission. Those findings are on the rows now, so the activate step will accept them. Re-run
+it whenever a source's site changes; it is safe and it writes nothing but the finding.
+
+That run is also what surfaced the duplicate-sources bug fixed in migration 0025: it reported
+"432 source(s) checked" against a registry of 24, because the seed had been re-inserting itself on
+every deploy. Worth knowing if you see an older log.
+
+```bash
+# The objective half, again, later:
+#   Actions → Ingestion → Run workflow → job: check-sources
+#   (or locally: DATABASE_URL=... npm run sources:check)
+
+# The half that is a judgement about someone else's legal document. Read the terms, decide,
+# record the decision — the activate step refuses until you have:
+psql "$DATABASE_URL" -c "UPDATE sources SET tos_posture = 'permits_feeds' WHERE id = '<uuid>'"
+
+# Then, and only then:
+DATABASE_URL=... npm run sources:check -- --activate <uuid>
+```
+
+`tos_posture` is one of `permits_feeds`, `silent`, `restricts_automation`, `requires_permission`.
+`restricts_automation` still permits an RSS feed and nothing else (§2.1 rule 9) — a feed is
+published for machines by definition. `requires_permission` means exactly that: obtain it, then
+record it.
+
+Start with the RSS tier. CONTENT_AND_LAUNCH.md §3 puts the high-yield feeds in weeks 1–2 for a
+reason — they are high volume, legally the cleanest, and immediate. The HTML sources are tier 6,
+last resort, per-source legal review.
+
+To see what you are deciding about:
+
+```sql
+SELECT id, name, kind, url, tos_posture, robots_allowed, robots_checked_at
+  FROM sources WHERE NOT is_active ORDER BY kind, name;
+```
+
+### Step 5 — Run ingestion
+
+Actions → **Ingestion** → Run workflow → job `ingest`. It also runs every three hours on its own;
+with no active source it fetches nothing and says so, which is why the schedule has been harmless
+so far.
+
+Run it once with **dry_run: true** first. It renders what it would write without writing, which is
+the cheapest possible look at whether a source yields anything usable.
+
+### Step 6 — Review what it found `(this is not optional)`
+
+**Nothing auto-publishes on its first pass.** `route_for_publication` requires a link-health check
+that has not run yet for a brand-new record, and §4.7 sends an unproven source's first five
+records to a person regardless. So after ingestion the rows are in `review_queue`, not on the
+board.
+
+`/admin` → the queues. §12 of this runbook is how to work them. Publishing from there is what puts
+the first row on the board.
+
+### Step 7 — Add an LLM key, or accept a much thinner catalogue `(optional, large effect)`
+
+With no provider key configured, ingestion runs the **NO_AI path**: JSON-LD only, no extraction
+from prose, and **no eligibility rules derived at all**. The pipeline is built to survive that
+(AI_SYSTEM.md §13) and a run that produces only JSON-LD records is degraded, not broken — but
+eligibility rules are the product's central claim, and without a provider almost nothing arrives
+with them.
+
+Add any of these as Actions **secrets** and the chain in `ai_providers` starts using it:
+`GEMINI_API_KEY` (first for extraction — largest free context), `GROQ_API_KEY` (first for rule
+derivation and the query compiler), `CEREBRAS_API_KEY` (third). All three have free tiers, and
+§3.1's quotas are already seeded a little under the published ceilings.
+
+### Step 8 — Do not announce it yet
+
+CONTENT_AND_LAUNCH.md §2 sets the seed target before public launch, and it is deliberately high:
+**≥ 300 published, ≥ 180 currently open, ≥ 85% with complete eligibility rules, ≥ 120
+human-verified, ≥ 40 open to each Tier-1 country** (Zimbabwe, Zambia, Botswana, Namibia, Malawi,
+Mozambique), **≥ 80 organisations, ≥ 8 categories with 10+ open**.
+
+The 40-per-country figure is the one to respect: below roughly 40 a country page reads as
+abandoned. A launch announcement against an empty board spends the only first impression there is.
+
+Check progress against it with:
+
+```sql
+SELECT count(*) FILTER (WHERE status = 'published')                                AS published,
+       count(*) FILTER (WHERE status = 'published' AND deadline_at > now())        AS open_now,
+       count(*) FILTER (WHERE status = 'published' AND verification <> 'auto')     AS human_verified
+  FROM opportunities WHERE deleted_at IS NULL;
+```
+
+§5 of that document puts a four-week hand-curated digest to 30–50 real builders *before* any of
+this is public, with explicit stop thresholds. That is the cheapest kill point in the plan and it
+is worth more than the code.
+
+### What is not needed for any of the above
+
+Telegram (`TELEGRAM_BOT_TOKEN`), email (`BREVO_API_KEY`), Turnstile, Sentry and the Workers AI
+binding are all absent, and every feature that uses one degrades rather than fails — §17 lists
+exactly how each behaves right now. None of them stands between the site and its first published
+opportunity.
+
+---

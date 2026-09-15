@@ -107,4 +107,8 @@ VALUES
    'Tier 6, §7 `[C]`. Same note as above.', true, 'africa_wide', 0.55, false),
   ('University of Namibia — opportunities', 'html_page', 'https://www.unam.edu.na/', 2880, NULL,
    'Tier 6, §7 `[C]`. Same note as above.', true, 'africa_wide', 0.55, false)
-ON CONFLICT DO NOTHING;
+-- `(url)`, not a bare `ON CONFLICT DO NOTHING`. Without a target this clause needs some
+-- constraint to conflict on, and `sources` had none until migration 0025 — so eighteen deploys
+-- re-seeded this file into 432 rows and the clause suppressed nothing. A conflict target is
+-- what makes "idempotent" a fact rather than a comment.
+ON CONFLICT (url) DO NOTHING;
