@@ -759,6 +759,64 @@ async function writeCandidate({ source, doc, candidate, confidence, rules, rejec
    */
   const publishNow = publish && vetted;
 
+  /**
+   * One opportunity per URL, however many times we fetch it.
+   *
+   * §1 calls every stage "independently re-runnable and idempotent", and §4.1 implements
+   * that by skipping any canonical URL whose CONTENT HASH we already hold. That works
+   * for a document that sits still. It does not work for a page that moves: a Devpost
+   * hackathon shows a countdown and a live registration count, so its text differs on
+   * every fetch, the hash never matches, and the run of 2026-09-15 18:38 wrote a second
+   * copy of all eight — `revenuecat-shipaton-2026-2`, `ai-builders-hackathon-2`, each
+   * arriving with "2 duplicate candidate(s)" already attached. Three-hourly, that is
+   * about seventy duplicates a day, and the dedupe queue notices them without
+   * preventing them.
+   *
+   * The URL is the identity. A second fetch of the same URL is the same opportunity with
+   * fresher facts, so it updates in place: the deadline may have moved, the page may
+   * have closed, and none of that warrants a new row or a new slug.
+   *
+   * A record a person has already touched is not overwritten wholesale — only the facts
+   * that go stale — because an editor's corrections outrank a re-extraction.
+   */
+  const { rows: already } = await client.query(
+    `SELECT id, slug, status::text AS status
+       FROM opportunities
+      WHERE source_url = $1 AND deleted_at IS NULL AND duplicate_of IS NULL
+      ORDER BY created_at LIMIT 1`,
+    [candidate.source_url ?? doc.canonicalUrl],
+  );
+
+  if (already[0]) {
+    const existing = already[0];
+    await client.query(
+      `UPDATE opportunities
+          SET deadline_at = coalesce($2, deadline_at),
+              deadline_precision = coalesce($3::deadline_precision, deadline_precision),
+              deadline_raw = coalesce($4, deadline_raw),
+              starts_at = coalesce($5, starts_at),
+              ends_at = coalesce($6, ends_at),
+              last_verified_at = now(),
+              link_ok = true,
+              link_checked_at = now(),
+              updated_at = now()
+        WHERE id = $1`,
+      [
+        existing.id,
+        candidate.deadline_at ?? null,
+        candidate.deadline_precision ?? null,
+        candidate.deadline_raw ?? null,
+        candidate.starts_at ?? null,
+        candidate.ends_at ?? null,
+      ],
+    );
+    return {
+      outcome: "refreshed",
+      slug: existing.slug,
+      status: existing.status,
+    };
+  }
+
   const slug = await uniqueSlug(String(candidate.title ?? ""));
 
   const { rows } = await client.query(
@@ -992,6 +1050,7 @@ try {
 
   let stored = 0;
   let unchanged = 0;
+  let refreshed = 0;
   let failed = 0;
 
   for (const batch of work) {
@@ -1008,6 +1067,10 @@ try {
         );
       } else if (result.outcome === "unchanged") {
         unchanged += 1;
+      } else if (result.outcome === "refreshed") {
+        // Same URL, seen again. Not new and not a failure — the dates were re-read on a
+        // record we already hold.
+        refreshed += 1;
       } else if (result.outcome === "dry_run") {
         console.log(`\n  ${item.url}`);
         console.log(`    provider: ${result.provider ?? "none (NO_AI or JSON-LD only)"}`);
@@ -1032,7 +1095,9 @@ try {
   }
 
   console.log("");
-  console.log(`Ingestion: ${stored} stored, ${unchanged} unchanged, ${failed} not usable.`);
+  console.log(
+    `Ingestion: ${stored} stored, ${refreshed} refreshed, ${unchanged} unchanged, ${failed} not usable.`,
+  );
   const renders = renderStats();
   if (!renders.enabled) {
     console.log("Browser rendering was off (INGEST_BROWSER=0): anything behind a wall was skipped.");
