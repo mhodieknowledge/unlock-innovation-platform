@@ -274,6 +274,50 @@ describe("degraded mode (§6.2)", () => {
   });
 });
 
+/**
+ * IMPLEMENTATION_PLAN.md §6's acceptance criterion: "Search returns in under 300ms at p95 on the
+ * seeded corpus."
+ *
+ * Measured against a real Postgres with the real indexes, which is what makes it worth measuring at
+ * all: the failure mode this number exists to catch is a missing index or a sequential scan, and
+ * both show up as a step change here rather than as a slightly worse average.
+ *
+ * WHAT IT IS NOT: a production number. This runs against a local Postgres on a machine with no
+ * network in the path and a corpus of a dozen rows, so the absolute value flatters the free tier it
+ * will actually run on. RUNBOOK §16 says so. What it does prove is that the query plan is sane and
+ * the p95 is not two orders of magnitude out.
+ */
+describe("search latency (§6's acceptance criterion)", () => {
+  it("stays under 300ms at p95 over 40 queries", async () => {
+    const queries = ["climate", "scholarship", "data", "african", "grant", "hackathon", null];
+    const timings: number[] = [];
+
+    // Warm first: the first call in a process pays for the plan cache and the connection's first
+    // parse, and a p95 over 40 samples should not be a measurement of that.
+    await search("climate");
+
+    for (let i = 0; i < 40; i += 1) {
+      const query = queries[i % queries.length]!;
+      const started = performance.now();
+      await search(query);
+      timings.push(performance.now() - started);
+    }
+
+    timings.sort((a, b) => a - b);
+    const p95 = timings[Math.min(timings.length - 1, Math.floor(timings.length * 0.95))]!;
+    const median = timings[Math.floor(timings.length / 2)]!;
+
+    expect(
+      p95,
+      `p95 ${p95.toFixed(1)}ms, median ${median.toFixed(1)}ms over ${timings.length} queries`,
+    ).toBeLessThan(300);
+
+    // And the measurement is real: a run where every query returned in under a millisecond would
+    // mean the function never ran.
+    expect(timings.reduce((a, b) => a + b, 0), "the whole run took no measurable time").toBeGreaterThan(1);
+  });
+});
+
 describe("cold start (§8)", () => {
   it("closing_soon_for_country never returns an empty surface for a known country", async () => {
     // §8 `[PR]`: "Never show an empty recommendation surface — show the country's
