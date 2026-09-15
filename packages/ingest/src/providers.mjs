@@ -293,8 +293,20 @@ export async function callProvider(row, args) {
     const aborted = err instanceof Error && err.name === "AbortError";
     return {
       ok: false,
+      // §3.2 treats a timeout the same as a 429 — "both mean back off" — and a
+      // fifteen-minute breaker is too blunt an instrument for it. On 2026-09-15 18:38
+      // Gemini timed out on the FIRST document of the run. Every line after it reads
+      // "gemini: skipped, breaker open", the whole registry fell through to a Groq
+      // capped at 8,000 tokens a minute, and six sources that had fetched perfectly well
+      // — Mastercard, Injini, Africa's Business Heroes, Tony Elumelu, Zindi, MEST — were
+      // never given a model at all. One slow request cost the run its primary provider
+      // and half its sources.
+      //
+      // So a timeout is transient like a 503: asked again, twice, and only if it is
+      // still timing out does the chain step around it, with the breaker left closed.
+      // A provider that was slow once is not a provider that is down.
+      transient: aborted,
       call: call({
-        // §3.2 treats a timeout the same as a 429: both mean back off.
         outcome: aborted ? "rate_limited" : "error",
         detail: aborted ? "timed out" : String(err instanceof Error ? err.message : err).slice(0, 300),
       }),
@@ -339,6 +351,21 @@ function usageFrom(payload) {
     in: num(u["prompt_tokens"] ?? u["promptTokenCount"]),
     out: num(u["completion_tokens"] ?? u["candidatesTokenCount"]),
   };
+}
+
+/**
+ * A short, safe description of a reply that was not what we asked for. Keys rather than
+ * values: this is model output about a fetched page, and a log line is not the place to
+ * reproduce it at length.
+ *
+ * @param {unknown} data
+ */
+function describeShape(data) {
+  if (data === null || data === undefined) return "null";
+  if (Array.isArray(data)) return `an array of ${data.length}`;
+  if (typeof data !== "object") return `a ${typeof data}`;
+  const keys = Object.keys(/** @type {Record<string, unknown>} */ (data));
+  return keys.length === 0 ? "an empty object" : `keys: ${keys.slice(0, 8).join(", ")}`;
 }
 
 /** Never come back sooner than this, however eager the provider says we may be. */
@@ -468,8 +495,15 @@ export async function runTask(args) {
       if (args.accept && !args.accept(attempt.data)) {
         // A reply that parsed but is not the right shape. Counted as schema-invalid
         // so the metric in §12 ("schema-valid rate") reflects reality.
-        calls[calls.length - 1] = { ...attempt.call, outcome: "schema_invalid", detail: "failed the shape check" };
-        details.push(`${row.provider}: reply failed the shape check`);
+        // Carry a slice of what actually came back. "failed the shape check" names the
+        // test and withholds the evidence — the same opacity that cost three runs of
+        // guessing at `extraction_failed`. A refusal, a reasoning preamble and a renamed
+        // field all read identically without it, and this appeared eight times in one run.
+        const got = describeShape(attempt.data);
+        calls[calls.length - 1] = {
+          ...attempt.call, outcome: "schema_invalid", detail: `failed the shape check: ${got}`,
+        };
+        details.push(`${row.provider}: reply failed the shape check — ${got}`);
         continue;
       }
       return { ok: true, data: attempt.data, provider: row.provider, model: row.model, calls };

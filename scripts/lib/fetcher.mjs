@@ -174,25 +174,56 @@ export async function robotsFor(origin) {
   const cached = robotsCache.get(origin);
   if (cached) return cached.robots;
 
-  const attempt = await rawFetch(`${origin}/robots.txt`, { timeoutMs: 10_000 });
   let robots = null;
 
-  if (attempt.ok && attempt.response) {
-    if (attempt.response.status === 404 || attempt.response.status === 410) {
+  // ASK MORE THAN ONCE BEFORE CONCLUDING WE CANNOT ASK.
+  //
+  // Failing closed on an unreadable robots.txt is right and stays. What was wrong is
+  // how little it took to be "unreadable": one request, one 10-second timeout, and the
+  // null cached for the rest of the run. A single blip retired the host.
+  //
+  // It was not hypothetical. On 2026-09-15 18:38 the run reported Scholarship Region and
+  // Opportunities For Youth as "could not read robots.txt, so not fetching" — and
+  // fetched by hand minutes later, opportunitiesforyouth.org/robots.txt answered 200
+  // with 321 bytes and hackerearth.com/robots.txt answered 200 in 1.3 seconds with
+  // `Allow: /`. Nobody had refused us anything. RUNBOOK.md §18 warned about exactly this
+  // — "a timeout looks exactly like a disallow ... re-run the check before concluding
+  // anything" — and told a person to re-run it by hand, which is a thing the code can do
+  // for itself.
+  //
+  // Three attempts, backing off, and only then a refusal. A host that is genuinely down
+  // still costs three cheap requests and still fails closed.
+  for (let attempt = 0; attempt < ROBOTS_ATTEMPTS; attempt += 1) {
+    if (attempt > 0) await sleep(500 * 2 ** (attempt - 1));
+
+    const result = await rawFetch(`${origin}/robots.txt`, { timeoutMs: 10_000 });
+    if (!result.ok || !result.response) continue; // transport failure: worth asking again
+
+    const { response } = result;
+
+    if (response.status === 404 || response.status === 410) {
       // No robots.txt at all is a positive answer: the site has not restricted
       // anything. That is different from not being able to ask.
       robots = parseRobots("", AGENT_TOKEN);
-    } else if (attempt.response.ok) {
-      const text = await attempt.response.text().catch(() => "");
-      robots = parseRobots(text, AGENT_TOKEN);
+      break;
     }
-    // 401, 403, 5xx: we could not learn the rules, so `robots` stays null and the
-    // caller refuses. Fails closed.
+    if (response.ok) {
+      const text = await response.text().catch(() => "");
+      robots = parseRobots(text, AGENT_TOKEN);
+      break;
+    }
+    // 401 and 403 are an answer, and the answer is no. Asking again will not change it,
+    // so stop here and fail closed rather than spending the remaining attempts.
+    if (response.status === 401 || response.status === 403) break;
+    // 5xx and the rest: the server is having a moment. Ask again.
   }
 
   robotsCache.set(origin, { robots, fetchedAt: Date.now() });
   return robots;
 }
+
+/** How many times we ask for robots.txt before treating it as unreadable. */
+const ROBOTS_ATTEMPTS = 3;
 
 /**
  * @typedef {object} FetchResult
