@@ -39,15 +39,42 @@ const fail = (label, detail) => {
 };
 const note = (label, detail) => console.log(`  · ${label}  ${detail}`);
 
+/**
+ * A fetch that never throws.
+ *
+ * An unreachable deployment is a result, not a crash: DNS that has not propagated, a Worker that
+ * was never published, a domain pointed somewhere else. Each of those should read as a failed
+ * check with a reason, because a stack trace tells the operator nothing they can act on.
+ */
 async function get(path, options = {}) {
-  const response = await fetch(`${base}${path}`, {
-    redirect: "manual",
-    headers: { "accept-encoding": "gzip", ...(options.headers ?? {}) },
-  });
-  return response;
+  try {
+    return await fetch(`${base}${path}`, {
+      redirect: "manual",
+      headers: { "accept-encoding": "gzip", ...(options.headers ?? {}) },
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch (error) {
+    return {
+      status: 0,
+      unreachable: String(error?.cause?.code ?? error?.name ?? error?.message ?? error),
+      headers: new Headers(),
+      text: async () => "",
+    };
+  }
 }
 
 console.log(`\nVerifying ${base}\n`);
+
+{
+  // One reachability probe first, so an unpublished Worker produces one clear sentence rather
+  // than forty identical failures.
+  const probe = await get("/api/health");
+  if (probe.status === 0) {
+    console.log(`  ✗ ${base} is not reachable  (${probe.unreachable})`);
+    console.log("\nNothing else can be checked until it responds.\n");
+    process.exit(1);
+  }
+}
 
 /* ── The page that has to work ─────────────────────────────────────────────── */
 
