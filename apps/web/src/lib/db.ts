@@ -103,6 +103,22 @@ const OPPORTUNITY_FIELDS = `
   categories ( code, name, slug )
 `;
 
+/**
+ * The same field list, with an embedded relation switched to an inner join.
+ *
+ * PostgREST only filters on an embedded resource when the embed is `!inner` — with the
+ * default left join, `categories.code=eq.x` is accepted and silently matches everything.
+ * That is exactly how the category and organisation filters came to render a chip and
+ * change nothing, so the join hint is applied by the same code that adds the filter.
+ */
+function fieldsWithInner(relations: ("organisations" | "categories")[]): string {
+  let fields = OPPORTUNITY_FIELDS;
+  for (const relation of relations) {
+    fields = fields.replace(`${relation} (`, `${relation}!inner (`);
+  }
+  return fields;
+}
+
 export interface OpportunityDetail {
   opportunity: OpportunityRow;
   rules: EligibilityRuleRow[];
@@ -179,6 +195,13 @@ export async function listOpportunities(
     .from("opportunities")
     .select(OPPORTUNITY_FIELDS)
     .eq("status", "published")
+    // The same three exclusions `search_candidates` applies (migration 0014): a deleted
+    // record, a record merged into another, and a record whose deadline has passed are not
+    // results. The expiry sweep flips `status` within the hour, but the board is the page
+    // that would show the gap, so it filters on the date as well as the status.
+    .is("deleted_at", null)
+    .is("duplicate_of", null)
+    .or(`deadline_at.is.null,deadline_at.gt.${new Date().toISOString()}`)
     .order("deadline_at", { ascending: true, nullsFirst: false })
     .limit(Math.min(options.limit ?? 20, 50));
 
@@ -217,7 +240,9 @@ export async function searchOpportunities(
   filters: {
     q?: string | null;
     country?: string | null;
+    region?: string | null;
     category?: string | null;
+    deadlineState?: string | null;
     mode?: string | null;
     team?: "individual" | "team" | null;
     cost?: "free" | "paid" | null;
@@ -232,23 +257,78 @@ export async function searchOpportunities(
   const client = getClient(env);
   if (!client) return { ok: false, reason: "unavailable" };
 
+  const inner: ("organisations" | "categories")[] = [];
+  if (filters.category) inner.push("categories");
+  if (filters.organisation) inner.push("organisations");
+
   let query = client
     .from("opportunities")
-    .select(OPPORTUNITY_FIELDS, { count: "estimated" })
+    .select(fieldsWithInner(inner), { count: "estimated" })
     .eq("status", "published")
-    .is("deleted_at", null);
+    .is("deleted_at", null)
+    // A merged record is not a result — it is a redirect target. `search_candidates`
+    // (migration 0014) excludes it and so does this fallback, or degraded search would
+    // start showing duplicates of the same opportunity.
+    .is("duplicate_of", null);
 
   if (filters.country) {
     query = query.or(
       `eligible_countries.cs.{${filters.country}},eligibility_scope.in.(africa_wide,global)`,
     );
   }
+  if (filters.region) {
+    // A continent-wide or global opportunity is open to every region in it, so a region
+    // filter that matched only `region_codes` would hide most of what qualifies.
+    query = query.or(
+      `region_codes.cs.{${filters.region}},eligibility_scope.in.(africa_wide,global)`,
+    );
+  }
+  if (filters.category) query = query.eq("categories.code", filters.category);
+  if (filters.organisation) query = query.eq("organisations.slug", filters.organisation);
   if (filters.mode) query = query.eq("participation_mode", filters.mode);
   if (filters.cost) query = query.eq("cost", filters.cost);
   if (filters.verification) query = query.eq("verification", filters.verification);
   if (filters.hasPrize) query = query.not("prize_amount", "is", null);
   if (filters.team === "team") query = query.eq("team_required", true);
   if (filters.team === "individual") query = query.eq("team_required", false);
+
+  /**
+   * Deadline windows, measured from now. PRODUCT_SPEC.md §13.2's states are relative by
+   * nature — "closing this week" means the next seven days, not the calendar week — and a
+   * window measured in days needs no assumption about the reader's timezone.
+   */
+  if (filters.deadlineState) {
+    const days: Record<string, number> = {
+      closing_today: 1,
+      closing_2_days: 2,
+      closing_this_week: 7,
+      closing_this_month: 30,
+    };
+    const window = days[filters.deadlineState];
+    if (window !== undefined) {
+      query = query
+        .not("deadline_at", "is", null)
+        .gt("deadline_at", new Date().toISOString())
+        .lte("deadline_at", new Date(Date.now() + window * 86_400_000).toISOString());
+    } else if (filters.deadlineState === "rolling") {
+      query = query.eq("is_rolling", true);
+    } else if (filters.deadlineState === "opens_soon") {
+      query = query.gt("opens_at", new Date().toISOString());
+    } else if (filters.deadlineState === "open") {
+      query = query.or(`deadline_at.is.null,deadline_at.gt.${new Date().toISOString()}`);
+    }
+  }
+
+  /*
+   * NOT applied here, and deliberately: `tag`, `student` and `eligibleForMe`.
+   *
+   * `eligibleForMe` cannot be — a per-viewer verdict in this query would make the response
+   * uncacheable and put the viewer's profile in a cache key (see the note above). `tag` and
+   * `student` need a lookup (tag slug to uuid) and a rules join respectively; nothing in the
+   * product links to either, and an approximation would be worse than their absence. They
+   * are named here so the next person does not have to read the whole function to find out
+   * what it does not do.
+   */
 
   // Full-text search over the weighted tsvector maintained by a trigger
   // (SYSTEM_ARCHITECTURE.md §6.1). Hybrid retrieval with embeddings lands in
@@ -427,6 +507,105 @@ export async function getPublishedCount(env: Env = {}): Promise<number | null> {
     .select("id", { count: "exact", head: true })
     .eq("status", "published");
   return error ? null : (count ?? null);
+}
+
+export interface CountryRef {
+  iso2: string;
+  name: string;
+  slug: string;
+}
+
+/**
+ * One country, for the "Open to [country]" strip. UX_FLOWS.md §2 item 4.
+ *
+ * A single row rather than the whole vocabulary: the homepage needs one name, and
+ * `getQueryVocabulary` fetches 54 countries with their alias arrays to build a matcher the
+ * board does not use.
+ */
+export async function getCountry(
+  iso2: string | null | undefined,
+  env: Env = {},
+): Promise<CountryRef | null> {
+  const code = (iso2 ?? "").trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) return null;
+
+  const client = getClient(env);
+  if (!client) return null;
+
+  const { data, error } = await client
+    .from("countries")
+    .select("iso2, name, slug")
+    .eq("iso2", code)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return data as unknown as CountryRef;
+}
+
+export interface EntryPoints {
+  countries: CountryRef[];
+  categories: { code: string; name: string; slug: string }[];
+}
+
+/**
+ * The country and category entry points. UX_FLOWS.md §2 item 5: "plain links".
+ *
+ * All 54, not a promoted subset. PRODUCT_SPEC.md §4.2 keeps `priority_tier` out of
+ * eligibility, and §28 makes every country a first-class page; a homepage that linked to
+ * six of them would be making a claim about the other 48 that this product does not make.
+ * Gzipped, the whole list is under a kilobyte.
+ *
+ * No counts beside the links, deliberately. CONTENT_AND_LAUNCH.md §1: a count shown must be
+ * true and computed live, and a per-country count means unnesting `eligible_countries`
+ * across the catalogue on every homepage request. The country pages carry their own counts
+ * where the query is already being run.
+ */
+export async function getEntryPoints(env: Env = {}): Promise<EntryPoints> {
+  const client = getClient(env);
+  if (!client) return { countries: [], categories: [] };
+
+  const [countries, categories] = await Promise.all([
+    client
+      .from("countries")
+      .select("iso2, name, slug")
+      .eq("is_african", true)
+      .order("name", { ascending: true }),
+    client
+      .from("categories")
+      .select("code, name, slug")
+      .is("parent_id", null)
+      .order("sort_order", { ascending: true }),
+  ]);
+
+  return {
+    countries: (countries.data ?? []) as unknown as CountryRef[],
+    categories: (categories.data ?? []) as unknown as EntryPoints["categories"],
+  };
+}
+
+/**
+ * When the catalogue was last checked against its sources.
+ *
+ * UX_FLOWS.md §2 item 6 asks the homepage footer for "counts that are true (published, last
+ * ingestion time)". The ingestion tables are admin-only under RLS and rightly so, so the
+ * public number is the freshest `last_verified_at` on a published record — which is the same
+ * fact stated from the reader's side: the last time anything here was confirmed to be real.
+ */
+export async function getLastVerifiedAt(env: Env = {}): Promise<string | null> {
+  const client = getClient(env);
+  if (!client) return null;
+
+  const { data, error } = await client
+    .from("opportunities")
+    .select("last_verified_at")
+    .eq("status", "published")
+    .not("last_verified_at", "is", null)
+    .order("last_verified_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return (data as { last_verified_at: string | null }).last_verified_at;
 }
 
 /**

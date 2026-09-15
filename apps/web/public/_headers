@@ -19,3 +19,24 @@
 # API_SPEC.md §1.4 — authenticated and evaluation endpoints are never cached.
 /api/*
   Cache-Control: private, no-store
+
+# SYSTEM_ARCHITECTURE.md §3.4. A service worker that outlives a deploy keeps serving the
+# previous shell, so neither the worker nor the file it imports may be cached: `no-cache`
+# still allows a 304, so the cost of revalidating is a few bytes. Browsers cap service-worker
+# script caching at 24 hours anyway; this makes it zero, which is what a deploy needs.
+/sw.js
+  Cache-Control: no-cache
+  Service-Worker-Allowed: /
+
+/sw-routes.js
+  Cache-Control: no-cache
+
+/sw-register.js
+  Cache-Control: no-cache
+
+# The manifest and the app icon change about once a year and are 1 KB together.
+/manifest.webmanifest
+  Cache-Control: public, max-age=3600
+
+/icon.svg
+  Cache-Control: public, max-age=604800

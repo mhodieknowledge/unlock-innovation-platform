@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 
 import { experimental_AstroContainer as AstroContainer } from "astro/container";
+import { LOW_DATA_LIST_BUDGET, ROUTE_BUDGETS } from "@mbele/config";
 import { RULE_TYPES } from "../src/lib/admin";
 import svelteRenderer from "@astrojs/svelte/server.js";
 import { beforeAll, describe, expect, it, vi } from "vitest";
@@ -26,62 +27,82 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const CLIENT_DIR = resolve(HERE, "..", "dist", "client");
 const KB = 1024;
 
-/** PRODUCT_SPEC.md §25.1, for the routes that render on demand. */
+/**
+ * PRODUCT_SPEC.md §25.1, for the routes that render on demand.
+ *
+ * The NUMBERS are not here. They come from packages/config/src/route-budgets.json, which is
+ * the single source every reader shares — budgets.ts for the app, scripts/byte-budget.mjs for
+ * the prerendered pages, and this table by route pattern. An earlier version of this file
+ * carried its own copy of the KB figures, which is the same drift that once made the
+ * prerendered gate fall back to the absolute ceiling and report a pass. A pattern with no
+ * entry in the JSON throws rather than defaulting to anything.
+ *
+ * The labels ARE here, and are deliberately more specific than the JSON's: several routes
+ * share one budget line ("Authenticated dashboard") and a failure message naming the page is
+ * worth more than one naming the budget row.
+ */
+function budgetFor(label: string, pattern: string): { label: string; total: number; js: number } {
+  const found = ROUTE_BUDGETS.find((b) => b.pattern === pattern);
+  if (!found) {
+    throw new Error(
+      `No budget for "${pattern}" in packages/config/src/route-budgets.json. Add the route there, not here.`,
+    );
+  }
+  return { label, total: found.totalBytes, js: found.jsBytes };
+}
+
 const BUDGETS = {
-  detail: { label: "Opportunity detail", total: 120 * KB, js: 30 * KB },
-  list: { label: "Opportunity list / search", total: 150 * KB, js: 40 * KB },
-  organisation: { label: "Organisation page", total: 120 * KB, js: 25 * KB },
-  tracker: { label: "Authenticated dashboard", total: 200 * KB, js: 70 * KB },
-  notifications: { label: "Notification settings", total: 200 * KB, js: 70 * KB },
-  account: { label: "Account settings", total: 200 * KB, js: 70 * KB },
+  // Phase 9. The board, measured with the eight rows §2 specifies and the whole country and
+  // category link list under it.
+  homepage: budgetFor("Homepage", "/"),
+  detail: budgetFor("Opportunity detail", "/opportunities/*"),
+  list: budgetFor("Opportunity list / search", "/opportunities"),
+  organisation: budgetFor("Organisation page", "/organisations/*"),
+  tracker: budgetFor("Authenticated dashboard", "/tracker"),
+  notifications: budgetFor("Notification settings", "/you/*"),
+  account: budgetFor("Account settings", "/you/*"),
   // Not an authenticated route: someone reaches it from an email, often on the
   // worst connection they have. §25.1's "any route" ceiling is 250 KB, but a page
   // with two buttons on it has no business anywhere near that, so it is held to
   // the tightest budget in the table.
-  unsubscribe: { label: "Unsubscribe", total: 100 * KB, js: 15 * KB },
-  dashboard: { label: "Your window", total: 200 * KB, js: 70 * KB },
+  unsubscribe: budgetFor("Unsubscribe", "/unsubscribe"),
+  dashboard: budgetFor("Your window", "/you/*"),
   // Phase 5's surfaces, each measured at the cap its own SQL enforces: 40 teams and 60
   // builders in a room, 100 requests, 50 threads, 200 messages. A room measured with three
   // teams in it would prove nothing about the room a successful launch produces.
-  room: { label: "Team room", total: 150 * KB, js: 40 * KB },
-  intent: { label: "Intent form", total: 100 * KB, js: 15 * KB },
-  teamNew: { label: "Team form", total: 100 * KB, js: 15 * KB },
-  requests: { label: "Requests", total: 150 * KB, js: 40 * KB },
-  compose: { label: "Request composer", total: 100 * KB, js: 15 * KB },
-  threads: { label: "Conversations", total: 120 * KB, js: 25 * KB },
-  thread: { label: "One conversation", total: 120 * KB, js: 25 * KB },
+  room: budgetFor("Team room", "/opportunities/*/room"),
+  intent: budgetFor("Intent form", "/opportunities/*/intent"),
+  teamNew: budgetFor("Team form", "/opportunities/*/teams/new"),
+  requests: budgetFor("Requests", "/requests"),
+  compose: budgetFor("Request composer", "/requests/new"),
+  threads: budgetFor("Conversations", "/threads"),
+  thread: budgetFor("One conversation", "/threads/*"),
   // Phase 6. The detail page is measured with ten matches and the edit page with the whole
   // tag vocabulary and every country in the select, which is the largest form in the
   // product.
-  projectBrowse: { label: "Project browse", total: 150 * KB, js: 40 * KB },
-  projectNew: { label: "New project", total: 100 * KB, js: 15 * KB },
-  projectDetail: { label: "Project detail", total: 150 * KB, js: 40 * KB },
-  projectEdit: { label: "Project edit", total: 150 * KB, js: 40 * KB },
-  myProjects: { label: "Your projects", total: 200 * KB, js: 70 * KB },
+  projectBrowse: budgetFor("Project browse", "/projects"),
+  projectNew: budgetFor("New project", "/projects/new"),
+  projectDetail: budgetFor("Project detail", "/projects/*"),
+  projectEdit: budgetFor("Project edit", "/projects/*/edit"),
+  myProjects: budgetFor("Your projects", "/you/*"),
   // Phase 7. The manage page is measured with 200 listings, which is the cap
   // org_opportunities enforces, and the whole category vocabulary in its form.
-  orgClaim: { label: "Organisation claim", total: 100 * KB, js: 15 * KB },
-  orgManage: { label: "Organisation manage", total: 150 * KB, js: 40 * KB },
-  submitPublic: { label: "Public submission", total: 100 * KB, js: 15 * KB },
+  orgClaim: budgetFor("Organisation claim", "/organisations/*/claim"),
+  orgManage: budgetFor("Organisation manage", "/organisations/*/manage"),
+  submitPublic: budgetFor("Public submission", "/submit"),
   // Phase 8. ADMIN_SYSTEM.md §12: "Byte budget applies: <= 200 KB per admin route. The
   // operator is often on the same expensive connection as the users." Measured with a full
   // queue and a review card carrying ten rules and their quotes.
-  adminDashboard: { label: "Admin dashboard", total: 200 * KB, js: 70 * KB },
-  adminQueue: { label: "Admin queue", total: 200 * KB, js: 70 * KB },
-  adminReports: { label: "Admin reports", total: 200 * KB, js: 70 * KB },
-  adminUsers: { label: "Admin people", total: 200 * KB, js: 70 * KB },
-  adminSources: { label: "Admin sources", total: 200 * KB, js: 70 * KB },
-  adminAudit: { label: "Admin audit", total: 200 * KB, js: 70 * KB },
+  adminDashboard: budgetFor("Admin dashboard", "/admin"),
+  adminQueue: budgetFor("Admin queue", "/admin/*/*"),
+  adminReports: budgetFor("Admin reports", "/admin/*"),
+  adminUsers: budgetFor("Admin people", "/admin/*"),
+  adminSources: budgetFor("Admin sources", "/admin/*"),
+  adminAudit: budgetFor("Admin audit", "/admin/*"),
 } as const;
 
 const LONG_QUOTE =
   "Applications are open to individuals who are resident in any African country at the time of submission, who are currently enrolled in or have recently completed a programme of study at a recognised institution, and who have not previously received funding under this scheme.";
-
-const RULE_TYPES = [
-  "country_in", "country_not_in", "nationality_in", "residency_required",
-  "age_between", "student_status_in", "year_of_study_in", "institution_type_in",
-  "experience_between", "language_required",
-] as const;
 
 const SUBJECTS = [
   "AgriTech", "Climate Resilience", "Health Data", "Fintech Inclusion",
@@ -715,7 +736,15 @@ function tableStub(table: string) {
     maybeSingle: async () => single,
     single: async () => single,
   };
-  for (const method of ["select", "eq", "is", "in", "order", "limit", "update", "upsert", "delete", "insert"]) {
+  // Every builder method any page reaches for. A MISSING one is not a harmless gap: the page
+  // throws, catches its own failure, renders an error state, and measures small — a budget
+  // passed on a page that never rendered. The projects browse page did exactly that until
+  // `neq` was added here, which is why the guard below also asserts a known string per route.
+  for (const method of [
+    "select", "eq", "neq", "is", "in", "not", "or", "gt", "gte", "lt", "lte",
+    "like", "ilike", "contains", "overlaps", "textSearch", "range",
+    "order", "limit", "update", "upsert", "delete", "insert",
+  ]) {
     chain[method] = () => chain;
   }
   return chain;
@@ -753,6 +782,7 @@ const ACTION_ROWS = Array.from({ length: 5 }, (_, i) => ({
 
 vi.mock("../src/lib/auth", () => ({
   getSessionUser: vi.fn(async () => SESSION_USER),
+  getResidenceCountry: vi.fn(async () => "ZW"),
   createAuthClient: vi.fn(() => ({
     from: (table: string) => tableStub(table),
     rpc: async (fn: string) =>
@@ -805,8 +835,47 @@ vi.mock("../src/lib/search", () => ({
   rank: vi.fn((rows: unknown[]) => rows),
 }));
 
+/**
+ * The homepage's country and category links, at full size: §28 makes every African country a
+ * first-class page, so the board carries all 54 and the byte budget has to cover them. Names
+ * are the real ones — "Democratic Republic of the Congo" is 32 characters and there is no
+ * point measuring a list of two-letter codes.
+ */
+const AFRICAN_COUNTRIES = [
+  "Algeria", "Angola", "Benin", "Botswana", "Burkina Faso", "Burundi", "Cabo Verde",
+  "Cameroon", "Central African Republic", "Chad", "Comoros", "Congo",
+  "Democratic Republic of the Congo", "Djibouti", "Egypt", "Equatorial Guinea", "Eritrea",
+  "Eswatini", "Ethiopia", "Gabon", "Gambia", "Ghana", "Guinea", "Guinea-Bissau",
+  "Côte d'Ivoire", "Kenya", "Lesotho", "Liberia", "Libya", "Madagascar", "Malawi", "Mali",
+  "Mauritania", "Mauritius", "Morocco", "Mozambique", "Namibia", "Niger", "Nigeria",
+  "Rwanda", "São Tomé and Príncipe", "Senegal", "Seychelles", "Sierra Leone", "Somalia",
+  "South Africa", "South Sudan", "Sudan", "Tanzania", "Togo", "Tunisia", "Uganda",
+  "Zambia", "Zimbabwe",
+];
+
+const ENTRY_POINTS = {
+  countries: AFRICAN_COUNTRIES.map((name, i) => ({
+    iso2: `C${String(i).padStart(1, "0")}`.slice(0, 2),
+    name,
+    slug: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+  })),
+  categories: [
+    "Hackathon", "Innovation challenge", "Grant", "Fellowship", "Scholarship", "Accelerator",
+    "Incubator", "Competition", "Residency", "Research call", "Award", "Bootcamp",
+  ].map((name) => ({
+    code: name.toLowerCase().replace(/ /g, "_"),
+    name,
+    slug: name.toLowerCase().replace(/ /g, "-"),
+  })),
+};
+
 vi.mock("../src/lib/db", () => ({
   getOpportunity: vi.fn(async () => ({ ok: true, data: DETAIL })),
+  getCountry: vi.fn(async (iso2: string | null) =>
+    iso2 ? { iso2, name: "Zimbabwe", slug: "zimbabwe" } : null,
+  ),
+  getEntryPoints: vi.fn(async () => ENTRY_POINTS),
+  getLastVerifiedAt: vi.fn(async () => "2026-09-14T06:00:00Z"),
   searchOpportunities: vi.fn(async () => ({
     ok: true,
     data: { rows: PAGE_OF_ROWS, total: 137 },
@@ -911,8 +980,11 @@ const measured: Record<string, Measured> = {};
 let pageScriptBytes = 0;
 let pageScriptModules = 0;
 
+/** §10's low-data measurement is of a route that already has a budget, so it is keyed apart. */
+type MeasureKey = keyof typeof BUDGETS | "lowDataList";
+
 async function render(
-  key: keyof typeof BUDGETS,
+  key: MeasureKey,
   importer: () => Promise<{ default: unknown }>,
   params: Record<string, string>,
   url: string,
@@ -927,6 +999,8 @@ async function render(
    * container does not produce.
    */
   shipsScript = false,
+  /** Request headers, for the low-data variant. DESIGN_SYSTEM.md §10 is read server-side. */
+  headers: Record<string, string> = {},
 ) {
   const container = await AstroContainer.create();
   container.addServerRenderer({ name: "@astrojs/svelte", renderer: svelteRenderer });
@@ -939,7 +1013,7 @@ async function render(
   const response = await container.renderToResponse(Page as never, {
     params,
     locals: { runtime: { env: {} } },
-    request: new Request(url),
+    request: new Request(url, { headers }),
   });
 
   const html = await response.text();
@@ -989,6 +1063,21 @@ beforeAll(async () => {
     {},
     // With a query, so the compiled-chip row is measured too.
     "https://example.invalid/opportunities?q=remote+ai+hackathons+in+zimbabwe+closing+soon",
+  );
+  await render("homepage", () => import("../src/pages/index.astro"), {}, "https://example.invalid/");
+  /**
+   * The same list page in low-data mode. DESIGN_SYSTEM.md §10 sets a target of 40 KB for it,
+   * which is a different number from the route budget and belongs to a different promise: the
+   * route budget is what the page may cost anybody, and this is what it costs the reader who
+   * told us they are paying by the megabyte.
+   */
+  await render(
+    "lowDataList",
+    () => import("../src/pages/opportunities/index.astro"),
+    {},
+    "https://example.invalid/opportunities",
+    false,
+    { cookie: "ld=1" },
   );
   await render(
     "tracker",
@@ -1156,11 +1245,14 @@ beforeAll(async () => {
   );
 
   const pct = (n: number, of: number) => `${Math.round((n / of) * 100)}%`;
-  const lines = Object.entries(BUDGETS).map(([key, budget]) => {
+  const lines = Object.entries({
+    ...BUDGETS,
+    lowDataList: { label: "Low-data list (§10)", total: LOW_DATA_LIST_BUDGET, js: 0 },
+  }).map(([key, budget]) => {
     const m = measured[key]!;
     return (
       `  ${budget.label.padEnd(28)} total ${fmt(m.total).padStart(9)} / ${fmt(budget.total)} (${pct(m.total, budget.total)})` +
-      `   js ${fmt(m.js).padStart(8)} / ${fmt(budget.js)} (${pct(m.js, budget.js)})` +
+      `   js ${fmt(m.js).padStart(8)} / ${fmt(budget.js)}${budget.js > 0 ? ` (${pct(m.js, budget.js)})` : ""}` +
       `   html ${fmt(m.htmlBytes)}${m.hydrates ? "" : "   (no island)"}`
     );
   });
@@ -1221,6 +1313,33 @@ describe("byte budgets — on-demand routes (invariant 5)", () => {
       expect(external.map((m) => m[1])).toEqual([]);
     });
   }
+
+  it("keeps the low-data list page under DESIGN_SYSTEM.md §10's 40 KB", () => {
+    const m = measured.lowDataList!;
+    expect(
+      m.total,
+      `low-data list ${fmt(m.total)} of ${fmt(LOW_DATA_LIST_BUDGET)} (html ${fmt(m.htmlBytes)}, css ${fmt(m.css)}, js ${fmt(m.js)})`,
+    ).toBeLessThanOrEqual(LOW_DATA_LIST_BUDGET);
+
+    // And it must be the same page, lighter — not an error page, and not a page that lost its
+    // rows. A 2 KB measurement of an empty list would pass this budget and mean nothing.
+    expect(m.html).toContain("Open opportunities");
+    expect(m.html).toContain("worst-case-1");
+    expect(m.html).toContain("Low-data mode is on");
+    expect(m.htmlBytes).toBeLessThan(measured.list!.htmlBytes);
+  });
+
+  it("renders the real closing board on the homepage, not the placeholder", () => {
+    // The homepage was a Phase 0 placeholder for eight phases. A budget measured against that
+    // page would have been meaningless, and so would one measured against an empty board.
+    const html = measured.homepage!.html;
+    expect(html).toContain("Closing soonest");
+    expect(html).toContain("worst-case-1");
+    expect(html).toContain("Board as of");
+    // All 54 countries and every category are links on it, which is most of its weight.
+    expect(html).toContain("Democratic Republic of the Congo");
+    expect(html).not.toContain("The catalogue is being built");
+  });
 
   it("mounts the eligibility island on the detail page", () => {
     // If the island stops rendering, the JS budget passes trivially while the

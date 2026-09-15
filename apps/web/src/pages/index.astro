@@ -1,65 +1,298 @@
 ---
-// Phase 0 homepage.
+// The board. UX_FLOWS.md §2.
 //
-// UX_FLOWS.md §2 specifies this page as "the board" — 8 opportunity rows,
-// soonest deadline first, server-rendered above the fold. That needs the
-// `opportunities` table, which lands in Phase 1. Until then this page says
-// plainly what the product is and that the catalogue is still being built.
+// "The most characteristic thing in this product's world is a live list of things about to
+// close. Showing it IS the hero." So there is no hero: one line of what this is, a search
+// field, and then eight rows, soonest deadline first, server-rendered above the fold.
 //
-// It deliberately shows NO counts. CONTENT_AND_LAUNCH.md §1: every number shown
-// is true and computed live. With nothing published yet, the honest number is
-// no number — not "0 opportunities", and certainly not a placeholder.
-//
-// Deliberately absent, per §2: hero image, illustration, gradient, animated
-// statistic, testimonials, fabricated community numbers.
+// Deliberately absent, per §2: hero image, illustration, gradient, animated statistic,
+// testimonials, fabricated community numbers, and any count this product cannot verify.
+// CONTENT_AND_LAUNCH.md §1: every number shown is true and computed live — which is why the
+// counts at the foot of this page come from two queries and disappear when they come back
+// empty, rather than being padded to look like a launch.
 
 import Base from "../layouts/Base.astro";
+import OpportunityRow from "../components/OpportunityRow.astro";
+import { getEntryPoints, getCountry, getLastVerifiedAt, getPublishedCount, listOpportunities } from "../lib/db";
+import { getResidenceCountry, getSessionUser } from "../lib/auth";
+import { freshnessLabel } from "../lib/deadline";
+import { resolveLowData } from "../lib/lowdata";
 import { BRAND } from "@mbele/config";
+
+export const prerender = false;
+
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+
+/** §2 item 3: 8 rows. Not 10, not 20 — enough to prove the board is alive, above the fold. */
+const BOARD_SIZE = 8;
+
+const user = await getSessionUser(Astro.cookies, env);
+
+const lowData = resolveLowData({
+  cookies: Astro.cookies,
+  request: Astro.request,
+  accountPreference: user?.low_data_mode ?? null,
+}).on;
+
+/**
+ * Which country the board is for, in priority order: the URL, then the signed-in profile,
+ * then the edge's coarse country hint.
+ *
+ * `?country=all` is the "not your country?" escape hatch and means *show everything* — a
+ * distinct value is needed because an empty parameter would simply fall through to the
+ * profile and the hint again, and the control would look broken.
+ *
+ * ANALYTICS.md §3 allows a country "from profile or coarse edge geolocation"; the hint is
+ * read from the request header, used for this render, and stored nowhere. The same section
+ * forbids capturing IP addresses at all, and this code never sees one.
+ */
+const requested = (Astro.url.searchParams.get("country") ?? "").trim().toUpperCase();
+const showAll = requested === "ALL";
+const hint = (Astro.request.headers.get("cf-ipcountry") ?? "").trim().toUpperCase();
+
+const resolved = showAll
+  ? { iso2: null as string | null, source: "explicit" as const }
+  : /^[A-Z]{2}$/.test(requested)
+    ? { iso2: requested, source: "url" as const }
+    : await (async () => {
+        const profile = user ? await getResidenceCountry(Astro.cookies, env) : null;
+        if (profile) return { iso2: profile, source: "profile" as const };
+        // XX and T1 are Cloudflare's "unknown" and "Tor" answers, not countries.
+        if (/^[A-Z]{2}$/.test(hint) && hint !== "XX" && hint !== "T1") {
+          return { iso2: hint, source: "hint" as const };
+        }
+        return { iso2: null as string | null, source: "none" as const };
+      })();
+
+const country = resolved.iso2 ? await getCountry(resolved.iso2, env) : null;
+
+// An unknown code is not a country. Falling back to the whole board is better than an
+// "Open to ZZ" strip, and better than an error for something the reader did not do wrong.
+const countryIso2 = country?.iso2 ?? undefined;
+
+const [board, entryPoints, published, lastVerifiedAt] = await Promise.all([
+  listOpportunities({ limit: BOARD_SIZE, countryIso2 }, env),
+  getEntryPoints(env),
+  getPublishedCount(env),
+  getLastVerifiedAt(env),
+]);
+
+const rows = board.ok ? board.data : [];
+const degraded = !board.ok;
+
+/**
+ * Who may cache this, and for how long.
+ *
+ * The board is identical for everyone EXCEPT when it was shaped by something only this
+ * request carries — a session or the edge country hint. Both produce a page at the URL `/`
+ * that is not `/` for the next reader, so those responses are private. A country in the URL
+ * is part of the cache key and shares safely, which is also why the "not your country?"
+ * control navigates rather than setting a preference.
+ */
+const shareable = user === null && resolved.source !== "profile" && resolved.source !== "hint";
+Astro.response.headers.set(
+  "cache-control",
+  degraded
+    ? "public, s-maxage=30"
+    : shareable
+      ? "public, s-maxage=300, stale-while-revalidate=600"
+      : "private, max-age=0, must-revalidate",
+);
+// Declared on every response, not only the private ones: even a shareable board depends on
+// these two headers for its WEIGHT (low-data mode), and the honest declaration is the same
+// either way. See the note on the detail page about what Cloudflare does with `Vary`.
+Astro.response.headers.append("vary", "Save-Data, Cookie");
+
+/**
+ * §2's offline state: "cached board with 'Last updated' line". The line is rendered on every
+ * response, because the service worker serves this HTML back unchanged — a timestamp written
+ * at render time is the only one that is still true when the page comes out of a cache.
+ */
+const builtAt = new Intl.DateTimeFormat("en-GB", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "UTC",
+}).format(new Date());
+
+const scopeLine = country
+  ? `Open to ${country.name}, and open to everyone.`
+  : "Open to builders in all 54 African countries.";
 ---
 
 <Base
   title={BRAND.name}
   description="Find opportunities open to your country, and know whether you can apply before you spend the data finding out."
+  user={user}
+  lowData={lowData}
+  offlineCapable
 >
+  <!-- §2 item 1: one line stating what this is and the country scope. -->
   <h1 class="max-w-[28ch] text-display font-bold leading-[--text-display--line-height]">
     Everything here is open, and we tell you whether you can apply.
   </h1>
+  <p class="prose-measure mt-2 text-body text-ink-2">{scopeLine}</p>
 
-  <p class="prose-measure mt-4 text-body text-ink-2">
-    Hackathons, grants, fellowships and scholarships open to builders across all
-    54 African countries. Every listing shows when we last checked it, and every
-    eligibility answer shows the sentence from the official rules it came from.
-  </p>
+  <!-- §2 item 2: a search field with a single example query as placeholder. A plain GET
+       form to the list page: no JS, no autocomplete request, nothing typed leaves the
+       device until the reader presses the button. -->
+  <form method="get" action="/opportunities" class="mt-4 flex flex-wrap gap-2">
+    <label class="min-w-[16rem] flex-1">
+      <span class="sr-only">Search opportunities</span>
+      <input
+        type="search"
+        name="q"
+        placeholder="remote AI hackathons open to Zimbabwe"
+        class="h-11 w-full rounded-row border border-line bg-surface px-3"
+      />
+    </label>
+    <button type="submit" class="h-11 rounded-row bg-brand px-4 font-semibold text-surface">
+      Search
+    </button>
+  </form>
 
-  <section class="mt-8 border border-line bg-surface p-4" aria-labelledby="status">
-    <h2 id="status" class="text-subtitle font-semibold">The catalogue is being built</h2>
-    <p class="prose-measure mt-2 text-dense text-ink-2">
-      There is nothing published yet, so there is nothing to show you. We would
-      rather say that than pad this page with a number we cannot stand behind.
-    </p>
+  <section class="mt-8" aria-labelledby="board">
+    <div class="flex flex-wrap items-baseline justify-between gap-2">
+      <h2 id="board" class="text-title font-semibold">Closing soonest</h2>
+      <!-- The "Last updated" line of §2's offline state. -->
+      <p class="text-meta text-ink-2">Board as of {builtAt} UTC</p>
+    </div>
+
+    {
+      /* §2 item 4: the "Open to [country]" strip, with a visible "not your country?"
+         control. It is a form and a link, not a script: changing country is a navigation,
+         which is what makes the result shareable and the back button correct. */
+      country && (
+        <div class="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border border-line bg-sunken px-3 py-2">
+          <p class="text-dense">
+            <strong class="font-semibold">Open to {country.name}</strong>
+            <span class="text-ink-2">
+              {" "}— including everything open across Africa and worldwide.
+            </span>
+          </p>
+          <p class="text-meta">
+            <a href="/?country=all" class="text-brand">Not your country? Show everything</a>
+          </p>
+        </div>
+      )
+    }
+
+    {
+      showAll && (
+        <p class="mt-3 text-meta text-ink-2">
+          Showing every open opportunity.{" "}
+          <a href="/" class="text-brand">Use my country again</a>
+        </p>
+      )
+    }
+
+    {
+      rows.length > 0 ? (
+        <div class="mt-3 border-t border-line">
+          {rows.map((o) => (
+            <OpportunityRow opportunity={o} lowData={lowData} />
+          ))}
+        </div>
+      ) : (
+        /* One sentence naming the situation, one action (DESIGN_SYSTEM.md §6.4). Never an
+           illustration, never "Nothing here yet!". */
+        <div class="mt-3 border border-line bg-surface p-4">
+          {degraded ? (
+            <>
+              <p class="font-semibold">We can't load the board right now.</p>
+              <p class="mt-1 text-dense text-ink-2">
+                Nothing is wrong with your connection as far as we can tell. Try again
+                shortly, or search directly.
+              </p>
+              <p class="mt-2 text-dense">
+                <a href="/opportunities" class="text-brand">Search opportunities</a>
+              </p>
+            </>
+          ) : country ? (
+            <>
+              <p class="font-semibold">Nothing open to {country.name} is closing yet.</p>
+              <p class="mt-1 text-dense text-ink-2">
+                That is the catalogue being honest, not a filter being clever.
+              </p>
+              <p class="mt-2 text-dense">
+                <a href="/?country=all" class="text-brand">Show everything</a>
+              </p>
+            </>
+          ) : (
+            <>
+              <p class="font-semibold">Nothing is published yet.</p>
+              <p class="mt-1 text-dense text-ink-2">
+                The catalogue is still being built. We would rather show you an empty board
+                than pad it with listings we cannot stand behind.
+              </p>
+            </>
+          )}
+        </div>
+      )
+    }
+
+    {
+      rows.length > 0 && (
+        <p class="mt-4">
+          <a
+            href="/opportunities"
+            class="inline-flex min-h-11 items-center rounded-row border border-line-strong bg-surface px-4 font-semibold no-underline"
+            >See all open opportunities</a
+          >
+        </p>
+      )
+    }
   </section>
 
-  <section class="mt-8" aria-labelledby="what">
-    <h2 id="what" class="text-subtitle font-semibold">What this will answer</h2>
-    <ul class="prose-measure mt-3 space-y-3 text-dense">
-      <li class="border-l-2 border-line pl-3">
-        <strong class="font-semibold">Is it open?</strong> Every record carries the
-        date we last verified it. Stale listings are labelled, not quietly served.
-      </li>
-      <li class="border-l-2 border-line pl-3">
-        <strong class="font-semibold">Can I apply?</strong> A verdict for your
-        country, age and study status — with the quoted sentence behind every
-        part of it, and an honest <em>unclear</em> when the rules do not say.
-      </li>
-      <li class="border-l-2 border-line pl-3">
-        <strong class="font-semibold">What is actually required?</strong> The
-        deliverables, judging criteria and key dates, pulled out of the rules
-        document so you do not have to download it.
-      </li>
-      <li class="border-l-2 border-line pl-3">
-        <strong class="font-semibold">Who else is going for it?</strong> Only once
-        enough people actually are. No empty rooms.
-      </li>
-    </ul>
-  </section>
+  {
+    /* §2 item 5: country and category entry points as plain links. Plain <a> elements in a
+       wrapped list — no select, no script, no expander. Every African country is here
+       because §28 makes each one a first-class page, not a promoted subset. */
+    (entryPoints.categories.length > 0 || entryPoints.countries.length > 0) && (
+      <section class="mt-10 border-t border-line pt-6" aria-labelledby="browse">
+        <h2 id="browse" class="text-subtitle font-semibold">Browse</h2>
+
+        {entryPoints.categories.length > 0 && (
+          <>
+            <h3 class="mt-3 text-meta font-semibold text-ink-2">By kind</h3>
+            <p class="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-dense">
+              {entryPoints.categories.map((category) => (
+                <a href={`/opportunities?category=${category.code}`} class="text-brand">
+                  {category.name}
+                </a>
+              ))}
+            </p>
+          </>
+        )}
+
+        {entryPoints.countries.length > 0 && (
+          <>
+            <h3 class="mt-4 text-meta font-semibold text-ink-2">By country</h3>
+            <p class="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-dense">
+              {entryPoints.countries.map((c) => (
+                <a href={`/opportunities?country=${c.iso2}`} class="text-brand">
+                  {c.name}
+                </a>
+              ))}
+            </p>
+          </>
+        )}
+      </section>
+    )
+  }
+
+  {
+    /* §2 item 6: counts that are true. Both numbers come from live queries, and each one
+       disappears rather than showing a zero or a guess. The anti-scam statement and the
+       crawler link are in the footer of every page (layouts/Base.astro). */
+    (published !== null || lastVerifiedAt !== null) && (
+      <p class="mt-8 text-meta text-ink-2">
+        {published !== null && published > 0 && (
+          <span>
+            {published} {published === 1 ? "opportunity" : "opportunities"} published.{" "}
+          </span>
+        )}
+        {lastVerifiedAt !== null && <span>{freshnessLabel(lastVerifiedAt)} against the source.</span>}
+      </p>
+    )
+  }
 </Base>

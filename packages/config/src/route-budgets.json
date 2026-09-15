@@ -52,6 +52,7 @@
     { "pattern": "/verification", "label": "Policy page", "totalKb": 100, "jsKb": 15 },
     { "pattern": "/bot", "label": "Policy page", "totalKb": 100, "jsKb": 15 },
     { "pattern": "/changelog", "label": "Policy page", "totalKb": 100, "jsKb": 15 },
-    { "pattern": "/404", "label": "Policy page", "totalKb": 100, "jsKb": 15 }
+    { "pattern": "/404", "label": "Policy page", "totalKb": 100, "jsKb": 15 },
+    { "pattern": "/offline", "label": "Offline page", "totalKb": 100, "jsKb": 15 }
   ]
 }

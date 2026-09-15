@@ -147,6 +147,41 @@ export function personalWritesAllowed(user: SessionUser | null): boolean {
 }
 
 /**
+ * The signed-in reader's country of residence, and nothing else from their profile.
+ *
+ * UX_FLOWS.md §2 item 4 lets the homepage board follow the reader's country. The only way to
+ * know it is the eligibility profile, which DATA_MODEL.md §15 gives exactly one read
+ * principal: the owning user. This reads it through their own session client, so RLS is the
+ * thing enforcing that — not this function's good intentions — and it selects ONE column,
+ * because the rest of that table has no business in a page render.
+ *
+ * Null when there is no session, no profile, or no country in it. The board then falls back
+ * to the edge hint and finally to showing everything, which is the honest default.
+ */
+export async function getResidenceCountry(
+  cookies: AstroCookies,
+  env: Env = {},
+): Promise<string | null> {
+  const client = createAuthClient(cookies, env);
+  if (!client) return null;
+
+  const {
+    data: { user },
+    error,
+  } = await client.auth.getUser();
+  if (error || !user) return null;
+
+  const { data } = await client
+    .from("eligibility_profiles")
+    .select("country_of_residence")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  const iso2 = (data as { country_of_residence?: string | null } | null)?.country_of_residence;
+  return iso2 ? iso2.trim().toUpperCase() : null;
+}
+
+/**
  * Where to send someone after signing in. UX_FLOWS.md §17: sign-in returns the
  * user "to exactly where they were, action completed".
  *

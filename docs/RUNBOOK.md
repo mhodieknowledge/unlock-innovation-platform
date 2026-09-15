@@ -397,7 +397,89 @@ prompt change measured against the golden set, not more reviewing.
 
 ---
 
-## 13. What has NOT been exercised
+## 13. The service worker, the install prompt and low-data mode
+
+### Deploying a change to the worker
+
+`public/sw.js` bumps `VERSION` for any change that affects what is cached. On activation the
+worker deletes every cache whose name is not in the current set, so a bumped version is also
+the cache purge. Forgetting to bump it means readers keep the old shell until their browser
+happens to re-fetch the script.
+
+`public/_headers` serves `sw.js`, `sw-routes.js` and `sw-register.js` with `Cache-Control:
+no-cache`. That is deliberate and must stay: a cached service-worker script outlives the
+deploy that replaced it, and a reader can sit on a shell that is weeks old with no way to
+know. Revalidation costs a conditional request and usually returns 304.
+
+### Turning offline support off
+
+There is no flag, because a service worker cannot be switched off by configuration — it lives
+on the reader's device. To stop it:
+
+1. Replace `public/sw.js` with a worker that calls `caches.keys()`, deletes all of them, and
+   then `self.registration.unregister()`. Deploy that.
+2. Leave it deployed for at least a week. Every returning reader picks it up on their next
+   navigation and removes themselves.
+3. Only then remove the file. Deleting `sw.js` first leaves every installed worker in place
+   permanently, because the browser only replaces a worker it can still fetch.
+
+### What is cached, and what must never be
+
+`public/sw-routes.js` is the whole answer, and `apps/web/test/service-worker.test.ts` asserts
+it path by path. The shape of it: the shell and the hashed assets cache-first; opportunity
+pages stale-while-revalidate with an LRU of 50; the tracker network-first; and everything
+else — every other personal surface, every thread, every request, every admin view, every
+API call — untouched, exactly as if no worker were installed.
+
+If you are tempted to add a personal surface to the cached set, the question to answer first
+is not "would this be nice offline" but "is a copy of this acceptable on a phone somebody else
+picks up". SYSTEM_ARCHITECTURE.md §3.4 names the tracker and saved items. That list is the
+warrant, and it is short on purpose.
+
+### The write queue
+
+Only tracker writes are queued (`write-queue` in the routing table). A queued POST is answered
+with a 303 back to `/tracker?queued=1`, which renders the pending line server-side — the
+redirect lands on a page served from the cache, so a state that existed only in script would
+be invisible to a reader with no JavaScript.
+
+Replay happens on `online`, on a Background Sync event, and on the message the page sends at
+registration. A write the server refuses with a 4xx is DROPPED, not retried: migration 0007
+refuses an invalid tracker transition, and a queue that retries a refusal never empties. The
+reader is told, in one line, however many writes went out.
+
+To inspect a stuck queue on a reader's device you cannot — it is IndexedDB `mbele-outbox`,
+store `writes`, on their phone. What you can check is whether the endpoint returns a 4xx for
+the write in question, which is the only thing that makes the queue drop something silently.
+
+### The install prompt
+
+It appears in one place: the tracker, once the reader has at least one saved entry, and only
+if the browser fires `beforeinstallprompt`. Dismissal is remembered in `localStorage`
+(`mbele-install-dismissed`) and never argued again. There is no timer, no modal and no second
+ask. If someone asks why they never see it, the answer is usually that Chromium has its own
+engagement heuristics, or the app is already installed.
+
+### Low-data mode
+
+Three inputs, in this order: the `ld` cookie, a `Save-Data: on` request header, then the
+signed-in account preference. Resolved server-side before the first byte of HTML — a mode
+applied by a script after the page arrives has already cost the reader the bytes it exists to
+save.
+
+The mode may only change the WEIGHT of a page, never its content. That rule is what makes the
+`Vary: Save-Data, Cookie` on the edge-cached pages survivable: Cloudflare honours `Vary` for
+very little, so a shared cache may hand a reader the other variant, and the worst that can
+happen is a page with two fact cells instead of four.
+
+`apps/web/test/byte-budget-ssr.test.ts` measures the low-data list page against
+DESIGN_SYSTEM.md §10's 40 KB target on every push, and asserts that the lighter page is still
+the same page — same heading, same rows — because a 2 KB error page would pass a byte budget
+and mean nothing.
+
+---
+
+## 14. What has NOT been exercised
 
 Stated because a runbook that implies more coverage than it has is worse than a short
 one.
@@ -417,4 +499,7 @@ one.
 | The admin queues with real volume | Every function and page is tested, and the whole review path was exercised against fixture rows (claim, review card, rule editor, publish, reject, merge, report resolution, user action, source activation, flag change, audit read). What has never happened is a reviewer clearing a real queue on a real phone, which is the only way to find out whether one-handed operation actually works. |
 | A Telegram operator alert | The alert fires, records and re-sends correctly against a real breached queue item; the send itself has never left the machine because no bot token is configured. The first live run will either work or return a Telegram error naming the problem. |
 | A Turnstile token | Never seen one. `verifyTurnstile()` is written and called; no key is configured and no widget is in any page (ADR 0002). |
+| The service worker in a real browser | **Never.** The routing rules are asserted path by path in `apps/web/test/service-worker.test.ts`, and the four strategies are 150 lines of hand-written code with no framework in them — but no browser has installed this worker, read a cached opportunity page with the network off, or replayed a queued tracker write. The first real test of it is somebody on a load-shedding schedule, and what it will most likely find is a wrong assumption about `Response.redirect` inside a fetch handler. |
+| The install prompt | Never seen. `beforeinstallprompt` only fires on a served origin over HTTPS with a valid manifest and an icon, and this has never been served. The manifest and the icon are asserted in the same test file; the browser's own engagement heuristics are not something a test can stand in for. |
+| Low-data mode on a metered connection | The 40 KB target is measured on every push, from real rendered HTML and the real built CSS. What has never happened is somebody browsing on a Zimbabwean prepaid bundle and telling us whether the two-fact row is still usable — which is the only question that matters about it. |
 | Workers AI embedding in the request tier | Never called. `PROJECT_EMBEDDING_MODEL` is unset, so project creation stores no vector and the first-pass match ranks on tags and urgency — a supported degraded state, and the batch embedder fills the vector in overnight. |

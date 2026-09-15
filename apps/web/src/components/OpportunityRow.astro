@@ -17,9 +17,16 @@ import { VERDICTS } from "../lib/verdict";
 
 interface Props {
   opportunity: Row;
+  /**
+   * DESIGN_SYSTEM.md §10. In low-data mode the fact grid collapses to the two facts that
+   * decide anything — the countdown and eligibility — and the freshness line goes. Every
+   * cell dropped is real bytes on a metered connection, and §10's 40 KB target for a page
+   * of thirty of these rows is not reachable while each row carries four.
+   */
+  lowData?: boolean;
 }
 
-const { opportunity: o } = Astro.props;
+const { opportunity: o, lowData = false } = Astro.props;
 
 const facts = deadlineFacts({
   deadline_at: o.deadline_at,
@@ -44,12 +51,17 @@ const team =
 
 // Collapses to the two most important facts on the narrowest viewports and in
 // low-data mode (DESIGN_SYSTEM.md §10): the countdown and eligibility.
-const cells: [string, string][] = [
-  ["Closes", countdownLabel(facts)],
-  ["Format", o.participation_mode === "unknown" ? "—" : o.participation_mode.replace(/_/g, " ")],
-  ...((team ? [["Team", team]] : []) as [string, string][]),
-  ...((prize ? [["Prize", prize]] : []) as [string, string][]),
-];
+const cells: [string, string][] = lowData
+  ? [
+      ["Closes", countdownLabel(facts)],
+      ["Cost", o.cost === "free" ? "Free" : o.cost === "paid" ? "Has a cost" : "—"],
+    ]
+  : [
+      ["Closes", countdownLabel(facts)],
+      ["Format", o.participation_mode === "unknown" ? "—" : o.participation_mode.replace(/_/g, " ")],
+      ...((team ? [["Team", team]] : []) as [string, string][]),
+      ...((prize ? [["Prize", prize]] : []) as [string, string][]),
+    ];
 ---
 
 <article
@@ -59,7 +71,7 @@ const cells: [string, string][] = [
        reader (see the note at the top of this file). -->
   <span class={`w-[3px] shrink-0 ${VERDICTS.unknown.rail}`} aria-hidden="true"></span>
 
-  <div class="min-h-[88px] flex-1 px-3 py-3">
+  <div class={`flex-1 px-3 ${lowData ? "min-h-[64px] py-2" : "min-h-[88px] py-3"}`}>
     <h3 class="text-dense font-semibold">
       <!-- Whole row is the link; the save control below has its own hit area. -->
       <a href={`/opportunities/${o.slug}`} class="text-ink no-underline hover:underline">
@@ -95,8 +107,9 @@ const cells: [string, string][] = [
     </dl>
 
     <p class="mt-2 flex items-center justify-between gap-3 text-meta text-ink-2">
-      <!-- Freshness: monochrome, always present, deliberately quiet. -->
-      <span>{freshnessLabel(o.last_verified_at)}</span>
+      <!-- Freshness: monochrome, deliberately quiet. Dropped in low-data mode, where the
+           reader is paying by the kilobyte and the detail page still carries it in full. -->
+      <span>{lowData ? "" : freshnessLabel(o.last_verified_at)}</span>
       {
         !closed && (
           <a

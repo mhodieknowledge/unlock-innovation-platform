@@ -19,6 +19,7 @@ import {
   toSearchParams,
 } from "../../lib/filters";
 import { getSessionUser } from "../../lib/auth";
+import { resolveLowData } from "../../lib/lowdata";
 import { search } from "../../lib/search";
 
 export const prerender = false;
@@ -30,11 +31,30 @@ const filters = parseFilters(Astro.url);
 // database: the verdict is computed there and only the word comes back.
 const viewer = filters.q ? await getSessionUser(Astro.cookies, env) : null;
 
+/**
+ * DESIGN_SYSTEM.md §10's 40 KB target applies to THIS page above all — it is the one a
+ * reader opens repeatedly, and the one with thirty rows on it. Resolved before anything is
+ * rendered so the first paint is already light (§3.4), and from the cookie or the Save-Data
+ * header rather than the account, because this page is read logged-out more often than not.
+ */
+const lowData = resolveLowData({
+  cookies: Astro.cookies,
+  request: Astro.request,
+  accountPreference: viewer?.low_data_mode ?? null,
+}).on;
+
+/**
+ * Filters `search_candidates` (migration 0014) does not take. A chip that renders and does
+ * not filter is worse than no chip, so when one of these is set the SQL-filtered path runs
+ * instead — losing semantic ranking on that query, which is the smaller loss.
+ */
+const needsSqlFilters = filters.region !== null || filters.deadlineState !== null;
+
 // Hybrid retrieval when there is something to search for; the plain filtered list
 // otherwise. Two paths rather than one because §13.4 makes urgency the default ORDER for
 // browsing, and running a ranking formula over an unqueried list would reorder it by
 // relevance to nothing.
-const hybrid = filters.q
+const hybrid = filters.q && !needsSqlFilters
   ? await search(
       {
         q: filters.q,
@@ -65,7 +85,9 @@ const fallback =
         {
           q: filters.q,
           country: filters.country,
+          region: filters.region,
           category: filters.category,
+          deadlineState: filters.deadlineState,
           mode: filters.mode,
           team: filters.team,
           cost: filters.cost,
@@ -105,6 +127,12 @@ const compiledChips = (hybrid?.compiled?.chips ?? []).filter((chip) => {
       return !filters.cost;
     case "team":
       return !filters.team;
+    case "prize":
+      return !filters.hasPrize;
+    case "deadline":
+      // A 90-day chip has no URL state of its own (see compiledToParams), so it keeps showing
+      // as a compiler chip; the two that do become filters are rendered by activeChips instead.
+      return filters.deadlineState === null;
     default:
       return true;
   }
@@ -124,6 +152,9 @@ Astro.response.headers.set(
   "cache-control",
   degraded ? "public, s-maxage=30" : "public, s-maxage=300, stale-while-revalidate=600",
 );
+// The two request headers this page's weight depends on. See the note on the detail page
+// about what Cloudflare does with `Vary`, and why low-data mode is confined to weight.
+Astro.response.headers.append("vary", "Save-Data, Cookie");
 
 const SORT_LABELS: [string, string][] = [
   ["urgency", "Closing soonest"],
@@ -136,6 +167,8 @@ const SORT_LABELS: [string, string][] = [
   title="Open opportunities"
   description="Hackathons, grants, fellowships and scholarships open to builders across Africa, with an eligibility verdict for your country."
   noindex={isFiltered}
+  lowData={lowData}
+  offlineCapable
 >
   <h1 class="text-title font-semibold">Open opportunities</h1>
 
@@ -259,7 +292,7 @@ const SORT_LABELS: [string, string][] = [
       <>
         <div class="mt-3 border-t border-line">
           {rows.map((o) => (
-            <OpportunityRow opportunity={o} />
+            <OpportunityRow opportunity={o} lowData={lowData} />
           ))}
         </div>
 

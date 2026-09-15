@@ -14,6 +14,7 @@ import { getIntentCount, getRoomState } from "../../lib/rooms";
 import { getRelatedProjects, stateLabel, type RelatedProject } from "../../lib/projects";
 import { countdownLabel, countdownWeight, deadlineFacts, freshnessLabel } from "../../lib/deadline";
 import { RULE_OUTCOME_GLYPH } from "../../lib/verdict";
+import { resolveLowData } from "../../lib/lowdata";
 import { NO_FEE_STATEMENT } from "@mbele/config";
 
 export const prerender = false;
@@ -40,6 +41,20 @@ Astro.response.headers.set(
   "cache-control",
   found.ok ? "public, s-maxage=900, stale-while-revalidate=3600" : "public, s-maxage=60",
 );
+
+/**
+ * DESIGN_SYSTEM.md §10, resolved from the cookie and the `Save-Data` header only — this page
+ * deliberately does not read the session (it is the same for every reader, which is what
+ * makes it edge-cacheable), so the account preference cannot reach it and does not need to.
+ *
+ * `Vary` declares the two headers the response depends on. Cloudflare's cache honours `Vary`
+ * for very little, so a shared cache may hand a reader the other variant — which is why
+ * low-data mode is only ever allowed to change the WEIGHT of a page and never its content.
+ * A mis-served variant is then a page with two fact cells instead of four, not a page
+ * carrying something that was not meant for the person reading it.
+ */
+const lowData = resolveLowData({ cookies: Astro.cookies, request: Astro.request }).on;
+Astro.response.headers.append("vary", "Save-Data, Cookie");
 
 const detail = found.ok ? found.data : null;
 const opp = detail?.opportunity ?? null;
@@ -131,6 +146,8 @@ const factGrid: [string, string][] = opp
       description={opp.summary ?? undefined}
       noindex={isExpired}
       canonical={`/opportunities/${opp.slug}`}
+      lowData={lowData}
+      offlineCapable
     >
       {
         isDisputed && (

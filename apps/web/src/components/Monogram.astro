@@ -1,0 +1,24 @@
+---
+// The logo that is not being loaded. DESIGN_SYSTEM.md §10.
+//
+// CSS only: two letters on --sunken with --ink-2 text, at the exact display size. An
+// organisation logo is at most 12 KB (PRODUCT_SPEC.md §25.1) and this is 0, so in
+// low-data mode it is always this — and since no logo pipeline exists yet, it is
+// currently this everywhere, which is the honest state rather than a broken image.
+
+import { monogram } from "../lib/lowdata";
+
+interface Props {
+  name: string | null | undefined;
+  /** Tailwind size classes, so a row and a page header can differ without a variant prop. */
+  size?: string;
+}
+
+const { name, size = "h-8 w-8 text-micro" } = Astro.props;
+---
+
+<span
+  aria-hidden="true"
+  class={`inline-flex shrink-0 items-center justify-center rounded-[2px] bg-sunken font-semibold text-ink-2 ${size}`}
+  >{monogram(name)}</span
+>

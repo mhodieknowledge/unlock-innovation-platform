@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Mbele">
+  <!-- The installed app's icon. PRODUCT_SPEC.md §25.3 requires the product to be
+       installable, and an operating system will not install anything without an icon.
+       DESIGN_SYSTEM.md §11 allows no symbol and no icon mark at launch, so this is the
+       wordmark's own letter in the brand colour and nothing else: no glyph invented for it,
+       no illustration, and one file of about 400 bytes that a launcher can scale to any
+       size. It is deliberately the only image this product ships. -->
+  <rect width="512" height="512" fill="#1c3f94"/>
+  <text x="256" y="256" fill="#fbfbf9" font-family="Archivo, Helvetica Neue, Helvetica, Arial, sans-serif"
+        font-size="320" font-weight="700" text-anchor="middle" dominant-baseline="central"
+        letter-spacing="-8">M</text>
+</svg>

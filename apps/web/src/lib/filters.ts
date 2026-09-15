@@ -203,11 +203,21 @@ export function compiledToParams(
         params.set("team", chip.value);
         break;
       case "prize":
-        params.set("prize", "1");
+        // `has_prize`, which is what parseFilters reads and what toSearchParams writes. It said
+        // `prize` until a test compared the two: the chip rendered, the URL carried it, and
+        // nothing filtered on it.
+        params.set("has_prize", "1");
+        break;
+      case "deadline":
+        // The compiler counts days; the URL carries a named state. 90 days has no state in
+        // §13.2's list, so that chip stays a compiler chip and the keywords carry it —
+        // inventing a state here would put a filter in the URL that nothing applies.
+        if (chip.value === "7") params.set("deadline_state", "closing_this_week");
+        else if (chip.value === "30") params.set("deadline_state", "closing_this_month");
         break;
       default:
-        // `deadline` and `keyword` have no URL filter of their own yet. Dropping a chip
-        // here would silently widen the search, so the keywords carry through instead.
+        // `keyword` has no URL filter of its own. Dropping a chip here would silently
+        // widen the search, so the keywords carry through instead.
         break;
     }
   }

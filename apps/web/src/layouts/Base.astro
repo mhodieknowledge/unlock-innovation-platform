@@ -27,14 +27,46 @@ interface Props {
   user?: { display_name: string | null } | null;
   /** Unread in-app count, when the page already knows it. */
   unread?: number;
+  /**
+   * DESIGN_SYSTEM.md §10, resolved server-side by the page (lib/lowdata.ts) so the FIRST
+   * paint is already light. A mode applied by a script after the page arrives has already
+   * cost the reader the bytes it exists to save.
+   */
+  lowData?: boolean;
+  /**
+   * PWA. SYSTEM_ARCHITECTURE.md §3.4. Off by default: a service worker registered from a
+   * page that does not want one is a background fetch nobody asked for, and the prerendered
+   * policy pages have nothing to cache.
+   *
+   * This means "takes part in the offline story" — registers the worker, links the manifest,
+   * and carries the pending-sync and confirmation lines — NOT "is cached". What is cached is
+   * decided in public/sw-routes.js, which caches the tracker and no other personal surface.
+   */
+  offlineCapable?: boolean;
 }
 
-const { title, description, noindex = false, canonical, user = null, unread = 0 } = Astro.props;
+const {
+  title,
+  description,
+  noindex = false,
+  canonical,
+  user = null,
+  unread = 0,
+  lowData = false,
+  offlineCapable = false,
+} = Astro.props;
 const fullTitle = title === BRAND.name ? title : `${title} | ${BRAND.name}`;
 ---
 
 <!doctype html>
-<html lang="en">
+<!--
+  The low-data flag is on the ROOT element, not just passed to components. DESIGN_SYSTEM.md
+  §10's last clause — "the webfont is not requested" — is a decision about what the document
+  links to, and when the Archivo woff2 is self-hosted the <link> below it will be conditional
+  on this attribute. Until then the family falls back through the system stack for everyone,
+  so there is nothing to suppress and nothing to pretend about.
+-->
+<html lang="en" data-low-data={lowData ? "1" : undefined}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -43,6 +75,11 @@ const fullTitle = title === BRAND.name ? title : `${title} | ${BRAND.name}`;
     {noindex && <meta name="robots" content="noindex, nofollow" />}
     {canonical && <link rel="canonical" href={canonical} />}
     <meta name="color-scheme" content="light" />
+    {
+      /* PRODUCT_SPEC.md §25.3: installable. The manifest is 400 bytes and static; the
+         service worker is registered only on the pages that benefit (below). */
+      offlineCapable && <link rel="manifest" href="/manifest.webmanifest" />
+    }
   </head>
 
   <body>
@@ -88,6 +125,29 @@ const fullTitle = title === BRAND.name ? title : `${title} | ${BRAND.name}`;
     </header>
 
     <main id="main" class="mx-auto max-w-[1160px] px-4 py-6">
+      {
+        /* SYSTEM_ARCHITECTURE.md §3.4: "a visible 'pending sync' state". Rendered hidden and
+           filled in by the service worker's message; a reader with no service worker never
+           sees it, because they have no queue either. */
+        offlineCapable && (
+          <>
+            <p
+              data-pending-sync
+              hidden
+              class="mb-4 border-l-[3px] border-warning bg-unclear-wash p-3 text-dense"
+            ></p>
+            {/* Phase 9's acceptance criterion asks for ONE confirmation when a queued change
+                syncs. aria-live so it is announced rather than only seen. */}
+            <p
+              data-toast
+              hidden
+              role="status"
+              aria-live="polite"
+              class="mb-4 border-l-[3px] border-success bg-eligible-wash p-3 text-dense"
+            ></p>
+          </>
+        )
+      }
       <slot />
     </main>
 
@@ -107,7 +167,30 @@ const fullTitle = title === BRAND.name ? title : `${title} | ${BRAND.name}`;
           <a href="/bot" class="text-brand">About our crawler</a>
           <a href="/changelog" class="text-brand">Policy changes</a>
         </nav>
+
+        <!-- §10: "A persistent meta line in the footer: 'Low-data mode is on.' with a
+             toggle." A form, not a script: the mode exists for people whose connection
+             cannot afford a bundle, and a toggle that needs one would be a joke at their
+             expense. -->
+        <form method="post" action="/low-data" class="flex flex-wrap items-center gap-2">
+          <input type="hidden" name="on" value={lowData ? "0" : "1"} />
+          <input type="hidden" name="returnTo" value={Astro.url.pathname + Astro.url.search} />
+          <span>
+            {lowData
+              ? "Low-data mode is on: no images, shorter rows, nothing loaded speculatively."
+              : "Paying by the megabyte?"}
+          </span>
+          <button type="submit" class="min-h-11 text-brand underline">
+            {lowData ? "Turn it off" : "Turn on low-data mode"}
+          </button>
+        </form>
       </div>
     </footer>
+
+    {
+      /* Registration is a bundled module, never inline: the CSP in public/_headers carries
+         no 'unsafe-inline' (see ADR 0002 and apps/web/test/csp.test.ts). */
+      offlineCapable && <script src="/sw-register.js" defer></script>
+    }
   </body>
 </html>

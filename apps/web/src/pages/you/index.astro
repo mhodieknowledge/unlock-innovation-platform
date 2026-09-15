@@ -14,6 +14,7 @@ import Base from "../../layouts/Base.astro";
 import { createAuthClient, getSessionUser } from "../../lib/auth";
 import { deadlineFacts, countdownLabel } from "../../lib/deadline";
 import { reportError } from "../../lib/errors";
+import { resolveLowData } from "../../lib/lowdata";
 import { SURFACE_CAPS } from "@mbele/config";
 
 export const prerender = false;
@@ -26,6 +27,14 @@ if (!user) {
 }
 
 const client = createAuthClient(Astro.cookies, env);
+
+// DESIGN_SYSTEM.md §10. The account preference is available here because the page already
+// has the session, so a reader who set low-data on their phone gets it on this page too.
+const lowData = resolveLowData({
+  cookies: Astro.cookies,
+  request: Astro.request,
+  accountPreference: user.low_data_mode,
+}).on;
 
 interface WindowItem {
   source: string;
@@ -104,7 +113,7 @@ const today = new Date().toLocaleDateString("en-GB", {
 });
 ---
 
-<Base title="Your window" noindex user={user}>
+<Base title="Your window" noindex user={user} lowData={lowData} offlineCapable>
   <h1 class="text-title font-semibold">Your window</h1>
 
   {
