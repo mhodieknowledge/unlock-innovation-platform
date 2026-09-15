@@ -152,7 +152,12 @@ export function parseJsonLoose(text) {
  * @param {Record<string, string | undefined>} args.env
  * @param {typeof globalThis.fetch} args.fetch
  * @param {number} [args.timeoutMs]
- * @returns {Promise<{ ok: true, data: unknown, call: Call } | { ok: false, call: Call }>}
+ * `permanent` marks a failure that cannot come right by asking again — a missing or
+ * revoked key, or a model that has been retired or moved behind a tier this account
+ * does not hold. The caller stops using that provider for the run.
+ *
+ * @returns {Promise<{ ok: true, data: unknown, call: Call }
+ *                 | { ok: false, call: Call, permanent?: boolean }>}
  */
 export async function callProvider(row, args) {
   const started = Date.now();
@@ -227,6 +232,14 @@ export async function callProvider(row, args) {
       const detail = await response.text().catch(() => "");
       return {
         ok: false,
+        // 401, 403 and 404 are the configuration answering, not the service: a missing
+        // key, a revoked key, a model that has been retired or moved behind a tier this
+        // account does not have. None of those come right if we ask again, and asking
+        // again is what we were doing — the 2026-09-15 13:53 run met three retired
+        // models and paid 404s for every one of them on every document, three calls
+        // apiece, because the breaker only ever tripped on 429. Marked permanent so the
+        // caller can stop after the first.
+        permanent: response.status === 401 || response.status === 403 || response.status === 404,
         call: call({ outcome: "error", detail: `${response.status} ${detail.slice(0, 300)}` }),
       };
     }
@@ -344,6 +357,10 @@ export async function runTask(args) {
         outcome: "breaker_open",
         detail: "skipped: breaker open",
       });
+      // Also said out loud. Without this, a run where every provider has tripped
+      // reports "no provider configured" — which describes a chain that was never set
+      // up, not one that was set up and failed, and sends the reader somewhere else.
+      details.push(`${row.provider}: skipped, breaker open`);
       continue;
     }
 
@@ -368,6 +385,10 @@ export async function runTask(args) {
     }
 
     if (attempt.call.outcome === "rate_limited") breakers.trip(row.provider);
+    // A misconfigured provider is out for the run, not for fifteen minutes — but the
+    // breaker is the mechanism we have and a run is shorter than its window, so the
+    // effect is the same and there is no second concept to maintain.
+    if (attempt.permanent) breakers.trip(row.provider);
     if (attempt.call.detail) details.push(`${row.provider}: ${attempt.call.detail}`);
   }
 

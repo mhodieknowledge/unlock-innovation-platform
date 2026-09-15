@@ -5,6 +5,15 @@
 -- catalogues change without notice (Cerebras has dropped models silently; Gemini
 -- removed Pro from the free tier)." When that happens the fix is an UPDATE.
 --
+-- RETIRED ONCE ALREADY. On 2026-09-15 all three models here answered 404: Gemini said
+-- gemini-2.5-flash "is no longer available to new users", Groq moved
+-- llama-3.1-8b-instant behind Contact Sales, and Cerebras dropped llama3.1-8b from its
+-- public endpoints. The pipeline stored nothing for a day and a half. The guardrail
+-- below predicted exactly this, which is why the fix is an UPDATE and why migration
+-- 0026 carries it to databases that already hold the old rows — ON CONFLICT here is
+-- DO NOTHING against UNIQUE (provider, task, model), so editing this file alone would
+-- add a second row and leave the dead one enabled beside it.
+--
 -- The quotas are the free-tier ceilings §3.1 records. They are deliberately set a
 -- little under the published figures: the accountant stops before the limit rather
 -- than learning it as a 429, and a 429 costs a retry plus a fifteen-minute breaker.
@@ -22,39 +31,39 @@ INSERT INTO ai_providers
    trains_on_input, endpoint, api_key_env, notes)
 VALUES
   -- ── Extraction: long documents, so context size decides the order ─────────
-  ('gemini', 'extract', 'gemini-2.5-flash', 10, 1400, 15, true,
+  ('gemini', 'extract', 'gemini-3.6-flash', 10, 1400, 15, true,
    'https://generativelanguage.googleapis.com/v1beta/models', 'GEMINI_API_KEY',
    'Large context handles a full page without chunking. TRAINS ON INPUT: public web content only, never user data (§2 guardrail 5).'),
-  ('groq', 'extract', 'llama-3.1-8b-instant', 20, 14000, 30, false,
+  ('groq', 'extract', 'openai/gpt-oss-120b', 20, 14000, 30, false,
    'https://api.groq.com/openai/v1/chat/completions', 'GROQ_API_KEY',
    'Fallback when Gemini is exhausted. TPM binds before RPD on long inputs.'),
-  ('cerebras', 'extract', 'llama3.1-8b', 30, 14000, 30, false,
+  ('cerebras', 'extract', 'gpt-oss-120b', 30, 14000, 30, false,
    'https://api.cerebras.ai/v1/chat/completions', 'CEREBRAS_API_KEY',
    'Third in the chain. Volatile catalogue — check the model name when this starts failing.'),
 
   -- ── Rule derivation: the most constrained task in the system ──────────────
-  ('groq', 'rules', 'llama-3.1-8b-instant', 10, 14000, 30, false,
+  ('groq', 'rules', 'openai/gpt-oss-20b', 10, 14000, 30, false,
    'https://api.groq.com/openai/v1/chat/completions', 'GROQ_API_KEY',
    'Short, structured, high volume. Output is verbatim-quote validated regardless of model.'),
-  ('cerebras', 'rules', 'llama3.1-8b', 20, 14000, 30, false,
+  ('cerebras', 'rules', 'gpt-oss-120b', 20, 14000, 30, false,
    'https://api.cerebras.ai/v1/chat/completions', 'CEREBRAS_API_KEY', NULL),
-  ('gemini', 'rules', 'gemini-2.5-flash', 30, 1400, 15, true,
+  ('gemini', 'rules', 'gemini-3.6-flash', 30, 1400, 15, true,
    'https://generativelanguage.googleapis.com/v1beta/models', 'GEMINI_API_KEY',
    'Last resort for rules: the task is small and Gemini quota is better spent on long extractions.'),
 
   -- ── Brief decoder: long rules documents and PDFs ──────────────────────────
-  ('gemini', 'brief', 'gemini-2.5-flash', 10, 1400, 15, true,
+  ('gemini', 'brief', 'gemini-3.6-flash', 10, 1400, 15, true,
    'https://generativelanguage.googleapis.com/v1beta/models', 'GEMINI_API_KEY', NULL),
-  ('groq', 'brief', 'llama-3.1-8b-instant', 20, 14000, 30, false,
+  ('groq', 'brief', 'openai/gpt-oss-20b', 20, 14000, 30, false,
    'https://api.groq.com/openai/v1/chat/completions', 'GROQ_API_KEY', NULL),
 
   -- ── Query compiler: latency matters, it runs in a request ─────────────────
-  ('groq', 'query', 'llama-3.1-8b-instant', 10, 14000, 30, false,
+  ('groq', 'query', 'openai/gpt-oss-20b', 10, 14000, 30, false,
    'https://api.groq.com/openai/v1/chat/completions', 'GROQ_API_KEY',
    'The ONE LLM call permitted in a request handler, and only because it is KV-cached for 7 days.'),
 
   -- ── Dedupe adjudication: one short question ───────────────────────────────
-  ('groq', 'dedupe', 'llama-3.1-8b-instant', 10, 14000, 30, false,
+  ('groq', 'dedupe', 'openai/gpt-oss-20b', 10, 14000, 30, false,
    'https://api.groq.com/openai/v1/chat/completions', 'GROQ_API_KEY',
    'Only ever asked about a pair a deterministic check already flagged (§9 step 4).'),
 

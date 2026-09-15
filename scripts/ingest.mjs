@@ -621,11 +621,28 @@ async function processDocument(source, item) {
   });
 }
 
+/**
+ * Store the document, or find the one we already have.
+ *
+ * raw_documents is UNIQUE (canonical_url, content_hash), and retrying a failed
+ * extraction means arriving here a second time with the same pair. A plain INSERT
+ * therefore raised a duplicate key and took the whole run down with it — which is
+ * exactly what happened on the 13:53 run, nine documents in, the moment the retry fix
+ * from the previous commit did what it was written to do. The retry was right; this
+ * INSERT was the half that had never had to cope with one.
+ *
+ * fetched_at is deliberately NOT touched on conflict. It means first seen, and the
+ * retry window in processDocument measures from it: bumping it on every attempt would
+ * push the deadline forward each time and turn a bounded retry into a permanent one.
+ */
 async function storeRawDocument(source, doc) {
   if (DRY_RUN) return null;
   const { rows } = await client.query(
     `INSERT INTO raw_documents (source_id, url, canonical_url, content_hash, title_raw, text_raw, jsonld)
      VALUES ($1,$2,$3,$4,$5,$6,$7)
+     ON CONFLICT (canonical_url, content_hash) DO UPDATE
+       SET source_id = EXCLUDED.source_id,
+           url       = EXCLUDED.url
      RETURNING id`,
     [
       source?.id ?? null,
