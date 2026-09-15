@@ -7,6 +7,20 @@ export default defineConfig({
     // pages can be rendered through the container API.
     projects: [
       {
+        /**
+         * Repo-level audits: the structural half of README.md §5's invariants, and the check that
+         * README.md §4's removed features have not come back. They read sources across every
+         * workspace, so they belong to none of them — and they are named `.audit.test.ts` so this
+         * project can pick them up without dragging in the database-backed suites that share the
+         * same directory and need a DATABASE_URL.
+         */
+        test: {
+          name: "audit",
+          include: ["test/*.audit.test.ts"],
+          exclude: ["**/node_modules/**", "**/dist/**"],
+        },
+      },
+      {
         test: {
           name: "packages",
           include: ["packages/*/test/**/*.test.ts"],
