@@ -28,7 +28,7 @@ on:
         type: choice
         options: [ingest, links, reverify, sweep, health, check-sources, embed, recommend, match-projects, project-sweep]
       dry_run:
-        description: Render without writing
+        description: Print what would be stored; write nothing to the database
         required: false
         default: false
         type: boolean
