@@ -722,11 +722,42 @@ async function writeCandidate({ source, doc, candidate, confidence, rules, rejec
   // organiser's own words, and there are none to carry here. So the honest response is
   // that a person looks at it.
   const rejectedRule = rejected.length > 0;
+
+  /**
+   * Whether this source was vetted for publication without a person (migration 0031).
+   *
+   * route_for_publication already applies the narrower floors for such a source — an
+   * uncertain deadline and an asserted country list still go to review — so applying
+   * clearsConfidenceFloors on top would re-impose the blanket 0.75/0.80/0.80 the
+   * migration deliberately replaced. It would also silently exclude the best source in
+   * the registry: a Devpost record is built from publisher-authored JSON-LD, which
+   * recordFromJsonLd scores 0.5 overall by design ("certain about what it says and
+   * silent about the rest") and which never states eligible countries at all.
+   */
+  const vetted = source?.auto_publish === true;
+
   const publish =
     decision === "publish" &&
-    floorsOk &&
+    (vetted || floorsOk) &&
+    // A discarded rule candidate still blocks, vetted or not. Discarding a rule makes a
+    // verdict MORE permissive, so the reader is told they are eligible for something
+    // whose real requirements may exclude them — see the note above.
     !rejectedRule &&
     issues.every((i) => i.effect !== "review");
+
+  /**
+   * §4.9 publishes "only after the link check confirms the URL resolves", and that check
+   * ran only over records already published (reverify.mjs runLinks: `WHERE status =
+   * 'published'`). A record could not be published without a link check and could not be
+   * link-checked without being published, so on the ingest path NOTHING ever published —
+   * status was hardcoded and the routing decision only chose a queue name.
+   *
+   * The deadlock breaks on a fact that was already true: politeFetch just retrieved this
+   * very URL and got a document back. That IS the link resolving. So a vetted source's
+   * record is published with link_ok recorded from the fetch that produced it, and
+   * reverify re-checks it on its own six-hourly cadence like any other published row.
+   */
+  const publishNow = publish && vetted;
 
   const slug = await uniqueSlug(String(candidate.title ?? ""));
 
@@ -737,10 +768,11 @@ async function writeCandidate({ source, doc, candidate, confidence, rules, rejec
         deadline_at, deadline_precision, deadline_raw, deadline_timezone,
         starts_at, ends_at, team_required, team_size_min, team_size_max,
         prize_amount, prize_currency, cost, source_url, official_url,
-        status, verification, extraction_confidence, last_verified_at)
+        status, verification, extraction_confidence, last_verified_at,
+        published_at, link_ok, link_checked_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8::eligibility_scope,$9,$10::participation_mode,
              $11,$12::deadline_precision,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22::cost_kind,$23,$24,
-             $25::opp_status,$26::opp_verification,$27,$28)
+             $25::opp_status,$26::opp_verification,$27,$28,$29,$30,$31)
      RETURNING id, slug`,
     [
       slug,
@@ -767,14 +799,19 @@ async function writeCandidate({ source, doc, candidate, confidence, rules, rejec
       candidate.cost ?? "unknown",
       candidate.source_url,
       candidate.official_url ?? null,
-      // Never published on this pass, whatever the routing decision was: §4.9
-      // publishes only after the link check confirms the URL resolves, and for an
-      // unproven source only after a person has seen it. The routing decision is
-      // still recorded on the queue item, so a record that cleared every gate is
-      // visibly a one-click approval rather than a re-review.
-      "in_review",
+      // A source nobody has vetted is never published on this pass, whatever the
+      // routing decision: §4.9 wants a person, and the routing decision is still
+      // recorded on the queue item so a record that cleared every gate is visibly a
+      // one-click approval rather than a re-review. A vetted source publishes here.
+      publishNow ? "published" : "in_review",
       "auto",
       confidence.overall ?? 0,
+      new Date().toISOString(),
+      publishNow ? new Date().toISOString() : null,
+      // The fetch that produced this document is the link resolving. Recorded either
+      // way: it is true of an in_review record too, and reverify re-checks on its own
+      // cadence.
+      true,
       new Date().toISOString(),
     ],
   );
@@ -798,9 +835,11 @@ async function writeCandidate({ source, doc, candidate, confidence, rules, rejec
     ? "country_in and country_not_in overlap"
     : rejectedRule
       ? `${rejected.length} rule candidate(s) were discarded, so a requirement may be missing and the verdict may be too permissive`
-      : publish
-        ? "awaiting the link check before publication"
-        : reason;
+      : publishNow
+        ? "published automatically — this source is vetted; spot-check when convenient"
+        : publish
+          ? "awaiting the link check before publication"
+          : reason;
 
   await client.query(
     `INSERT INTO review_queue (queue, subject_type, subject_id, priority)
@@ -811,6 +850,17 @@ async function writeCandidate({ source, doc, candidate, confidence, rules, rejec
       fee.hit ? 1 : publish ? 4 : 3,
     ],
   );
+
+  // sources.records_published was read by route_for_publication and never written by
+  // anything, so "this source has published N records; its first 5 are always reviewed"
+  // measured a counter frozen at zero — a gate no source could ever clear, on any path.
+  // A publish is what that number counts.
+  if (publishNow && source?.id) {
+    await client.query(
+      "UPDATE sources SET records_published = records_published + 1 WHERE id = $1",
+      [source.id],
+    );
+  }
 
   // §4.6: look for duplicates now, while the record is fresh in mind.
   const { rows: candidates } = await client.query("SELECT * FROM dedupe_candidates_for($1)", [

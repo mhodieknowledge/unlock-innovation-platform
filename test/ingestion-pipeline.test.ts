@@ -220,7 +220,11 @@ describe("the pipeline with every provider disabled (NO_AI)", () => {
     expect(rows[0].n).toBe(0);
   });
 
-  it("publishes nothing at all — §4.9 needs a link check first", async () => {
+  it("publishes nothing from a source nobody has vetted", async () => {
+    // Migration 0031 lets a VETTED source publish on this pass. This fixture's source is
+    // not one, so §4.9's answer is unchanged: a person looks at it. The auto_publish
+    // path has its own coverage in supabase/tests/ingestion.sql, against the routing
+    // function that decides it.
     const { rows } = await client.query(
       "SELECT DISTINCT status::text FROM opportunities WHERE source_id = $1",
       [sourceId],
