@@ -1,0 +1,419 @@
+---
+// The public profile tab. UX_FLOWS.md §8.1, PRODUCT_SPEC.md §16, COLLABORATION_SYSTEM.md §5.
+//
+// "Defaults to `private` with a clear explanation of the three visibility levels and exactly
+// who can see what at each." The explanation is the page: three radio buttons, each with the
+// sentence that says who gets to see the thing, because a visibility control whose meaning you
+// have to infer is a control people set wrongly.
+//
+// TWO separate opt-ins, deliberately. Visibility decides who may read the page; `indexable`
+// decides whether a search engine may. SEO.md §1: "A user who fills in a profile has not
+// consented to being found on Google." The second checkbox only appears once the first is
+// `public`, because it means nothing otherwise.
+//
+// NOT on this page, and not on the public one either: skills, technologies and interests.
+// COLLABORATION_SYSTEM.md §5.2 lists them among a public profile's contents, and §5.2's own
+// next paragraph forbids showing "any eligibility-profile field" — which is the only place
+// this schema holds them (DATA_MODEL.md §2 gives the public layer no skills column, and
+// PRODUCT_SPEC.md §12 keeps the private layer private). The data model wins: a headline and
+// `open_to` carry what a room-mate needs, and the private layer stays private.
+
+import Base from "../../layouts/Base.astro";
+import { createAuthClient, getSessionUser, socialWritesAllowed } from "../../lib/auth";
+import { getEntryPoints } from "../../lib/db";
+import { reportError } from "../../lib/errors";
+import { resolveLowData } from "../../lib/lowdata";
+
+export const prerender = false;
+
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const user = await getSessionUser(Astro.cookies, env);
+
+if (!user) {
+  return Astro.redirect(`/signin?returnTo=${encodeURIComponent(Astro.url.pathname)}`, 302);
+}
+
+const client = createAuthClient(Astro.cookies, env);
+let flash = "";
+let flashKind: "ok" | "error" = "ok";
+
+/** DATA_MODEL.md §2's own list, which is the vocabulary and not an example. */
+const OPEN_TO: [string, string][] = [
+  ["hackathon_teams", "Joining or forming a hackathon team"],
+  ["projects", "Working on somebody's project"],
+  ["research", "Research collaboration"],
+  ["mentoring", "Mentoring someone newer"],
+];
+
+const VISIBILITIES: [string, string, string][] = [
+  [
+    "private",
+    "Private",
+    "Nobody can open your page. You can use everything here — search, eligibility, the tracker, digests — with no public profile at all.",
+  ],
+  [
+    "discoverable_in_rooms",
+    "Visible inside team rooms",
+    "Only people who have declared interest in the same opportunity as you can see your name, country and headline. Nobody else can open your page.",
+  ],
+  [
+    "public",
+    "Public",
+    "Anyone with the link can open your page. Your email, your location beyond a city, and everything in your eligibility details stay hidden at every level.",
+  ],
+];
+
+/**
+ * A public profile is a SOCIAL surface, so it is gated by §22.1's social rule and not the
+ * personal one: an account that is restricted, or has not confirmed 18+, gets no public page.
+ * The tracker and the eligibility profile stay available to them, which is the distinction
+ * §22.1 draws.
+ */
+const writes = socialWritesAllowed(user);
+
+if (client && Astro.request.method === "POST" && writes.allowed) {
+  try {
+    const form = await Astro.request.formData();
+    const text = (key: string, max: number) => {
+      const value = String(form.get(key) ?? "").trim();
+      return value ? value.slice(0, max) : null;
+    };
+    const url = (key: string) => {
+      const value = text(key, 500);
+      if (!value) return null;
+      // Only http(s). A `javascript:` or `data:` URL on a page other people open is a stored
+      // XSS vector even with a strict CSP, and nothing legitimate needs another scheme here.
+      return /^https?:\/\/\S+$/i.test(value) ? value : null;
+    };
+
+    const handle = String(form.get("handle") ?? "").trim().toLowerCase();
+    const visibility = String(form.get("visibility") ?? "private");
+    const rejectedUrls = (["github_url", "portfolio_url", "other_url"] as const).filter(
+      (key) => String(form.get(key) ?? "").trim() !== "" && url(key) === null,
+    );
+
+    if (!VISIBILITIES.some(([value]) => value === visibility)) {
+      throw new Error("unknown visibility");
+    }
+
+    // The handle and the display name live on `users`; everything else on `profiles`. Two
+    // writes, and the handle goes first: it is the one that can be refused (migration 0023
+    // normalises it, refuses a reserved one, and the unique index refuses a taken one), and a
+    // saved profile under a handle that was rejected would be a page with no address.
+    if (handle !== (user.handle ?? "")) {
+      const { error } = await client
+        .from("users")
+        .update({ handle: handle === "" ? null : handle })
+        .eq("id", user.id);
+      if (error) {
+        flashKind = "error";
+        flash = /duplicate|unique/i.test(error.message)
+          ? "That handle is taken. Try another."
+          : error.message.replace(/^.*?:\s*/, "");
+      }
+    }
+
+    if (flashKind === "ok") {
+      const displayName = text("display_name", 80);
+      const { error: nameError } = await client
+        .from("users")
+        .update({ display_name: displayName })
+        .eq("id", user.id);
+      if (nameError) throw new Error(nameError.message);
+
+      const country = text("country_iso2", 2);
+      const hours = Number(String(form.get("availability_hours_per_week") ?? "").trim());
+
+      // Upsert, because a profile row may never have existed: PRODUCT_SPEC.md §16.1 lets
+      // somebody use the whole product without one, so this page is often its first write.
+      const { error } = await client.from("profiles").upsert(
+        {
+          user_id: user.id,
+          visibility,
+          // Never silently true: a visibility change away from public takes the search-engine
+          // opt-in with it, because "indexable but not readable" is a state nobody chose.
+          indexable: visibility === "public" && form.get("indexable") === "on",
+          headline: text("headline", 120),
+          bio: text("bio", 1000),
+          country_iso2: country ? country.toUpperCase() : null,
+          city: text("city", 80),
+          github_url: url("github_url"),
+          portfolio_url: url("portfolio_url"),
+          other_url: url("other_url"),
+          open_to: OPEN_TO.map(([value]) => value).filter((value) => form.get(`open_to:${value}`) === "on"),
+          availability_hours_per_week:
+            Number.isFinite(hours) && hours > 0 ? Math.min(Math.trunc(hours), 80) : null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" },
+      );
+      if (error) throw new Error(error.message);
+
+      flash =
+        rejectedUrls.length > 0
+          ? "Saved. One or more links were dropped: a link has to start with http:// or https://."
+          : visibility === "private"
+            ? "Saved. Your page is private — nobody else can open it."
+            : "Saved.";
+      if (rejectedUrls.length > 0) flashKind = "error";
+    }
+  } catch (err) {
+    await reportError(err, { route: "/you/profile" }, env);
+    flashKind = "error";
+    flash = "We couldn't save that. Nothing was lost — try again.";
+  }
+}
+
+const { data: row } = client
+  ? await client
+      .from("profiles")
+      .select(
+        "visibility, indexable, headline, bio, country_iso2, city, github_url, portfolio_url, other_url, open_to, availability_hours_per_week",
+      )
+      .eq("user_id", user.id)
+      .maybeSingle()
+  : { data: null };
+
+// Re-read, because the handle may have just changed and the header and the link below both
+// show it.
+const { data: account } = client
+  ? await client.from("users").select("handle, display_name").eq("id", user.id).maybeSingle()
+  : { data: null };
+
+const profile = (row ?? {}) as Record<string, unknown>;
+const me = (account ?? {}) as { handle?: string | null; display_name?: string | null };
+const visibility = String(profile["visibility"] ?? "private");
+const openTo = (profile["open_to"] as string[] | undefined) ?? [];
+const readOnly = !writes.allowed;
+
+const { countries } = await getEntryPoints(env);
+
+const lowData = resolveLowData({
+  cookies: Astro.cookies,
+  request: Astro.request,
+  accountPreference: user.low_data_mode,
+}).on;
+---
+
+<Base title="Your public profile" noindex user={user} lowData={lowData}>
+  <h1 class="text-title font-semibold">Your public profile</h1>
+  <p class="prose-measure mt-2 text-dense text-ink-2">
+    Off by default, and it can stay off. Nothing here is required to use the rest of the
+    product, and nothing from your eligibility details ever appears on it.
+  </p>
+
+  {
+    flash && (
+      <p
+        class={`mt-3 border-l-[3px] p-3 text-dense ${
+          flashKind === "ok"
+            ? "border-eligible bg-eligible-wash text-eligible"
+            : "border-danger bg-noteligible-wash text-danger"
+        }`}
+        role="status"
+      >
+        {flash}
+      </p>
+    )
+  }
+
+  {
+    readOnly && (
+      <p class="mt-3 border-l-[3px] border-warning bg-unclear-wash p-3 text-dense">
+        {writes.reason}
+      </p>
+    )
+  }
+
+  {
+    visibility !== "private" && me.handle && (
+      <p class="mt-3 text-dense">
+        Your page: <a href={`/b/${me.handle}`} class="text-brand">/b/{me.handle}</a>
+      </p>
+    )
+  }
+
+  <form method="post" class="mt-6 max-w-xl space-y-6">
+    <fieldset class="border border-line p-3">
+      <legend class="px-1 text-micro font-semibold text-ink-2">Who can see it</legend>
+      {
+        VISIBILITIES.map(([value, label, explanation]) => (
+          <label class="mt-2 flex gap-3 first:mt-0">
+            <input
+              type="radio"
+              name="visibility"
+              value={value}
+              checked={visibility === value}
+              class="mt-1 h-5 w-5 shrink-0"
+            />
+            <span>
+              <span class="block font-semibold">{label}</span>
+              <span class="block text-meta text-ink-2">{explanation}</span>
+            </span>
+          </label>
+        ))
+      }
+
+      <label class="mt-4 flex gap-3 border-t border-line pt-3">
+        <input
+          type="checkbox"
+          name="indexable"
+          checked={profile["indexable"] === true}
+          class="mt-1 h-5 w-5 shrink-0"
+        />
+        <span>
+          <span class="block font-semibold">Let search engines index it</span>
+          <span class="block text-meta text-ink-2">
+            Separate from the choice above, and off unless you turn it on. Only applies when
+            your page is public. With this off your page carries <code>noindex</code>, so
+            Google and Bing leave it alone.
+          </span>
+        </span>
+      </label>
+    </fieldset>
+
+    <label class="block">
+      <span class="block text-micro font-semibold text-ink-2">Your address on the site</span>
+      <span class="mt-1 flex items-center gap-1">
+        <span class="text-dense text-ink-2">/b/</span>
+        <input
+          name="handle"
+          value={me.handle ?? ""}
+          maxlength="30"
+          placeholder="tadiwa-m"
+          class="h-11 w-full rounded-row border border-line px-3"
+        />
+      </span>
+      <span class="mt-1 block text-meta text-ink-2">
+        Letters, numbers, hyphens and underscores. This is the only part of your page that
+        cannot be changed casually — a link somebody has shared stops working.
+      </span>
+    </label>
+
+    <label class="block">
+      <span class="block text-micro font-semibold text-ink-2">Display name</span>
+      <input
+        name="display_name"
+        value={me.display_name ?? ""}
+        maxlength="80"
+        class="mt-1 h-11 w-full rounded-row border border-line px-3"
+      />
+    </label>
+
+    <label class="block">
+      <span class="block text-micro font-semibold text-ink-2">Headline</span>
+      <input
+        name="headline"
+        value={String(profile["headline"] ?? "")}
+        maxlength="120"
+        placeholder="Backend developer, mostly Go. Two hackathons this year."
+        class="mt-1 h-11 w-full rounded-row border border-line px-3"
+      />
+    </label>
+
+    <label class="block">
+      <span class="block text-micro font-semibold text-ink-2">About you</span>
+      <textarea
+        name="bio"
+        rows="5"
+        maxlength="1000"
+        class="mt-1 w-full rounded-row border border-line p-3">{String(profile["bio"] ?? "")}</textarea
+      >
+    </label>
+
+    <div class="flex flex-wrap gap-3">
+      <label class="block flex-1">
+        <span class="block text-micro font-semibold text-ink-2">Country</span>
+        <select name="country_iso2" class="mt-1 h-11 w-full rounded-row border border-line bg-surface px-2">
+          <option value="">Prefer not to say</option>
+          {
+            countries.map((c) => (
+              <option value={c.iso2} selected={profile["country_iso2"] === c.iso2}>
+                {c.name}
+              </option>
+            ))
+          }
+        </select>
+      </label>
+
+      <label class="block flex-1">
+        <span class="block text-micro font-semibold text-ink-2">City (optional)</span>
+        <input
+          name="city"
+          value={String(profile["city"] ?? "")}
+          maxlength="80"
+          class="mt-1 h-11 w-full rounded-row border border-line px-3"
+        />
+        <span class="mt-1 block text-meta text-ink-2">
+          A city and nothing finer. We never store or look up a precise location.
+        </span>
+      </label>
+    </div>
+
+    <fieldset class="border border-line p-3">
+      <legend class="px-1 text-micro font-semibold text-ink-2">Open to</legend>
+      {
+        OPEN_TO.map(([value, label]) => (
+          <label class="mt-2 flex items-center gap-3 first:mt-0">
+            <input
+              type="checkbox"
+              name={`open_to:${value}`}
+              checked={openTo.includes(value)}
+              class="h-5 w-5 shrink-0"
+            />
+            <span class="text-dense">{label}</span>
+          </label>
+        ))
+      }
+      <label class="mt-4 block border-t border-line pt-3">
+        <span class="block text-micro font-semibold text-ink-2">
+          Hours a week you can give (optional)
+        </span>
+        <input
+          type="number"
+          name="availability_hours_per_week"
+          value={profile["availability_hours_per_week"] as number | undefined}
+          min="1"
+          max="80"
+          class="mt-1 h-11 w-24 rounded-row border border-line px-3"
+        />
+      </label>
+    </fieldset>
+
+    <fieldset class="border border-line p-3">
+      <legend class="px-1 text-micro font-semibold text-ink-2">Links</legend>
+      {
+        (
+          [
+            ["github_url", "Code (GitHub, GitLab, anywhere)"],
+            ["portfolio_url", "Portfolio or site"],
+            ["other_url", "One other link"],
+          ] as [string, string][]
+        ).map(([name, label]) => (
+          <label class="mt-3 block first:mt-0">
+            <span class="block text-micro font-semibold text-ink-2">{label}</span>
+            <input
+              name={name}
+              type="url"
+              value={String(profile[name] ?? "")}
+              maxlength="500"
+              placeholder="https://"
+              class="mt-1 h-11 w-full rounded-row border border-line px-3"
+            />
+          </label>
+        ))
+      }
+      <p class="mt-3 text-meta text-ink-2">
+        No email address, phone number or messaging handle — not here and not anywhere on your
+        page. People reach you through a request, which you can decline or block.
+      </p>
+    </fieldset>
+
+    <button
+      type="submit"
+      disabled={readOnly}
+      class="min-h-11 rounded-row bg-brand px-4 font-semibold text-surface disabled:opacity-50"
+      >Save</button
+    >
+  </form>
+</Base>

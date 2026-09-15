@@ -16,7 +16,7 @@ export const prerender = false;
 
 const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
 
-const REASONS: [string, string][] = [
+const LISTING_REASONS: [string, string][] = [
   ["expired", "This has closed"],
   ["wrong_deadline", "The deadline is wrong"],
   ["wrong_eligibility", "The eligibility is wrong"],
@@ -28,7 +28,24 @@ const REASONS: [string, string][] = [
   ["other", "Other"],
 ];
 
+/**
+ * A person is not a listing, and the reasons are not the same ones. MODERATION_AND_TRUST.md §5
+ * and the `reports` table's `subject_type` both carry `profile`; COLLABORATION_SYSTEM.md §4
+ * requires reporting to be "always available alongside" blocking, which means it has to work
+ * from a profile page and cannot be a form that only understands opportunity slugs.
+ */
+const PROFILE_REASONS: [string, string][] = [
+  ["harassment", "They are harassing or abusing someone"],
+  ["impersonation", "They are pretending to be someone else"],
+  ["spam", "Spam or advertising"],
+  ["inappropriate", "Inappropriate content on their profile"],
+  ["other", "Other"],
+];
+
 const subjectSlug = Astro.url.searchParams.get("subject");
+const profileHandle = Astro.url.searchParams.get("profile");
+const isProfile = profileHandle !== null;
+const REASONS = isProfile ? PROFILE_REASONS : LISTING_REASONS;
 
 type State = "form" | "received" | "error" | "not_found";
 let state: State = "form";
@@ -45,15 +62,34 @@ if (Astro.request.method === "POST") {
     const client = getClient(env);
     if (!client) throw new Error("data layer unavailable");
 
-    const { data: opp } = await client
-      .from("opportunities")
-      .select("id")
-      .eq("slug", slug)
-      .maybeSingle();
+    /**
+     * For a profile, the subject id comes from `public_profile()` — the same function the
+     * profile page renders from. That is deliberate: you can only report a page you could
+     * open, and a handle that returns nothing must not become a report against an id this
+     * form guessed. For a listing it is the slug, as before.
+     */
+    let subjectId: string | null = null;
 
-    if (!opp) {
+    if (isProfile) {
+      const { data: rows } = await client.rpc("public_profile", {
+        p_handle: String(form.get("profile") ?? profileHandle ?? ""),
+      });
+      subjectId =
+        ((rows ?? []) as { user_id?: string }[])[0]?.user_id ?? null;
+    } else {
+      const { data: opp } = await client
+        .from("opportunities")
+        .select("id")
+        .eq("slug", slug)
+        .maybeSingle();
+      subjectId = (opp as { id: string } | null)?.id ?? null;
+    }
+
+    if (!subjectId) {
       state = "not_found";
-      message = "We couldn't find that listing. It may already have been removed.";
+      message = isProfile
+        ? "We couldn't find that profile. It may have been taken down already."
+        : "We couldn't find that listing. It may already have been removed.";
     } else if (!REASONS.some(([value]) => value === chosenReason)) {
       state = "error";
       message = "Please choose a reason.";
@@ -71,8 +107,8 @@ if (Astro.request.method === "POST") {
             : {}),
         },
         body: JSON.stringify({
-          subject_type: "opportunity",
-          subject_id: (opp as { id: string }).id,
+          subject_type: isProfile ? "profile" : "opportunity",
+          subject_id: subjectId,
           reason: chosenReason,
           detail: detail || undefined,
         }),
@@ -101,8 +137,10 @@ if (Astro.request.method === "POST") {
 // SEO.md §1: a user tool, not content.
 ---
 
-<Base title="Report a problem" noindex>
-  <h1 class="text-title font-semibold">Report a problem</h1>
+<Base title={isProfile ? "Report a profile" : "Report a problem"} noindex>
+  <h1 class="text-title font-semibold">
+    {isProfile ? `Report /b/${profileHandle}` : "Report a problem"}
+  </h1>
 
   {
     state === "received" ? (
@@ -118,9 +156,9 @@ if (Astro.request.method === "POST") {
     ) : (
       <>
         <p class="prose-measure mt-2 text-dense text-ink-2">
-          No account needed. If something here is wrong, telling us is the fastest way it gets
-          fixed — and a listing reported as a scam is de-ranked and flagged immediately, before
-          anyone reviews it.
+          {isProfile
+            ? "Reporting is separate from blocking, and you can do both. A report goes to a person, not a machine, and we do not tell the person you reported them that it was you."
+            : "No account needed. If something here is wrong, telling us is the fastest way it gets fixed — and a listing reported as a scam is de-ranked and flagged immediately, before anyone reviews it."}
         </p>
 
         {(state === "error" || state === "not_found") && (
@@ -130,12 +168,16 @@ if (Astro.request.method === "POST") {
         )}
 
         <form method="post" class="mt-4 max-w-lg space-y-4">
-          <label class="block">
-            <span class="block text-micro font-semibold text-ink-2">Listing</span>
+          {isProfile && <input type="hidden" name="profile" value={profileHandle} />}
+
+          <label class={`block ${isProfile ? "hidden" : ""}`}>
+            <span class="block text-micro font-semibold text-ink-2">
+              {isProfile ? "Profile" : "Listing"}
+            </span>
             <input
               name="subject"
-              value={subjectSlug ?? ""}
-              required
+              value={isProfile ? profileHandle : (subjectSlug ?? "")}
+              required={!isProfile}
               placeholder="the listing's address, e.g. agritech-ai-challenge-2026"
               class="mt-1 h-11 w-full rounded-row border border-line px-3"
             />

@@ -145,7 +145,18 @@ DECLARE d jsonb;
 BEGIN
   d := admin_dashboard();
 
-  PERFORM assert_eq('the dashboard counts the open queues', jsonb_array_length(d->'queues'), 2);
+  -- Relative, not absolute, for the same reason as the source count below: this suite shares a
+  -- database with the ones that commit their fixtures, so an exact array length is an assertion
+  -- about what else has run today. It failed exactly that way once. What matters is that both
+  -- of THIS fixture's queues are aggregated, each with its own row.
+  PERFORM assert_eq('the dashboard aggregates one row per open queue',
+    (SELECT count(DISTINCT q->>'queue') >= 2 FROM jsonb_array_elements(d->'queues') q), true);
+  PERFORM assert_eq('including this fixture''s low-confidence queue',
+    (SELECT (q->>'open')::int >= 1 FROM jsonb_array_elements(d->'queues') q
+      WHERE q->>'queue' = 'low_confidence'), true);
+  PERFORM assert_eq('and its paid-cost queue',
+    (SELECT (q->>'open')::int >= 1 FROM jsonb_array_elements(d->'queues') q
+      WHERE q->>'queue' = 'paid_cost'), true);
   PERFORM assert_eq('and names each queue''s SLA from §7''s table',
     (SELECT (q->>'sla_hours')::int FROM jsonb_array_elements(d->'queues') q
       WHERE q->>'queue' = 'paid_cost'),
@@ -173,7 +184,11 @@ END $$;
 DO $$
 DECLARE r record;
 BEGIN
-  SELECT * INTO r FROM admin_queue('low_confidence') LIMIT 1;
+  -- By id, not LIMIT 1. This database is shared with the suites that commit their fixtures, so
+  -- "the first row in the queue" is whatever ran last; asserting the title of a row this test
+  -- did not create is an assertion about somebody else's fixture.
+  SELECT * INTO r FROM admin_queue('low_confidence')
+   WHERE queue_id = 'de000000-0000-0000-0000-000000000001';
   PERFORM assert_eq('a queue item carries the title, not just an id',
                     r.title, 'A record waiting for review');
   PERFORM assert_eq('and enough detail to decide whether to open it',
@@ -188,7 +203,8 @@ BEGIN
     'and a second reviewer cannot take it while the claim is fresh (§3.1)',
     admin_claim_queue_item('de000000-0000-0000-0000-000000000001'), false);
 
-  SELECT * INTO r FROM admin_queue('low_confidence') LIMIT 1;
+  SELECT * INTO r FROM admin_queue('low_confidence')
+   WHERE queue_id = 'de000000-0000-0000-0000-000000000001';
   PERFORM assert_eq('but they can see who has it, rather than seeing a hole in the queue',
                     r.claimed_by_name, 'A Reviewer');
 

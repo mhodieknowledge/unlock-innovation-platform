@@ -25,6 +25,7 @@
     { "pattern": "/organisations/*/manage", "label": "Organisation manage", "totalKb": 150, "jsKb": 40 },
     { "pattern": "/organisations/claims/confirm", "label": "Claim confirmation", "totalKb": 100, "jsKb": 15 },
     { "pattern": "/submit", "label": "Public submission", "totalKb": 100, "jsKb": 15 },
+    { "pattern": "/b/*", "label": "Public profile", "totalKb": 100, "jsKb": 15 },
     { "pattern": "/dashboard", "label": "Authenticated dashboard", "totalKb": 200, "jsKb": 70 },
     { "pattern": "/tracker", "label": "Authenticated dashboard", "totalKb": 200, "jsKb": 70 },
     { "pattern": "/you/*", "label": "Authenticated dashboard", "totalKb": 200, "jsKb": 70 },

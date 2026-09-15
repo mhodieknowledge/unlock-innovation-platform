@@ -1,0 +1,290 @@
+---
+// Somebody else's profile. UX_FLOWS.md §8.2, PRODUCT_SPEC.md §16, COLLABORATION_SYSTEM.md §5.
+//
+// "Reachable only from a room, a team, a project or a direct link (no global index in
+// Phase 1)." There is no index to reach it from, and §5.3 says a builder index unlocks only at
+// 250 public profiles and 1,000 MAU — so this page is only ever arrived at, never browsed to.
+//
+// The four states in §8.2 are three: the profile renders, or the page is a 404. A private
+// profile, a discoverable-in-rooms profile seen by somebody who shares no room, a suspended
+// account and a handle nobody holds are all 404 — deliberately identical, because "this is
+// private" tells a stranger that somebody is there.
+//
+// The decision is made in `public_profile()` (migration 0023), not here. `users.display_name`
+// is owner-only under RLS, so there is no query this page could run that would leak more than
+// the function returns, which is the point of doing it that way.
+//
+// NEVER on this page: an email address, a phone number, a messaging handle, a precise
+// location, anything from the eligibility profile, their tracker, their saved items, or an
+// intent outside its own room (§5.2). Contact is a request, which they can decline or block.
+
+import Base from "../../layouts/Base.astro";
+import Monogram from "../../components/Monogram.astro";
+import { createAuthClient, getSessionUser, socialWritesAllowed } from "../../lib/auth";
+import { getClient } from "../../lib/db";
+import { reportError } from "../../lib/errors";
+import { resolveLowData } from "../../lib/lowdata";
+import { stateLabel, type ProjectState } from "../../lib/projects";
+import { BRAND } from "@mbele/config";
+
+export const prerender = false;
+
+const { handle } = Astro.params;
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+
+const viewer = await getSessionUser(Astro.cookies, env);
+const authed = createAuthClient(Astro.cookies, env);
+
+let flash = "";
+
+// Blocking is a write, and it happens before the read so the page it renders is the page after
+// the block. COLLABORATION_SYSTEM.md §4: "Reporting is separate from blocking and always
+// available alongside it" — reporting goes to /report, which handles its own rate limiting.
+if (Astro.request.method === "POST" && viewer && authed) {
+  try {
+    const form = await Astro.request.formData();
+    if (String(form.get("action") ?? "") === "block") {
+      const blocked = String(form.get("user_id") ?? "");
+      if (blocked && blocked !== viewer.id) {
+        await authed
+          .from("blocks")
+          .insert({ blocker_user_id: viewer.id, blocked_user_id: blocked });
+        flash =
+          "Blocked. They cannot send you anything, and neither of you will appear to the other in a room.";
+      }
+    }
+  } catch (err) {
+    await reportError(err, { route: "/b/[handle]" }, env);
+    flash = "We couldn't do that just now. Nothing has changed.";
+  }
+}
+
+/**
+ * Read as the VIEWER when there is one, so the shared-room rule can see their intents, and as
+ * the anonymous client otherwise. Same function either way — it is `auth.uid()` inside it that
+ * decides what comes back.
+ */
+const reader = authed ?? getClient(env);
+const { data: rows } = reader
+  ? await reader.rpc("public_profile", { p_handle: handle ?? "" })
+  : { data: null };
+
+const profile = ((rows ?? []) as Record<string, unknown>[])[0] ?? null;
+
+if (!profile) {
+  // 404, and nothing about why. See the note at the top of this file.
+  Astro.response.status = 404;
+  Astro.response.headers.set("cache-control", "private, no-store");
+}
+
+const isMe = profile !== null && profile["user_id"] === viewer?.id;
+const indexable = profile?.["indexable"] === true;
+const sharedContext = profile?.["shared_context"] === true;
+
+/**
+ * §5.4: "`noindex` unless `indexable=true`". Two separate opt-ins, and this is the second one.
+ *
+ * The cache header matters as much: a profile page is per-viewer by construction (the
+ * discoverable-in-rooms rule depends on who is asking), so nothing here may be stored by a
+ * shared cache — not even the public variant, because the same URL answers differently for
+ * the next person.
+ */
+if (profile) {
+  Astro.response.headers.set("cache-control", "private, no-store");
+}
+
+// Their public projects, and only those: `unlisted` rests on an unguessable slug (§1.4), so
+// listing one here would be the one thing that makes it guessable.
+const { data: projectRows } =
+  profile && reader
+    ? await reader
+        .from("projects")
+        .select("slug, title, pitch, state")
+        .eq("owner_user_id", profile["user_id"] as string)
+        .eq("visibility", "public")
+        .is("deleted_at", null)
+        .order("last_activity_at", { ascending: false })
+        .limit(10)
+    : { data: null };
+
+const projects = (projectRows ?? []) as {
+  slug: string;
+  title: string;
+  pitch: string | null;
+  state: ProjectState;
+}[];
+
+const OPEN_TO_LABELS: Record<string, string> = {
+  hackathon_teams: "Hackathon teams",
+  projects: "Somebody's project",
+  research: "Research",
+  mentoring: "Mentoring",
+};
+
+const name = (profile?.["display_name"] as string | null) ?? "A builder";
+const headline = (profile?.["headline"] as string | null) ?? null;
+const country = (profile?.["country_name"] as string | null) ?? null;
+const city = (profile?.["city"] as string | null) ?? null;
+const openTo = ((profile?.["open_to"] as string[] | undefined) ?? []).filter(
+  (value) => value in OPEN_TO_LABELS,
+);
+const hours = profile?.["availability_hours_per_week"] as number | null;
+
+const links = (
+  [
+    ["github_url", "Code"],
+    ["portfolio_url", "Portfolio"],
+    ["other_url", "Link"],
+  ] as [string, string][]
+)
+  .map(([key, label]) => [profile?.[key] as string | null, label] as const)
+  .filter(([url]) => typeof url === "string" && /^https?:\/\//i.test(url));
+
+const writes = socialWritesAllowed(viewer);
+
+const lowData = resolveLowData({
+  cookies: Astro.cookies,
+  request: Astro.request,
+  accountPreference: viewer?.low_data_mode ?? null,
+}).on;
+---
+
+{
+  !profile ? (
+    <Base title="Not found" noindex user={viewer} lowData={lowData}>
+      <h1 class="text-display font-bold">There's nothing at this address</h1>
+      <p class="prose-measure mt-3 text-body text-ink-2">
+        Profiles here are off by default, so most people do not have one. If somebody sent you
+        this link, ask them to check it.
+      </p>
+      <p class="mt-4"><a href="/opportunities" class="text-brand">Browse what's open</a></p>
+    </Base>
+  ) : (
+    <Base
+      title={headline ? `${name} — ${headline}` : name}
+      description={
+        headline ??
+        `A builder on ${BRAND.name}${country ? ` in ${country}` : ""}.`
+      }
+      noindex={!indexable}
+      canonical={`/b/${handle}`}
+      user={viewer}
+      lowData={lowData}
+    >
+      {flash && (
+        <p class="mb-4 border-l-[3px] border-eligible bg-eligible-wash p-3 text-dense" role="status">
+          {flash}
+        </p>
+      )}
+
+      <div class="flex items-start gap-3">
+        <Monogram name={name} size="h-11 w-11 text-dense" />
+        <div>
+          <h1 class="text-title font-semibold">{name}</h1>
+          <p class="text-meta text-ink-2">
+            <span>/b/{handle}</span>
+            {(country || city) && (
+              <>
+                <span aria-hidden="true"> · </span>
+                <span>{[city, country].filter(Boolean).join(", ")}</span>
+              </>
+            )}
+          </p>
+        </div>
+      </div>
+
+      {headline && <p class="prose-measure mt-4 text-body">{headline}</p>}
+
+      {profile["bio"] && (
+        <p class="prose-measure mt-3 whitespace-pre-line text-dense text-ink-2">
+          {profile["bio"] as string}
+        </p>
+      )}
+
+      {openTo.length > 0 && (
+        <section class="mt-6" aria-labelledby="open-to">
+          <h2 id="open-to" class="text-subtitle font-semibold">Open to</h2>
+          <p class="mt-2 flex flex-wrap gap-2">
+            {openTo.map((value) => (
+              <span class="rounded-row bg-sunken px-2 py-1 text-meta">{OPEN_TO_LABELS[value]}</span>
+            ))}
+          </p>
+          {hours && (
+            <p class="mt-2 text-meta text-ink-2">
+              About {hours} {hours === 1 ? "hour" : "hours"} a week.
+            </p>
+          )}
+        </section>
+      )}
+
+      {links.length > 0 && (
+        <section class="mt-6" aria-labelledby="links">
+          <h2 id="links" class="text-subtitle font-semibold">Links</h2>
+          <p class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-dense">
+            {links.map(([url, label]) => (
+              <a href={url!} rel="nofollow noopener ugc" class="text-brand">
+                {label}
+              </a>
+            ))}
+          </p>
+        </section>
+      )}
+
+      {projects.length > 0 && (
+        <section class="mt-6" aria-labelledby="projects">
+          <h2 id="projects" class="text-subtitle font-semibold">Public projects</h2>
+          <ul class="mt-2 space-y-2">
+            {projects.map((project) => (
+              <li class="border-b border-line pb-2">
+                <a href={`/projects/${project.slug}`} class="font-semibold text-brand no-underline"
+                  >{project.title}</a
+                >
+                <span class="ml-2 text-meta text-ink-2">{stateLabel(project.state)}</span>
+                {project.pitch && <p class="text-meta text-ink-2">{project.pitch}</p>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <section class="mt-8 border-t border-line pt-4" aria-labelledby="contact">
+        <h2 id="contact" class="text-subtitle font-semibold">Getting in touch</h2>
+
+        {isMe ? (
+          <p class="mt-2 text-dense text-ink-2">
+            This is your own page, as other people see it.{" "}
+            <a href="/you/profile" class="text-brand">Edit it</a>
+          </p>
+        ) : sharedContext && writes.allowed ? (
+          <p class="mt-2 text-dense">
+            <a
+              href={`/requests/new?builder=${profile["user_id"]}&opportunity=${profile["shared_opportunity_slug"]}`}
+              class="inline-flex min-h-11 items-center rounded-row bg-brand px-4 font-semibold text-surface no-underline"
+              >Send a request</a
+            >
+            <span class="ml-2 text-meta text-ink-2">
+              You are both interested in the same opportunity, which is why this is here.
+            </span>
+          </p>
+        ) : (
+          <p class="prose-measure mt-2 text-dense text-ink-2">
+            There is no contact detail on this page, and there never will be. People reach each
+            other here through a request from a shared context — the same hackathon, the same
+            project — so nobody can be messaged out of nowhere.
+          </p>
+        )}
+
+        {viewer && !isMe && (
+          <p class="mt-4 flex flex-wrap items-center gap-4 text-meta">
+            <form method="post" class="inline">
+              <input type="hidden" name="action" value="block" />
+              <input type="hidden" name="user_id" value={profile["user_id"] as string} />
+              <button type="submit" class="min-h-11 text-ink-2 underline">Block this person</button>
+            </form>
+            <a href={`/report?profile=${handle}`} class="text-ink-2 underline">Report this profile</a>
+          </p>
+        )}
+      </section>
+    </Base>
+  )
+}

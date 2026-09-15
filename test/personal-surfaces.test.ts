@@ -109,6 +109,14 @@ afterAll(async () => {
   if (!client) return;
   await actAs(null);
   await client.query("DELETE FROM user_recommendations WHERE user_id IN ($1,$2)", [userId, otherUserId]);
+  // review_queue.subject_id is a plain uuid, not a foreign key — the subject type varies — so
+  // deleting an opportunity leaves any queue row a trigger made for it behind. Two orphans
+  // like that were enough to break an absolute count in supabase/tests/admin.sql, which is
+  // how this line came to exist.
+  await client.query(
+    "DELETE FROM review_queue WHERE subject_id IN (SELECT id FROM opportunities WHERE organisation_id = $1) OR subject_id = $1",
+    [orgId],
+  );
   await client.query("DELETE FROM opportunities WHERE organisation_id = $1", [orgId]);
   await client.query("DELETE FROM organisations WHERE id = $1", [orgId]);
   await client.query("DELETE FROM users WHERE id IN ($1,$2)", [userId, otherUserId]);

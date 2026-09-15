@@ -140,6 +140,14 @@ afterAll(async () => {
   // Everything this test created, removed — it runs against the same database as the
   // other suites.
   if (client) {
+    // The queue rows first: review_queue.subject_id is a plain uuid rather than a foreign key
+    // (the subject type varies), so a queue row outlives the opportunity it points at and
+    // shows up in another suite's counts.
+    await client.query(
+      `DELETE FROM review_queue WHERE subject_id IN (
+         SELECT id FROM opportunities WHERE source_id = $1 OR source_url LIKE $2)`,
+      [sourceId, `${origin}%`],
+    );
     await client.query(
       `DELETE FROM opportunities WHERE source_id = $1 OR source_url LIKE $2`,
       [sourceId, `${origin}%`],
@@ -147,7 +155,19 @@ afterAll(async () => {
     await client.query("DELETE FROM raw_documents WHERE source_id = $1", [sourceId]);
     await client.query("DELETE FROM source_fetches WHERE source_id = $1", [sourceId]);
     await client.query("DELETE FROM sources WHERE id = $1", [sourceId]);
-    await client.query("DELETE FROM organisations WHERE name = 'Kariba Climate Foundation'");
+    // The organisation the pipeline created for this source, and the org_claim queue row it
+    // made alongside it (scripts/ingest.mjs, §4.5). Matched by the domain the fixture server
+    // runs on rather than by name: the name comes out of the extractor and is not this test's
+    // to predict, while the domain is.
+    const { rows: orgs } = await client.query<{ id: string }>(
+      `SELECT id FROM organisations WHERE website_domain = $1 OR name = 'Kariba Climate Foundation'`,
+      [new URL(origin).host],
+    );
+    if (orgs.length > 0) {
+      const ids = orgs.map((row) => row.id);
+      await client.query("DELETE FROM review_queue WHERE subject_id = ANY($1::uuid[])", [ids]);
+      await client.query("DELETE FROM organisations WHERE id = ANY($1::uuid[])", [ids]);
+    }
     await client.end();
   }
   if (server) await new Promise<void>((resolve) => server.close(() => resolve()));
