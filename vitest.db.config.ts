@@ -15,6 +15,10 @@ export default defineConfig({
   test: {
     name: "db",
     include: ["test/**/*.test.ts"],
+    // The repo-level audits live in the same directory and need no database. They run in
+    // `npm test` under the "audit" project; running them here as well would double them and
+    // make this suite's count say something it does not mean.
+    exclude: ["test/**/*.audit.test.ts"],
     fileParallelism: false,
     testTimeout: 180_000,
     hookTimeout: 180_000,
