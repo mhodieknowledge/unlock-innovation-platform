@@ -8,7 +8,43 @@
 // when the impersonator is pretending to be us.
 
 import Base from "../layouts/Base.astro";
+import { faqPage } from "../lib/seo";
 import { BRAND, CONTACT, NO_FEE_STATEMENT } from "@mbele/config";
+
+/**
+ * SEO.md §3 emits `FAQPage` on this page and the verification explainer.
+ *
+ * ONE array, rendered as the page's own section and serialised as the markup. Google requires
+ * FAQ markup to match visible content, and the only way to guarantee that is for the two to be
+ * the same data — a hand-written JSON-LD block beside hand-written prose drifts on the first
+ * copy edit, and the drift is invisible until a manual action arrives.
+ *
+ * These are questions people actually arrive with. "Is this real?" is the single most common
+ * thing anybody thinks looking at an opportunity listing, and it deserves an answer above the
+ * fold of a search result rather than four paragraphs in.
+ */
+const FAQ: { question: string; answer: string }[] = [
+  {
+    question: "Is it a scam if an opportunity asks me to pay a fee to apply?",
+    answer:
+      "Treat it as one. Real grants, scholarships and competitions do not charge you to be considered, and a processing fee, an administration charge or a refundable deposit all mean the same thing. Nothing that charges a fee to apply is ever published here — the database refuses to store it.",
+  },
+  {
+    question: "How do I check whether an opportunity is real?",
+    answer:
+      "Find it on the organisation's own website, starting from a search for the organisation rather than from the link you were sent. If it is not on their site, it is not their programme. Every listing here carries a link to the organiser's own page and the date we last checked it.",
+  },
+  {
+    question: "Someone messaged me claiming to be from this site. Is that you?",
+    answer:
+      "We never message you first about an opportunity, never ask for money, and never ask for your bank or card details. Everything we send you appears in your own messages page on the site, so if it is not there, it did not come from us.",
+  },
+  {
+    question: "I think a listing here is a scam. What happens if I report it?",
+    answer:
+      "A report takes one tap and needs no account. Anything reported as a scam is de-ranked and flagged immediately, before a person looks at it, and anything with a credible safety concern comes down while we check. You do not need to be sure to report something.",
+  },
+];
 
 const SIGNS: [string, string][] = [
   [
@@ -54,6 +90,7 @@ const SIGNS: [string, string][] = [
   title="Spotting scams"
   description="How to tell a real opportunity from a scam, and what we do to keep them off this site."
   canonical="/anti-scam"
+  jsonLd={[faqPage(FAQ)]}
 >
   <article class="max-w-prose">
     <h1 class="text-title font-semibold">Spotting scams</h1>
@@ -112,6 +149,21 @@ const SIGNS: [string, string][] = [
       <li>Anything reported is looked at by a person, and anything with a credible safety concern comes down while we look.</li>
       <li>Reporting takes one tap and needs no account.</li>
     </ul>
+
+    <!-- The same four questions and answers the FAQPage markup carries. One array, two
+         renderings: Google requires the markup to match what a reader sees, and the only way to
+         be sure of that is for there to be nothing to keep in sync. -->
+    <h2 class="mt-8 text-subtitle font-semibold">Questions people ask</h2>
+    <dl class="mt-2 space-y-4">
+      {
+        FAQ.map((entry) => (
+          <div>
+            <dt class="text-dense font-semibold">{entry.question}</dt>
+            <dd class="mt-1 text-dense text-ink-2">{entry.answer}</dd>
+          </div>
+        ))
+      }
+    </dl>
 
     <h2 class="mt-8 text-subtitle font-semibold">Found one here?</h2>
     <p class="mt-2 text-dense">

@@ -80,7 +80,7 @@ describe("CSP stays enforceable", () => {
     ).toBeGreaterThanOrEqual(2);
   });
 
-  it("no built page carries an inline script tag with a body", () => {
+  it("no built page carries an EXECUTABLE inline script tag with a body", () => {
     // Prerendered pages are the ones whose HTML exists at build time, so they can be
     // checked directly rather than through the manifest.
     const clientDir = join(DIST, "client");
@@ -93,10 +93,34 @@ describe("CSP stays enforceable", () => {
     expect(pages.length, "no prerendered pages found to check").toBeGreaterThan(0);
     for (const page of pages) {
       const html = readFileSync(page, "utf8");
-      const inline = [...html.matchAll(/<script(?![^>]*\ssrc=)[^>]*>([\s\S]*?)<\/script>/g)].filter(
-        ([, body]) => body!.trim() !== "",
+      const inline = [...html.matchAll(/<script(?![^>]*\ssrc=)([^>]*)>([\s\S]*?)<\/script>/g)].filter(
+        ([, attributes, body]) => {
+          if (body!.trim() === "") return false;
+          /*
+           * A `type` the browser does not recognise as JavaScript makes the element a DATA BLOCK,
+           * not a script: it is never prepared for execution, so `script-src` never applies to it
+           * and the CSP does not block it. SEO.md §3 requires server-rendered
+           * `application/ld+json` on every public page, and this is how every site with a strict
+           * CSP ships structured data.
+           *
+           * The exemption is deliberately narrow — a type containing "json" — so an inline
+           * module, an inline classic script, or a `type="text/javascript"` block still fails.
+           */
+          const type = /type=["']([^"']+)["']/.exec(attributes!)?.[1] ?? "";
+          return !/json/i.test(type);
+        },
       );
-      expect(inline.map((m) => m[1]!.slice(0, 120)), `${page} carries an inline script`).toEqual([]);
+      expect(inline.map((m) => m[2]!.slice(0, 120)), `${page} carries an executable inline script`).toEqual([]);
     }
+
+    // The data-block exemption above must be exercised by the real build, or it is a hole in
+    // this test rather than a documented exception: the FAQ pages carry JSON-LD (SEO.md §3).
+    const withJsonLd = pages.filter((page) =>
+      readFileSync(page, "utf8").includes('type="application/ld+json"'),
+    );
+    expect(
+      withJsonLd.length,
+      "no prerendered page carries JSON-LD — either structured data stopped being emitted or the exemption above is untested",
+    ).toBeGreaterThan(0);
   });
 });

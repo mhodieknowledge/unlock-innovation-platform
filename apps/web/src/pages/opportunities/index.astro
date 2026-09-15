@@ -156,6 +156,11 @@ Astro.response.headers.set(
 // about what Cloudflare does with `Vary`, and why low-data mode is confined to weight.
 Astro.response.headers.append("vary", "Save-Data, Cookie");
 
+/**
+ * SEO.md §5: filtered views canonicalise to the unfiltered base. Every filter is a view of the
+ * same page — a user tool rather than content of its own — so the canonical is the bare route
+ * whatever the query string says, and §1 marks the filtered variants noindex on top of that.
+ */
 const SORT_LABELS: [string, string][] = [
   ["urgency", "Closing soonest"],
   ["newest", "Newest"],
@@ -167,8 +172,10 @@ const SORT_LABELS: [string, string][] = [
   title="Open opportunities"
   description="Hackathons, grants, fellowships and scholarships open to builders across Africa, with an eligibility verdict for your country."
   noindex={isFiltered}
+  canonical="/opportunities"
   lowData={lowData}
   offlineCapable
+  feed={{ path: "/feeds/closing-soon.xml", title: "Closing this week" }}
 >
   <h1 class="text-title font-semibold">Open opportunities</h1>
 

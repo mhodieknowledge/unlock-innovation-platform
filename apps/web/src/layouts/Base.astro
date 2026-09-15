@@ -16,6 +16,26 @@ interface Props {
   noindex?: boolean;
   canonical?: string;
   /**
+   * Server-rendered JSON-LD. SEO.md §3: "Server-rendered JSON-LD on every public page. No
+   * client-side injection."
+   *
+   * An array, because a page carries several graphs — a BreadcrumbList plus the thing the page
+   * is about. Each becomes its own `application/ld+json` block, which is what the validators
+   * expect and what keeps one malformed graph from taking the others with it.
+   *
+   * `application/ld+json` is a data block, not a script: the CSP's `script-src 'self'` does not
+   * apply to it because the browser never executes it (see apps/web/test/csp.test.ts, which
+   * asserts no EXECUTABLE inline script exists).
+   */
+  jsonLd?: unknown[];
+  /** §4's Open Graph type. `article` for a page about one thing, `website` otherwise. */
+  ogType?: "website" | "article";
+  /**
+   * An RSS feed this page has. SEO.md §7 makes feeds a first-class distribution channel, and
+   * autodiscovery is how a reader's client finds one without being told it exists.
+   */
+  feed?: { path: string; title: string };
+  /**
    * Passed in by pages that have already loaded a session, so the header can show
    * where to go next.
    *
@@ -50,12 +70,28 @@ const {
   description,
   noindex = false,
   canonical,
+  jsonLd = [],
+  ogType = "website",
+  feed,
   user = null,
   unread = 0,
   lowData = false,
   offlineCapable = false,
 } = Astro.props;
 const fullTitle = title === BRAND.name ? title : `${title} | ${BRAND.name}`;
+
+/**
+ * SEO.md §4: og:title, og:description, og:url, og:type, og:site_name, twitter:card=summary.
+ *
+ * `summary`, not `summary_large_image`, and one static card site-wide — §4's `[PR]` decision.
+ * "The title and description carry the specificity. This trades a marginal click-through gain
+ * for a real, repeated bandwidth saving, which is the correct trade for this audience."
+ *
+ * The URL comes from the request, so a preview deployment does not advertise the production
+ * host and a local run does not advertise a domain that does not resolve.
+ */
+const ogUrl = new URL(canonical ?? Astro.url.pathname, Astro.url).href;
+const ogImage = new URL("/og.png", Astro.url).href;
 ---
 
 <!doctype html>
@@ -75,6 +111,41 @@ const fullTitle = title === BRAND.name ? title : `${title} | ${BRAND.name}`;
     {noindex && <meta name="robots" content="noindex, nofollow" />}
     {canonical && <link rel="canonical" href={canonical} />}
     <meta name="color-scheme" content="light" />
+
+    {
+      /* §4. Emitted on every page including the noindex ones: a link shared into WhatsApp or
+         Telegram renders a preview whether or not Google may index the page, and a private page
+         with no preview at all looks broken to the person who shared it. */
+      !noindex && (
+        <>
+          <meta property="og:title" content={fullTitle} />
+          {description && <meta property="og:description" content={description} />}
+          <meta property="og:url" content={ogUrl} />
+          <meta property="og:type" content={ogType} />
+          <meta property="og:site_name" content={BRAND.name} />
+          <meta property="og:image" content={ogImage} />
+          <meta name="twitter:card" content="summary" />
+        </>
+      )
+    }
+
+    {
+      feed && (
+        <link
+          rel="alternate"
+          type="application/rss+xml"
+          title={feed.title}
+          href={feed.path}
+        />
+      )
+    }
+
+    {
+      /* SEO.md §3. A data block, never executed — see the note on the `jsonLd` prop. */
+      jsonLd.map((graph) => (
+        <script type="application/ld+json" set:html={JSON.stringify(graph)} />
+      ))
+    }
     {
       /* PRODUCT_SPEC.md §25.3: installable. The manifest is 400 bytes and static; the
          service worker is registered only on the pages that benefit (below). */

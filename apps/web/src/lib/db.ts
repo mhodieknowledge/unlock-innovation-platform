@@ -185,15 +185,18 @@ export async function getOpportunity(
  * default sort is urgency, never relevance alone — this is a deadline product.
  */
 export async function listOpportunities(
-  options: { limit?: number; countryIso2?: string } = {},
+  options: { limit?: number; offset?: number; countryIso2?: string; categoryCode?: string } = {},
   env: Env = {},
 ): Promise<{ ok: true; data: OpportunityRow[] } | { ok: false; reason: "unavailable" }> {
   const client = getClient(env);
   if (!client) return { ok: false, reason: "unavailable" };
 
+  const limit = Math.min(options.limit ?? 20, 50);
+  const offset = Math.max(options.offset ?? 0, 0);
+
   let query = client
     .from("opportunities")
-    .select(OPPORTUNITY_FIELDS)
+    .select(options.categoryCode ? fieldsWithInner(["categories"]) : OPPORTUNITY_FIELDS)
     .eq("status", "published")
     // The same three exclusions `search_candidates` applies (migration 0014): a deleted
     // record, a record merged into another, and a record whose deadline has passed are not
@@ -203,7 +206,9 @@ export async function listOpportunities(
     .is("duplicate_of", null)
     .or(`deadline_at.is.null,deadline_at.gt.${new Date().toISOString()}`)
     .order("deadline_at", { ascending: true, nullsFirst: false })
-    .limit(Math.min(options.limit ?? 20, 50));
+    .range(offset, offset + limit - 1);
+
+  if (options.categoryCode) query = query.eq("categories.code", options.categoryCode);
 
   if (options.countryIso2) {
     // Africa-wide and global scopes are open to everyone, so a country filter
@@ -542,6 +547,28 @@ export async function getCountry(
   return data as unknown as CountryRef;
 }
 
+/** By slug, for the country pages: SEO.md §5 keeps URLs lowercase, hyphenated and stable. */
+export async function getCountryBySlug(
+  slug: string | undefined,
+  env: Env = {},
+): Promise<CountryRef | null> {
+  const clean = (slug ?? "").trim().toLowerCase();
+  if (!/^[a-z-]{2,60}$/.test(clean)) return null;
+
+  const client = getClient(env);
+  if (!client) return null;
+
+  const { data, error } = await client
+    .from("countries")
+    .select("iso2, name, slug")
+    .eq("slug", clean)
+    .eq("is_african", true)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return data as unknown as CountryRef;
+}
+
 export interface EntryPoints {
   countries: CountryRef[];
   categories: { code: string; name: string; slug: string }[];
@@ -606,6 +633,196 @@ export async function getLastVerifiedAt(env: Env = {}): Promise<string | null> {
 
   if (error || !data) return null;
   return (data as { last_verified_at: string | null }).last_verified_at;
+}
+
+export interface CountryCount {
+  iso2: string;
+  name: string;
+  slug: string;
+  region: string;
+  /** Everything a reader there can enter, including Africa-wide and global. */
+  open_count: number;
+  /** Only what names the country explicitly. UX_FLOWS.md §13 shows both numbers. */
+  specific_count: number;
+  soonest_deadline: string | null;
+}
+
+/** SEO.md §2. All 54, including the ones with nothing of their own. */
+export async function getCountryCounts(env: Env = {}): Promise<CountryCount[]> {
+  const client = getClient(env);
+  if (!client) return [];
+  const { data, error } = await client.rpc("country_open_counts");
+  return error ? [] : ((data ?? []) as unknown as CountryCount[]);
+}
+
+export interface MatrixCell {
+  iso2: string;
+  country_name: string;
+  country_slug: string;
+  category_code: string;
+  category_name: string;
+  category_slug: string;
+  open_count: number;
+}
+
+/**
+ * The country × category matrix, as counts. SEO.md §2.
+ *
+ * The 5-item floor is NOT applied here or in the SQL: `SEO_MATRIX_FLOOR` in @mbele/config is the
+ * single place it lives, and the route and the sitemap both read it. A floor applied in three
+ * places is a floor that will differ in one of them, and the symptom would be a sitemap
+ * advertising pages that redirect.
+ */
+export async function getMatrixCells(
+  iso2: string | null,
+  env: Env = {},
+): Promise<MatrixCell[]> {
+  const client = getClient(env);
+  if (!client) return [];
+  const { data, error } = await client.rpc("country_category_counts", {
+    p_iso2: iso2 ? iso2.toUpperCase() : null,
+  });
+  return error ? [] : ((data ?? []) as unknown as MatrixCell[]);
+}
+
+export interface CategoryCount {
+  code: string;
+  name: string;
+  slug: string;
+  open_count: number;
+  soonest_deadline: string | null;
+}
+
+export async function getCategoryCounts(env: Env = {}): Promise<CategoryCount[]> {
+  const client = getClient(env);
+  if (!client) return [];
+  const { data, error } = await client.rpc("category_open_counts");
+  return error ? [] : ((data ?? []) as unknown as CategoryCount[]);
+}
+
+export interface ActiveOrganisation {
+  slug: string;
+  name: string;
+  verification: string;
+  open_count: number;
+}
+
+/** UX_FLOWS.md §13's "organisations active there" — with something open, not merely recorded. */
+export async function getCountryOrganisations(
+  iso2: string,
+  env: Env = {},
+  limit = 12,
+): Promise<ActiveOrganisation[]> {
+  const client = getClient(env);
+  if (!client) return [];
+  const { data, error } = await client.rpc("country_organisations", {
+    p_iso2: iso2.toUpperCase(),
+    p_limit: limit,
+  });
+  return error ? [] : ((data ?? []) as unknown as ActiveOrganisation[]);
+}
+
+/**
+ * Country names for a list of codes, in the order given.
+ *
+ * SEO.md §3's `eligibleRegion` needs names, not codes: `{"@type":"Country","name":"ZW"}` is not
+ * a country name, and a validator that accepts it is doing the reader no favours.
+ */
+export async function getCountryNames(
+  codes: readonly string[],
+  env: Env = {},
+): Promise<string[]> {
+  if (codes.length === 0) return [];
+  const client = getClient(env);
+  if (!client) return [];
+  const { data, error } = await client
+    .from("countries")
+    .select("iso2, name")
+    .in("iso2", codes.map((code) => code.trim().toUpperCase()));
+  if (error || !data) return [];
+  const byCode = new Map((data as { iso2: string; name: string }[]).map((row) => [row.iso2, row.name]));
+  return codes
+    .map((code) => byCode.get(code.trim().toUpperCase()))
+    .filter((name): name is string => name !== undefined);
+}
+
+export interface SitemapRow {
+  slug: string;
+  lastmod: string | null;
+}
+
+/**
+ * Published, unexpired opportunities for the sitemap. SEO.md §5: "Expired opportunities are
+ * removed from sitemaps on expiry."
+ *
+ * A separate query from `listOpportunities` because a sitemap needs two columns and no joins,
+ * and fetching the whole record 5,000 times to write a URL would be a minute of Worker CPU.
+ */
+export async function getSitemapOpportunities(
+  env: Env = {},
+  limit = 5000,
+): Promise<SitemapRow[]> {
+  const client = getClient(env);
+  if (!client) return [];
+  const { data, error } = await client
+    .from("opportunities")
+    .select("slug, updated_at")
+    .eq("status", "published")
+    .is("deleted_at", null)
+    .is("duplicate_of", null)
+    .or(`deadline_at.is.null,deadline_at.gt.${new Date().toISOString()}`)
+    .order("updated_at", { ascending: false })
+    .limit(limit);
+
+  if (error || !data) return [];
+  return (data as { slug: string; updated_at: string | null }[]).map((row) => ({
+    slug: row.slug,
+    lastmod: row.updated_at,
+  }));
+}
+
+export async function getSitemapOrganisations(env: Env = {}, limit = 5000): Promise<SitemapRow[]> {
+  const client = getClient(env);
+  if (!client) return [];
+  const { data, error } = await client
+    .from("organisations")
+    .select("slug, updated_at")
+    .is("deleted_at", null)
+    .is("duplicate_of", null)
+    .order("updated_at", { ascending: false })
+    .limit(limit);
+
+  if (error || !data) return [];
+  return (data as { slug: string; updated_at: string | null }[]).map((row) => ({
+    slug: row.slug,
+    lastmod: row.updated_at,
+  }));
+}
+
+/**
+ * Public profiles that opted IN to being indexed. SEO.md §1 and COLLABORATION_SYSTEM.md §5.4.
+ *
+ * Both conditions, because they are two decisions: `public` is who may read the page and
+ * `indexable` is whether a search engine may. A sitemap that listed every public profile would
+ * make the second opt-in meaningless — and this file is the one place where forgetting it would
+ * not be visible on any page.
+ */
+export async function getSitemapProfiles(env: Env = {}, limit = 5000): Promise<SitemapRow[]> {
+  const client = getClient(env);
+  if (!client) return [];
+  const { data, error } = await client
+    .from("profiles")
+    .select("updated_at, indexable, visibility, users!inner(handle, account_state, deleted_at)")
+    .eq("visibility", "public")
+    .eq("indexable", true)
+    .eq("users.account_state", "active")
+    .is("users.deleted_at", null)
+    .limit(limit);
+
+  if (error || !data) return [];
+  return (data as unknown as { updated_at: string | null; users: { handle: string | null } }[])
+    .filter((row) => Boolean(row.users?.handle))
+    .map((row) => ({ slug: row.users.handle as string, lastmod: row.updated_at }));
 }
 
 /**

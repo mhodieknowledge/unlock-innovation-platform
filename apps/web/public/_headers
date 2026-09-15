@@ -40,3 +40,8 @@
 
 /icon.svg
   Cache-Control: public, max-age=604800
+
+# The static social card (SEO.md §4). One file for the whole site, fetched by crawlers and
+# messaging apps rather than by readers, and it changes about as often as the brand does.
+/og.png
+  Cache-Control: public, max-age=604800

@@ -1,0 +1,170 @@
+---
+// A category page. SEO.md §1, priority 0.7.
+//
+// The cross-country half of the matrix: what is open in one kind, everywhere. It carries the
+// country breakdown so a reader can get from "grants" to "grants open to me" in one click, which
+// is the pair of pages the long-tail queries in SEO.md's opening actually describe.
+
+import Base from "../../layouts/Base.astro";
+import OpportunityRow from "../../components/OpportunityRow.astro";
+import { getCategoryCounts, getMatrixCells, listOpportunities } from "../../lib/db";
+import { resolveLowData } from "../../lib/lowdata";
+import { breadcrumb, categoryTitle, itemList } from "../../lib/seo";
+import { BRAND, SEO_MATRIX_FLOOR } from "@mbele/config";
+
+export const prerender = false;
+
+const PER_PAGE = 20;
+
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const { slug } = Astro.params;
+
+const categories = await getCategoryCounts(env);
+const category = categories.find((row) => row.slug === slug) ?? null;
+
+// A 404 rendered here rather than a rewrite, for the reason the matrix route explains: a
+// rewrite loses this route's status and produces a soft 404.
+if (!category) {
+  Astro.response.status = 404;
+  Astro.response.headers.set("cache-control", "public, s-maxage=300");
+}
+
+const page = Math.max(1, Math.trunc(Number(Astro.url.searchParams.get("page") ?? "1")) || 1);
+
+const [rows, cells] = category
+  ? await Promise.all([
+      listOpportunities(
+        { categoryCode: category.code, limit: PER_PAGE, offset: (page - 1) * PER_PAGE },
+        env,
+      ),
+      getMatrixCells(null, env),
+    ])
+  : [{ ok: true as const, data: [] }, []];
+
+const listed = rows.ok ? rows.data : [];
+const hasMore = listed.length === PER_PAGE;
+
+// The countries where this kind has enough to justify a page of its own. Same floor, same
+// constant, same reason as the matrix route: a link to a page that redirects is a wasted click
+// and a wasted crawl.
+const countries = category
+  ? cells
+      .filter((cell) => cell.category_slug === category.slug && cell.open_count >= SEO_MATRIX_FLOOR)
+      .slice(0, 24)
+  : [];
+
+const canonical = `/categories/${category?.slug ?? ""}`;
+const pageHref = (n: number) => (n <= 1 ? canonical : `${canonical}?page=${n}`);
+
+if (category) {
+  Astro.response.headers.set("cache-control", "public, s-maxage=900, stale-while-revalidate=3600");
+  Astro.response.headers.append("vary", "Save-Data, Cookie");
+}
+
+const lowData = resolveLowData({ cookies: Astro.cookies, request: Astro.request }).on;
+
+const jsonLd = !category
+  ? []
+  : [
+  breadcrumb(
+    [
+      { name: BRAND.name, path: "/" },
+      { name: "Kinds", path: "/categories" },
+      { name: category.name, path: canonical },
+    ],
+    Astro.url,
+  ),
+  ...(listed.length > 0
+    ? [
+        itemList(
+          `${category.name} open now`,
+          listed.map((row) => ({ name: row.title, path: `/opportunities/${row.slug}` })),
+          Astro.url,
+        ),
+      ]
+    : []),
+];
+---
+
+{
+  !category ? (
+    <Base title="Not found" noindex>
+      <h1 class="text-display font-bold">There's no page for that kind</h1>
+      <p class="prose-measure mt-3 text-body text-ink-2">
+        The link may be mistyped. Every kind we cover is listed on the index.
+      </p>
+      <p class="mt-4"><a href="/categories" class="text-brand">All kinds</a></p>
+    </Base>
+  ) : (
+<Base
+  title={categoryTitle(category.name, category.open_count)}
+  description={`${category.open_count} ${category.name.toLowerCase()} opportunities open to builders across Africa right now, each with the eligibility rules quoted.`}
+  canonical={canonical}
+  noindex={page > 1}
+  lowData={lowData}
+  offlineCapable
+  jsonLd={jsonLd}
+>
+  <nav aria-label="Breadcrumb" class="text-meta text-ink-2">
+    <a href="/categories" class="text-brand">Kinds</a>
+    <span aria-hidden="true"> / </span>
+    <span>{category.name}</span>
+  </nav>
+
+  <h1 class="mt-1 text-title font-semibold">{category.name}</h1>
+
+  <p class="prose-measure mt-2 text-dense text-ink-2">
+    {
+      category.open_count === 0
+        ? "Nothing of this kind is open right now. That is the catalogue being honest rather than a filter being clever."
+        : `${category.open_count} open now, soonest deadline first.`
+    }
+    <a href={`/feeds/categories/${category.slug}.xml`} class="text-brand">RSS</a>
+  </p>
+
+  {
+    listed.length > 0 ? (
+      <div class="mt-4 border-t border-line">
+        {listed.map((row) => <OpportunityRow opportunity={row} lowData={lowData} />)}
+      </div>
+    ) : (
+      <div class="mt-4 border border-line bg-surface p-4">
+        <p class="font-semibold">Nothing open in this kind today.</p>
+        <p class="mt-2 flex flex-wrap gap-4 text-dense">
+          <a href="/opportunities" class="text-brand">Everything open</a>
+          <a href="/submit" class="text-brand">Tell us about one we're missing</a>
+        </p>
+      </div>
+    )
+  }
+
+  {
+    (page > 1 || hasMore) && (
+      <nav class="mt-4 flex flex-wrap items-center gap-4 text-dense" aria-label="Pagination">
+        {page > 1 && <a href={pageHref(page - 1)} rel="prev" class="text-brand">Previous</a>}
+        <span class="text-meta text-ink-2">Page {page}</span>
+        {hasMore && <a href={pageHref(page + 1)} rel="next" class="text-brand">Next</a>}
+      </nav>
+    )
+  }
+
+  {
+    countries.length > 0 && (
+      <section class="mt-10 border-t border-line pt-6" aria-labelledby="by-country">
+        <h2 id="by-country" class="text-subtitle font-semibold">{category.name} by country</h2>
+        <ul class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-dense">
+          {countries.map((cell) => (
+            <li>
+              <a href={`/countries/${cell.country_slug}/${cell.category_slug}`} class="text-brand">
+                {cell.country_name}
+              </a>
+              <span class="text-meta text-ink-2"> ({cell.open_count})</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+</Base>
+  )
+}

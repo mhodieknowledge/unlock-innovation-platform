@@ -186,8 +186,12 @@ describe("the board is the hero (UX_FLOWS.md §2)", () => {
 
   it("links to countries and categories as plain links", async () => {
     const html = await (await home()).text();
-    expect(html).toContain('href="/opportunities?country=ZW"');
-    expect(html).toContain('href="/opportunities?category=ai_challenge"');
+    // The country and category PAGES, not filtered lists: a filtered view is noindex (SEO.md §1)
+    // and the homepage's main entry points must not be links to pages we ask not to be indexed.
+    expect(html).toContain('href="/countries/zimbabwe"');
+    expect(html).toContain('href="/categories/ai-challenges"');
+    expect(html).toContain('href="/countries"');
+    expect(html).toContain('href="/categories"');
     // Plain links, not a control that needs JavaScript to navigate.
     expect(html).not.toMatch(/<select[^>]*name="country"/);
   });

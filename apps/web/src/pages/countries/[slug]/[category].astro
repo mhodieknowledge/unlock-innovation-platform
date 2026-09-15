@@ -1,0 +1,148 @@
+---
+// The country × category cell. SEO.md §2 — "the growth engine", and the one route in this
+// product that is allowed to refuse to exist.
+//
+// "A /countries/[slug]/[category] page is generated and indexed only when it holds >= 5
+// currently-open opportunities. Below that, the route 301-redirects to /countries/[slug]. This
+// prevents thin-content penalties and, more importantly, prevents a human arriving at a page
+// with nothing on it." `[PR]`
+//
+// 301 and not 302: below the floor is a statement about this URL, not about today. The cell may
+// cross the floor next month and the redirect will stop — that is what `s-maxage` is for — but
+// telling a crawler "moved temporarily" invites it to keep the thin URL in the index, which is
+// the outcome the rule exists to prevent.
+//
+// 54 countries × 21 categories is 1,134 possible cells and most of them are empty. This route is
+// the reason that does not become 1,134 thin pages.
+
+import Base from "../../../layouts/Base.astro";
+import OpportunityRow from "../../../components/OpportunityRow.astro";
+import { getCountryBySlug, getMatrixCells, listOpportunities } from "../../../lib/db";
+import { resolveLowData } from "../../../lib/lowdata";
+import { breadcrumb, itemList, matrixTitle } from "../../../lib/seo";
+import { BRAND, SEO_MATRIX_FLOOR, demonymPlural } from "@mbele/config";
+
+export const prerender = false;
+
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const { slug, category: categorySlug } = Astro.params;
+
+const country = await getCountryBySlug(slug, env);
+
+/**
+ * An unknown country slug is a 404 rendered here, not a rewrite: `Astro.rewrite` hands the
+ * response to another route, which loses this route's status code unless that route sets one
+ * too. A page that says "not found" with a 200 beside it is a soft 404, and SEO.md's whole
+ * position on honest status codes is why the merged-record case answers 410 rather than
+ * redirecting.
+ */
+if (!country) {
+  Astro.response.status = 404;
+  Astro.response.headers.set("cache-control", "public, s-maxage=300");
+}
+
+const cells = country ? await getMatrixCells(country.iso2, env) : [];
+const cell = cells.find((row) => row.category_slug === categorySlug) ?? null;
+
+/**
+ * The floor. `SEO_MATRIX_FLOOR` is read from @mbele/config here and in the sitemap that lists
+ * these URLs, so a page that redirects can never be advertised as one that does not.
+ *
+ * An unknown category slug lands here too, and redirects for the same reason a thin one does:
+ * there is nothing at that address, and the country page is the nearest useful thing.
+ */
+if (country && (!cell || cell.open_count < SEO_MATRIX_FLOOR)) {
+  Astro.response.headers.set("cache-control", "public, s-maxage=900");
+  return Astro.redirect(`/countries/${country.slug}`, 301);
+}
+
+const rows =
+  country && cell
+    ? await listOpportunities(
+        { countryIso2: country.iso2, categoryCode: cell.category_code, limit: 50 },
+        env,
+      )
+    : { ok: true as const, data: [] };
+const listed = rows.ok ? rows.data : [];
+
+const canonical = country && cell ? `/countries/${country.slug}/${cell.category_slug}` : "";
+
+if (country && cell) {
+  Astro.response.headers.set("cache-control", "public, s-maxage=900, stale-while-revalidate=3600");
+  Astro.response.headers.append("vary", "Save-Data, Cookie");
+}
+
+const lowData = resolveLowData({ cookies: Astro.cookies, request: Astro.request }).on;
+const people = country ? (demonymPlural(country.iso2) ?? country.name) : "";
+
+const jsonLd =
+  country && cell
+    ? [
+        breadcrumb(
+          [
+            { name: BRAND.name, path: "/" },
+            { name: "Countries", path: "/countries" },
+            { name: country.name, path: `/countries/${country.slug}` },
+            { name: cell.category_name, path: canonical },
+          ],
+          Astro.url,
+        ),
+        itemList(
+          `${cell.category_name} open to ${country.name}`,
+          listed.map((row) => ({ name: row.title, path: `/opportunities/${row.slug}` })),
+          Astro.url,
+        ),
+      ]
+    : [];
+---
+
+{
+  !country || !cell ? (
+    <Base title="Not found" noindex>
+      <h1 class="text-display font-bold">There's nothing at this address</h1>
+      <p class="prose-measure mt-3 text-body text-ink-2">
+        Every African country has a page, and each kind of opportunity has one. This pair does
+        not exist.
+      </p>
+      <p class="mt-4"><a href="/countries" class="text-brand">All 54 country pages</a></p>
+    </Base>
+  ) : (
+<Base
+  title={matrixTitle(cell.category_name, country.iso2, country.name, cell.open_count)}
+  description={`${cell.open_count} ${cell.category_name.toLowerCase()} opportunities open to builders in ${country.name} right now, each with an eligibility verdict and the rules quoted.`}
+  canonical={canonical}
+  lowData={lowData}
+  offlineCapable
+  jsonLd={jsonLd}
+>
+  <nav aria-label="Breadcrumb" class="text-meta text-ink-2">
+    <a href="/countries" class="text-brand">Countries</a>
+    <span aria-hidden="true"> / </span>
+    <a href={`/countries/${country.slug}`} class="text-brand">{country.name}</a>
+    <span aria-hidden="true"> / </span>
+    <span>{cell.category_name}</span>
+  </nav>
+
+  <h1 class="mt-1 text-title font-semibold">{cell.category_name} for {people}</h1>
+
+  <p class="prose-measure mt-2 text-dense text-ink-2">
+    {cell.open_count} open now. Most of these are open across Africa rather than named for
+    {" "}{country.name} — both count, because both are ones you can enter.
+    <a href={`/feeds/countries/${country.slug}.xml`} class="text-brand">RSS</a>
+  </p>
+
+  <div class="mt-4 border-t border-line">
+    {listed.map((row) => <OpportunityRow opportunity={row} lowData={lowData} />)}
+  </div>
+
+  <section class="mt-10 border-t border-line pt-6" aria-labelledby="elsewhere">
+    <h2 id="elsewhere" class="text-subtitle font-semibold">Elsewhere</h2>
+    <ul class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-dense">
+      <li><a href={`/countries/${country.slug}`} class="text-brand">Everything open to {country.name}</a></li>
+      <li><a href={`/categories/${cell.category_slug}`} class="text-brand">{cell.category_name} across Africa</a></li>
+      <li><a href="/opportunities?region=africa_wide" class="text-brand">Everything open Africa-wide</a></li>
+    </ul>
+  </section>
+</Base>
+  )
+}

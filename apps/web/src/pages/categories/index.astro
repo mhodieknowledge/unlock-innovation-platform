@@ -1,0 +1,65 @@
+---
+// The category index. SEO.md §1, priority 0.7.
+//
+// Every active category, with a live count. A category with nothing open is shown with a zero
+// rather than hidden: the taxonomy is a claim about what this product covers, and quietly
+// dropping the empty ones would make the coverage look more even than it is.
+
+import Base from "../../layouts/Base.astro";
+import { getCategoryCounts } from "../../lib/db";
+import { resolveLowData } from "../../lib/lowdata";
+import { breadcrumb, itemList } from "../../lib/seo";
+import { BRAND } from "@mbele/config";
+
+export const prerender = false;
+
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const categories = await getCategoryCounts(env);
+const open = categories.reduce((sum, row) => sum + row.open_count, 0);
+
+Astro.response.headers.set("cache-control", "public, s-maxage=900, stale-while-revalidate=3600");
+Astro.response.headers.append("vary", "Save-Data, Cookie");
+
+const lowData = resolveLowData({ cookies: Astro.cookies, request: Astro.request }).on;
+
+const jsonLd = [
+  breadcrumb([{ name: BRAND.name, path: "/" }, { name: "Kinds", path: "/categories" }], Astro.url),
+  itemList(
+    "Kinds of opportunity",
+    categories.map((row) => ({ name: row.name, path: `/categories/${row.slug}` })),
+    Astro.url,
+  ),
+];
+---
+
+<Base
+  title="Opportunities by kind"
+  description="Hackathons, grants, fellowships, scholarships and the rest — what is open in each, right now."
+  canonical="/categories"
+  lowData={lowData}
+  jsonLd={jsonLd}
+>
+  <h1 class="text-title font-semibold">Opportunities by kind</h1>
+  <p class="prose-measure mt-2 text-dense text-ink-2">
+    {
+      open > 0
+        ? "Every kind we cover, with what is open in it now."
+        : "Every kind we cover. Nothing is published yet, so every number here is zero."
+    }
+  </p>
+
+  <ul class="mt-6 border-t border-line">
+    {
+      categories.map((row) => (
+        <li class="flex items-baseline justify-between gap-4 border-b border-line py-2">
+          <a href={`/categories/${row.slug}`} class="text-dense font-semibold text-brand no-underline">
+            {row.name}
+          </a>
+          <span class="text-meta text-ink-2">
+            {row.open_count === 0 ? "nothing open yet" : `${row.open_count} open`}
+          </span>
+        </li>
+      ))
+    }
+  </ul>
+</Base>

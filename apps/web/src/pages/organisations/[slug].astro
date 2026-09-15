@@ -11,6 +11,8 @@ import Monogram from "../../components/Monogram.astro";
 import OpportunityRow from "../../components/OpportunityRow.astro";
 import { getOrganisation } from "../../lib/db";
 import { resolveLowData } from "../../lib/lowdata";
+import { breadcrumb, itemList, organization } from "../../lib/seo";
+import { BRAND } from "@mbele/config";
 
 export const prerender = false;
 
@@ -34,6 +36,38 @@ Astro.response.headers.append("vary", "Save-Data, Cookie");
 const org = found.ok ? found.data.organisation : null;
 const open = found.ok ? found.data.open : [];
 const past = found.ok ? found.data.past : [];
+
+/**
+ * SEO.md §3: "`Organization` on organisation pages", plus the BreadcrumbList every page carries
+ * and an ItemList of what they have open. The Organization graph is what lets a search engine
+ * connect this page to the organisation's own site — and `sameAs` is a verified fact here, since
+ * the domain is how a claim is matched (migration 0021).
+ */
+const jsonLd = org
+  ? [
+      breadcrumb(
+        [
+          { name: BRAND.name, path: "/" },
+          { name: "Organisations", path: `/organisations/${org.slug}` },
+          { name: org.name, path: `/organisations/${org.slug}` },
+        ],
+        Astro.url,
+      ),
+      organization(org, Astro.url),
+      ...(found.ok && found.data.open.length > 0
+        ? [
+            itemList(
+              `Open from ${org.name}`,
+              found.data.open.map((row) => ({
+                name: row.title,
+                path: `/opportunities/${row.slug}`,
+              })),
+              Astro.url,
+            ),
+          ]
+        : []),
+    ]
+  : [];
 
 const VERIFICATION_COPY: Record<string, string> = {
   verified: "This organisation has confirmed control of its domain.",
@@ -66,6 +100,9 @@ const VERIFICATION_COPY: Record<string, string> = {
       canonical={`/organisations/${org.slug}`}
       lowData={lowData}
       offlineCapable
+      ogType="article"
+      jsonLd={jsonLd}
+      feed={{ path: `/feeds/organisations/${org.slug}.xml`, title: `${org.name} — open calls` }}
     >
       <!-- The monogram stands in for a logo. DESIGN_SYSTEM.md §10 requires the substitution
            in low-data mode; there is no logo pipeline yet, so it is this for everyone, which

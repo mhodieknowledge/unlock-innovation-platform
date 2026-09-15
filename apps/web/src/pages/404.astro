@@ -1,0 +1,30 @@
+---
+// The page for an address that does not exist.
+//
+// Prerendered, so Cloudflare serves it for any unmatched path without waking a Worker — and so
+// it still works when the data layer does not. There is nothing on it that needs a query.
+//
+// It is a real 404: SEO.md cares because a "soft 404" (a 200 response saying "not found")
+// teaches a crawler that every wrong URL is a real page, and it costs a reader the one signal
+// that tells them to check the link rather than wait.
+
+import Base from "../layouts/Base.astro";
+
+export const prerender = true;
+---
+
+<Base title="Not found" noindex>
+  <h1 class="text-display font-bold">There's nothing at this address</h1>
+
+  <p class="prose-measure mt-3 text-body text-ink-2">
+    The link may be mistyped, or the thing it pointed at may have been merged into another
+    listing. Nothing is broken on your side.
+  </p>
+
+  <ul class="prose-measure mt-6 space-y-2 text-dense">
+    <li><a href="/opportunities" class="text-brand">Everything open right now</a></li>
+    <li><a href="/countries" class="text-brand">Browse by country</a></li>
+    <li><a href="/categories" class="text-brand">Browse by kind</a></li>
+    <li><a href="/" class="text-brand">Start from the board</a></li>
+  </ul>
+</Base>

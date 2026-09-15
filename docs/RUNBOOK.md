@@ -479,7 +479,117 @@ and mean nothing.
 
 ---
 
-## 14. What has NOT been exercised
+## 14. SEO surfaces: the matrix, the sitemaps and the feeds
+
+### The five-item floor
+
+`/countries/<country>/<category>` exists only when that cell holds at least five currently-open
+opportunities. Below that it answers **301** to the country page. The number lives in exactly one
+place — `SEO_MATRIX_FLOOR` in `packages/config/src/seo.ts` — and is read by the route that
+redirects and the sitemap that lists these URLs. Change it there and both move together; there is
+nowhere else to change it.
+
+To see the whole matrix as the database sees it:
+
+```sql
+SELECT iso2, category_code, open_count
+  FROM country_category_counts()
+ WHERE open_count >= 5
+ ORDER BY open_count DESC;
+```
+
+If a page you expect is redirecting, that query is the answer: the cell is below five. That is the
+rule working, not a bug. The country page still lists the category and links it to the filtered
+list instead.
+
+### When a count looks wrong
+
+Every count on a country page comes from `country_open_counts()`, and every list on it comes from
+the same predicate — `open_to_country(scope, eligible_countries, iso2)`. If a count and a list
+disagree, one of them is not using that function, and the fix is to make it use it rather than to
+adjust a number.
+
+The predicate is coarse on purpose: it ignores `excluded_countries`. An opportunity open to Africa
+except Egypt is still open to Africa, and an Egyptian reader gets `not_eligible` from the rules
+engine with the sentence that says so. Filtering it out of discovery would hide the record from
+the one person who most needs to see why it is not for them.
+
+### Region-scoped records
+
+A record extracted as `eligibility_scope = 'region'` is expanded to countries **on write**, by the
+trigger in migration 0024, using `regions.member_countries` and nothing else. So `region_codes` is
+provenance and `eligible_countries` is what every filter reads.
+
+The region taxonomy in the seed follows the UN M49 subregions. That means `southern_africa` is
+Botswana, Lesotho, Namibia, Eswatini and South Africa — **Zimbabwe, Zambia, Malawi and Mozambique
+are `eastern_africa`**. It surprises people, including native speakers of the phrase. It is also
+why AI_SYSTEM.md §5 insists region words are expanded from our own table rather than by a model: a
+model asked to list Southern Africa would include Zimbabwe, and the answer has to match the table
+the filters read. If the taxonomy is ever changed, re-run the backfill:
+
+```sql
+UPDATE opportunities SET region_codes = region_codes
+ WHERE eligibility_scope IN ('region','country_list')
+   AND array_length(region_codes, 1) IS NOT NULL;
+```
+
+That is a no-op write whose only purpose is to fire the trigger, which is the intended way to
+re-expand every record.
+
+### Sitemaps
+
+`/sitemap.xml` is an index over six segments: opportunities, countries, categories, organisations,
+public-profiles, static. All six are rendered on demand with an hour of edge cache rather than
+regenerated nightly — a crawler that arrives an hour after we publish should find the new URL, and
+an hour of cache is the whole cost of that.
+
+Segmented because ANALYTICS-style measurement needs it: Search Console reports indexed-page counts
+per sitemap, so "indexed pages by type" (SEO.md §8) is a number you can read rather than infer,
+and the thin-content redirect rule misfiring shows up as one segment collapsing.
+
+`public-profiles.xml` is empty until somebody sets both `visibility = 'public'` and
+`indexable = true`. That is correct output, not a fault: two opt-ins, and the second one defaults
+off.
+
+### robots.txt
+
+Generated from the same `INDEXING` table the pages and the sitemaps read, so a private route added
+there is disallowed without anybody remembering to do it. Three layers protect a private surface —
+`noindex` on the page, `Disallow` here, and no session means no page — because, as SEO.md §1 puts
+it, "one will eventually be misconfigured".
+
+`apps/web/test/seo-route.test.ts` audits the first layer by reading every page file under a private
+prefix, which is how a new private route with no `noindex` gets caught on the day it is written
+rather than after it is indexed.
+
+### Feeds
+
+Four: `/feeds/closing-soon.xml`, and one per country, category and organisation. RSS 2.0, no
+dependency, and deliberately **no `pubDate`** — readers sort and de-duplicate on it, and the honest
+publication date of an opportunity is when the organiser opened it, which we usually do not know.
+Using our own ingestion time would make a six-month-old call look new every time we re-verified it.
+The `guid` is the opportunity URL, which is stable and is what a reader wants de-duplicated on.
+
+SEO.md §7's reason for caring: "our feed can propagate through the ecosystem's existing
+distribution rather than competing with it." The audience already reads opportunities in Telegram
+channels, and a channel bot can consume these directly.
+
+### The social card
+
+One static 1200×630 PNG for the whole site, at `apps/web/public/og.png`, regenerated with
+`npm run og:card`. `scripts/og-card.mjs` writes the PNG itself — zlib and a CRC, about a hundred
+lines — because every library that could draw a flat brand card is tens of megabytes of native
+build for one 5 KB file that changes when the brand does. `twitter:card` is `summary`, so the
+preview stays small on a metered connection (§4's `[PR]` trade).
+
+If the brand name or colour changes: `styles/tokens.css` first, then `scripts/og-card.mjs` and
+`public/icon.svg`, then re-run the generator. A test asserts the file is a real PNG at the right
+size and under 25 KB, so a forgotten regeneration fails the build rather than shipping a stale
+card.
+
+---
+
+## 15. What has NOT been exercised
 
 Stated because a runbook that implies more coverage than it has is worse than a short
 one.
@@ -499,6 +609,9 @@ one.
 | The admin queues with real volume | Every function and page is tested, and the whole review path was exercised against fixture rows (claim, review card, rule editor, publish, reject, merge, report resolution, user action, source activation, flag change, audit read). What has never happened is a reviewer clearing a real queue on a real phone, which is the only way to find out whether one-handed operation actually works. |
 | A Telegram operator alert | The alert fires, records and re-sends correctly against a real breached queue item; the send itself has never left the machine because no bot token is configured. The first live run will either work or return a Telegram error naming the problem. |
 | A Turnstile token | Never seen one. `verifyTurnstile()` is written and called; no key is configured and no widget is in any page (ADR 0002). |
+| Google or Bing actually crawling any of this | **Never.** No domain has been registered and nothing has been deployed, so no crawler has seen a sitemap, a `noindex`, a 301 from a thin matrix cell or a JSON-LD graph. The markup is asserted field by field against SEO.md §3 in `apps/web/test/seo.test.ts`, and the redirect from both sides of the floor in `seo-route.test.ts`, but the Rich Results Test has never been run against a live URL. The first deploy is where a schema property Google requires and we omit will show up as a warning. |
+| An RSS reader or a Telegram channel bot consuming a feed | Never. The XML is asserted to be well-formed RSS 2.0 with absolute links and a stable guid; no reader has subscribed. |
+| The country × category matrix at real scale | The floor, the counts and the redirect are tested against fixtures. What has never happened is 54 × 21 cells over a real catalogue, which is the only thing that will show whether five is the right floor. |
 | The service worker in a real browser | **Never.** The routing rules are asserted path by path in `apps/web/test/service-worker.test.ts`, and the four strategies are 150 lines of hand-written code with no framework in them — but no browser has installed this worker, read a cached opportunity page with the network off, or replayed a queued tracker write. The first real test of it is somebody on a load-shedding schedule, and what it will most likely find is a wrong assumption about `Response.redirect` inside a fetch handler. |
 | The install prompt | Never seen. `beforeinstallprompt` only fires on a served origin over HTTPS with a valid manifest and an icon, and this has never been served. The manifest and the icon are asserted in the same test file; the browser's own engagement heuristics are not something a test can stand in for. |
 | Low-data mode on a metered connection | The 40 KB target is measured on every push, from real rendered HTML and the real built CSS. What has never happened is somebody browsing on a Zimbabwean prepaid bundle and telling us whether the two-fact row is still usable — which is the only question that matters about it. |

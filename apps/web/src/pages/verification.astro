@@ -7,7 +7,30 @@
 // the badge mean something, so it says exactly what was and was not checked.
 
 import Base from "../layouts/Base.astro";
+import { faqPage } from "../lib/seo";
 import { CONTACT } from "@mbele/config";
+
+/**
+ * SEO.md §3's `FAQPage`, from the same array the page renders — see the note in anti-scam.astro
+ * for why those have to be one thing rather than two.
+ */
+const FAQ: { question: string; answer: string }[] = [
+  {
+    question: "What does a verified badge actually promise?",
+    answer:
+      "That a person opened the organiser's own page and confirmed the opportunity is real and open, with the deadline and eligibility matching what the organiser published, on the date shown beside the badge. It promises nothing about whether the programme is any good or whether you will be treated well.",
+  },
+  {
+    question: "Why does my eligibility say unclear instead of yes or no?",
+    answer:
+      "Because the rules did not say. Where a requirement could not be turned into a rule from the organiser's own words, we show unclear and quote the sentence, rather than guessing. An unclear answer with the sentence beside it is more useful than a confident one that is wrong.",
+  },
+  {
+    question: "How current is the information on a listing?",
+    answer:
+      "Every published listing shows the date it was last checked against its source, and listings are re-checked on a schedule that gets shorter as the deadline approaches. A listing we have not been able to confirm recently is labelled as stale rather than quietly served as current.",
+  },
+];
 
 const LEVELS: { level: string; means: string; checked: string }[] = [
   {
@@ -43,6 +66,7 @@ const LEVELS: { level: string; means: string; checked: string }[] = [
   title="What verification means"
   description="Exactly what we check before an opportunity carries a badge, and what a badge does not promise."
   canonical="/verification"
+  jsonLd={[faqPage(FAQ)]}
 >
   <article class="max-w-prose">
     <h1 class="text-title font-semibold">What verification means</h1>
@@ -81,6 +105,18 @@ const LEVELS: { level: string; means: string; checked: string }[] = [
       than trust it. Where we could not turn a requirement into a rule, we say that too, and your
       eligibility reads "unclear" rather than a guess dressed up as an answer.
     </p>
+
+    <h2 class="mt-8 text-subtitle font-semibold">Questions people ask</h2>
+    <dl class="mt-2 space-y-4">
+      {
+        FAQ.map((entry) => (
+          <div>
+            <dt class="text-dense font-semibold">{entry.question}</dt>
+            <dd class="mt-1 text-dense text-ink-2">{entry.answer}</dd>
+          </div>
+        ))
+      }
+    </dl>
 
     <h2 class="mt-8 text-subtitle font-semibold">Found something wrong?</h2>
     <p class="mt-2 text-dense">

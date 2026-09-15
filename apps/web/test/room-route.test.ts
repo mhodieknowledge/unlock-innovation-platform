@@ -166,6 +166,9 @@ const OPPORTUNITY = {
 };
 
 vi.mock("../src/lib/db", () => ({
+  getCountryNames: vi.fn(async (codes: readonly string[]) =>
+    codes.map((code) => ({ ZW: "Zimbabwe", ZM: "Zambia", KE: "Kenya", NG: "Nigeria" })[code] ?? code),
+  ),
   getOpportunity: vi.fn(async () => ({
     ok: true,
     data: { opportunity: OPPORTUNITY, rules: [] },

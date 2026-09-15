@@ -1,0 +1,101 @@
+---
+// The country index. SEO.md §1 (priority 0.8) and §2 — "the growth engine".
+//
+// All 54, with live counts, because §2 generates every country page regardless: "Africa-wide and
+// global opportunities give every country real content." A country with nothing of its own is
+// not hidden here — it is shown with the number that is true for it, which is the difference
+// between a directory and an honest index.
+//
+// PRODUCT_SPEC.md §4.2: `priority_tier` exists for seeding and promotion and is NEVER consulted
+// here. All 54 countries are first-class, in alphabetical order within their region.
+
+import Base from "../../layouts/Base.astro";
+import { getCountryCounts } from "../../lib/db";
+import { resolveLowData } from "../../lib/lowdata";
+import { breadcrumb, itemList } from "../../lib/seo";
+import { BRAND } from "@mbele/config";
+
+export const prerender = false;
+
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+
+const counts = await getCountryCounts(env);
+const total = counts.reduce((sum, row) => Math.max(sum, row.open_count), 0);
+
+Astro.response.headers.set("cache-control", "public, s-maxage=900, stale-while-revalidate=3600");
+Astro.response.headers.append("vary", "Save-Data, Cookie");
+
+const lowData = resolveLowData({ cookies: Astro.cookies, request: Astro.request }).on;
+
+// Region order as PRODUCT_SPEC.md §28 lists them, so the page reads the way the continent is
+// usually described rather than alphabetically across 54 rows.
+const REGION_ORDER = ["northern_africa", "western_africa", "central_africa", "eastern_africa", "southern_africa"];
+const REGION_NAMES: Record<string, string> = {
+  northern_africa: "Northern Africa",
+  western_africa: "Western Africa",
+  central_africa: "Central Africa",
+  eastern_africa: "Eastern Africa",
+  southern_africa: "Southern Africa",
+};
+
+const grouped = REGION_ORDER.map((region) => ({
+  region,
+  name: REGION_NAMES[region] ?? region,
+  countries: counts.filter((row) => row.region === region),
+})).filter((group) => group.countries.length > 0);
+
+// Anything whose region code is not one of the five above still has to appear: a country left
+// off this page has no way in at all.
+const placed = new Set(grouped.flatMap((group) => group.countries.map((c) => c.iso2)));
+const rest = counts.filter((row) => !placed.has(row.iso2));
+
+const jsonLd = [
+  breadcrumb([{ name: BRAND.name, path: "/" }, { name: "Countries", path: "/countries" }], Astro.url),
+  itemList(
+    "African countries",
+    counts.map((row) => ({ name: row.name, path: `/countries/${row.slug}` })),
+    Astro.url,
+  ),
+];
+---
+
+<Base
+  title="Opportunities by country"
+  description="Every African country, with what is open to builders there right now."
+  canonical="/countries"
+  lowData={lowData}
+  jsonLd={jsonLd}
+>
+  <h1 class="text-title font-semibold">Opportunities by country</h1>
+  <p class="prose-measure mt-2 text-dense text-ink-2">
+    {
+      total > 0
+        ? "Each page shows what is open to builders in that country — including everything open across Africa and worldwide, which is most of it."
+        : "Nothing is published yet, so every number here is zero. We would rather show you that than pad the page."
+    }
+  </p>
+
+  {
+    [...grouped, ...(rest.length > 0 ? [{ region: "other", name: "Elsewhere in Africa", countries: rest }] : [])].map(
+      (group) => (
+        <section class="mt-8" aria-labelledby={`region-${group.region}`}>
+          <h2 id={`region-${group.region}`} class="text-subtitle font-semibold">{group.name}</h2>
+          <ul class="mt-2 border-t border-line">
+            {group.countries.map((row) => (
+              <li class="flex items-baseline justify-between gap-4 border-b border-line py-2">
+                <a href={`/countries/${row.slug}`} class="text-dense font-semibold text-brand no-underline">
+                  {row.name}
+                </a>
+                <span class="text-meta text-ink-2">
+                  {row.open_count === 0
+                    ? "nothing open yet"
+                    : `${row.open_count} open${row.specific_count > 0 ? `, ${row.specific_count} named for ${row.name}` : ""}`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ),
+    )
+  }
+</Base>

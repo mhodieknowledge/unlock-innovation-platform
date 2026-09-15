@@ -1,0 +1,318 @@
+---
+// A country page. UX_FLOWS.md §13, SEO.md §2.
+//
+// "The acquisition engine and the most shareable unit in the product. A community leader
+// forwards /countries/zimbabwe to a WhatsApp group; that is the growth loop."
+//
+// Which is why this page is built to be forwarded: server-rendered, under its byte budget, one
+// heading that says what it is, and a count that is true at the moment it was rendered. No
+// personalisation, so it is the same page for everybody who follows the link.
+//
+// §13's three states are all honest about thinness rather than hiding it. A country with two
+// open calls says two, says what that means, and offers the two things worth doing about it:
+// look at what is open Africa-wide, and tell us about a source we are missing.
+
+import Base from "../../layouts/Base.astro";
+import OpportunityRow from "../../components/OpportunityRow.astro";
+import {
+  getCountryBySlug,
+  getCountryCounts,
+  getCountryOrganisations,
+  getMatrixCells,
+  listOpportunities,
+} from "../../lib/db";
+import { deadlineFacts } from "../../lib/deadline";
+import { resolveLowData } from "../../lib/lowdata";
+import { breadcrumb, countryTitle, itemList } from "../../lib/seo";
+import { BRAND, SEO_MATRIX_FLOOR, THIN_COUNTRY_FLOOR } from "@mbele/config";
+
+export const prerender = false;
+
+const PER_PAGE = 20;
+
+const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const { slug } = Astro.params;
+
+const country = await getCountryBySlug(slug, env);
+
+/**
+ * A real 404, not a rewrite to a 200. SEO.md cares: a "soft 404" teaches a crawler that every
+ * wrong URL is a page. The country list is the one thing worth offering instead, because a
+ * mistyped country slug is nearly always a country that does exist.
+ */
+if (!country) {
+  Astro.response.status = 404;
+  Astro.response.headers.set("cache-control", "public, s-maxage=300");
+}
+
+const page = Math.max(1, Math.trunc(Number(Astro.url.searchParams.get("page") ?? "1")) || 1);
+
+const [counts, rows, cells, organisations] = country
+  ? await Promise.all([
+      getCountryCounts(env),
+      listOpportunities(
+        { countryIso2: country.iso2, limit: PER_PAGE, offset: (page - 1) * PER_PAGE },
+        env,
+      ),
+      getMatrixCells(country.iso2, env),
+      getCountryOrganisations(country.iso2, env),
+    ])
+  : [[], { ok: true as const, data: [] }, [], []];
+
+const mine = country ? (counts.find((row) => row.iso2 === country.iso2) ?? null) : null;
+const open = mine?.open_count ?? 0;
+const specific = mine?.specific_count ?? 0;
+const africaWide = Math.max(0, open - specific);
+
+const listed = rows.ok ? rows.data : [];
+const degraded = !rows.ok;
+
+// "Closing this week" is a split of the page's own list, not a second query: the list is already
+// ordered by deadline, so the first rows inside seven days ARE that section.
+const week = listed.filter((row) => {
+  const facts = deadlineFacts({
+    deadline_at: row.deadline_at,
+    deadline_precision: row.deadline_precision as never,
+    opens_at: row.opens_at,
+    is_rolling: row.is_rolling,
+  });
+  return facts.daysRemaining !== null && facts.daysRemaining >= 0 && facts.daysRemaining <= 7;
+});
+const rest = listed.filter((row) => !week.includes(row));
+
+const thin = open > 0 && open < THIN_COUNTRY_FLOOR;
+const empty = open === 0;
+
+// SEO.md §2: only a cell with at least five open opportunities gets a page of its own. The rest
+// link to the filtered list, which is a user tool rather than a page we ask Google to index —
+// and never to the matrix URL, which would redirect straight back here.
+const withPages = cells.filter((cell) => cell.open_count >= SEO_MATRIX_FLOOR);
+const thinner = cells.filter((cell) => cell.open_count < SEO_MATRIX_FLOOR);
+
+const hasMore = listed.length === PER_PAGE;
+const pageHref = (n: number) =>
+  n <= 1 ? `/countries/${country?.slug}` : `/countries/${country?.slug}?page=${n}`;
+
+// SEO.md §1: a paginated view is `noindex, follow` and canonicalises to the unfiltered base.
+const canonical = `/countries/${country?.slug ?? ""}`;
+
+if (country) {
+  Astro.response.headers.set(
+    "cache-control",
+    degraded ? "public, s-maxage=60" : "public, s-maxage=900, stale-while-revalidate=3600",
+  );
+}
+Astro.response.headers.append("vary", "Save-Data, Cookie");
+
+const lowData = resolveLowData({ cookies: Astro.cookies, request: Astro.request }).on;
+
+const jsonLd = [
+  breadcrumb(
+    [
+      { name: BRAND.name, path: "/" },
+      { name: "Countries", path: "/countries" },
+      ...(country ? [{ name: country.name, path: canonical }] : []),
+    ],
+    Astro.url,
+  ),
+  ...(country && listed.length > 0
+    ? [
+        itemList(
+          `Opportunities open to ${country.name}`,
+          listed.map((row) => ({ name: row.title, path: `/opportunities/${row.slug}` })),
+          Astro.url,
+        ),
+      ]
+    : []),
+];
+
+const description = !country
+  ? "That country page does not exist."
+  : open > 0
+    ? `${open} opportunities open to builders in ${country.name} right now, with an eligibility verdict for each one.`
+    : `What is open to builders in ${country.name}. Nothing is published for ${country.name} yet — here is what to do instead.`;
+---
+
+{
+  !country ? (
+    <Base title="Not found" noindex>
+      <h1 class="text-display font-bold">There's no country page at this address</h1>
+      <p class="prose-measure mt-3 text-body text-ink-2">
+        Every African country has one, so this is almost certainly a mistyped link.
+      </p>
+      <p class="mt-4"><a href="/countries" class="text-brand">All 54 country pages</a></p>
+    </Base>
+  ) : (
+<Base
+  title={countryTitle(country.name, open)}
+  description={description}
+  canonical={canonical}
+  noindex={page > 1}
+  lowData={lowData}
+  offlineCapable
+  jsonLd={jsonLd}
+>
+  <nav aria-label="Breadcrumb" class="text-meta text-ink-2">
+    <a href="/countries" class="text-brand">Countries</a>
+    <span aria-hidden="true"> / </span>
+    <span>{country.name}</span>
+  </nav>
+
+  <h1 class="mt-1 text-title font-semibold">Open to {country.name}</h1>
+
+  <p class="prose-measure mt-2 text-dense text-ink-2">
+    {
+      degraded
+        ? "We can't count what's open just now."
+        : empty
+          ? `Nothing is published that is open to ${country.name} yet.`
+          : specific > 0 && africaWide > 0
+            ? `${open} open now: ${specific} named for ${country.name}, plus ${africaWide} open across Africa or worldwide.`
+            : `${open} open now, all of them open across Africa or worldwide rather than named for ${country.name}.`
+    }
+    <a href={`/feeds/countries/${country.slug}.xml`} class="text-brand">RSS</a>
+  </p>
+
+  {
+    /* §13's thin state: an honest note, a link to the wider set, and the one action that
+       actually improves it. Not an apology, and not an empty page dressed up as a full one. */
+    (thin || empty) && (
+      <div class="mt-4 border border-line bg-surface p-4">
+        <p class="font-semibold">
+          {empty
+            ? `We have nothing for ${country.name} yet.`
+            : `This is thin — ${open} open ${open === 1 ? "opportunity" : "opportunities"}.`}
+        </p>
+        <p class="prose-measure mt-1 text-dense text-ink-2">
+          {empty
+            ? "Africa-wide and global calls are open to everyone, and there are usually far more of them than country-specific ones. That is the better place to look today."
+            : "Most of what is open to any one country is open to the whole continent, so the Africa-wide list is usually the fuller one."}
+        </p>
+        <p class="mt-3 flex flex-wrap gap-4 text-dense">
+          <a href="/opportunities?region=africa_wide" class="text-brand">See what's open Africa-wide</a>
+          <a href="/submit" class="text-brand">Tell us about a source we're missing</a>
+        </p>
+      </div>
+    )
+  }
+
+  {
+    week.length > 0 && (
+      <section class="mt-8" aria-labelledby="this-week">
+        <h2 id="this-week" class="text-subtitle font-semibold">Closing this week</h2>
+        <div class="mt-2 border-t border-line">
+          {week.map((row) => (
+            <OpportunityRow opportunity={row} lowData={lowData} />
+          ))}
+        </div>
+      </section>
+    )
+  }
+
+  {
+    rest.length > 0 && (
+      <section class="mt-8" aria-labelledby="all-open">
+        <h2 id="all-open" class="text-subtitle font-semibold">
+          {week.length > 0 ? "Also open" : "Open now"}
+        </h2>
+        <div class="mt-2 border-t border-line">
+          {rest.map((row) => (
+            <OpportunityRow opportunity={row} lowData={lowData} />
+          ))}
+        </div>
+      </section>
+    )
+  }
+
+  {
+    (page > 1 || hasMore) && (
+      <nav class="mt-4 flex flex-wrap items-center gap-4 text-dense" aria-label="Pagination">
+        {page > 1 && (
+          <a href={pageHref(page - 1)} rel="prev" class="text-brand">Previous</a>
+        )}
+        <span class="text-meta text-ink-2">Page {page}</span>
+        {hasMore && (
+          <a href={pageHref(page + 1)} rel="next" class="text-brand">Next</a>
+        )}
+      </nav>
+    )
+  }
+
+  {
+    cells.length > 0 && (
+      <section class="mt-10 border-t border-line pt-6" aria-labelledby="by-kind">
+        <h2 id="by-kind" class="text-subtitle font-semibold">By kind, open to {country.name}</h2>
+        <ul class="mt-2 border-t border-line">
+          {withPages.map((cell) => (
+            <li class="flex items-baseline justify-between gap-4 border-b border-line py-2">
+              <a
+                href={`/countries/${country.slug}/${cell.category_slug}`}
+                class="text-dense font-semibold text-brand no-underline"
+                >{cell.category_name}</a
+              >
+              <span class="text-meta text-ink-2">{cell.open_count} open</span>
+            </li>
+          ))}
+          {thinner.map((cell) => (
+            <li class="flex items-baseline justify-between gap-4 border-b border-line py-2">
+              {/* Below the floor, so there is no page — the filtered list is the honest
+                  destination, and it is a tool rather than a page we ask to be indexed. */}
+              <a
+                href={`/opportunities?country=${country.iso2}&category=${cell.category_code}`}
+                rel="nofollow"
+                class="text-dense text-brand no-underline"
+                >{cell.category_name}</a
+              >
+              <span class="text-meta text-ink-2">{cell.open_count} open</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+
+  {
+    organisations.length > 0 && (
+      <section class="mt-8" aria-labelledby="organisations">
+        <h2 id="organisations" class="text-subtitle font-semibold">
+          Organisations running something open to {country.name}
+        </h2>
+        <ul class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-dense">
+          {organisations.map((org) => (
+            <li>
+              <a href={`/organisations/${org.slug}`} class="text-brand">{org.name}</a>
+              <span class="text-meta text-ink-2"> ({org.open_count})</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+
+  <!-- SEO.md §5: "Country pages cross-link to neighbouring countries and to Africa-wide." A
+       dense, crawlable graph with no link-building effort — and genuinely useful, because a
+       reader in Zambia often qualifies for what is open to Zimbabwe. -->
+  {
+    mine && (
+      <section class="mt-8 border-t border-line pt-6" aria-labelledby="nearby">
+        <h2 id="nearby" class="text-subtitle font-semibold">Nearby</h2>
+        <ul class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-dense">
+          {counts
+            .filter((row) => row.region === mine.region && row.iso2 !== mine.iso2)
+            .slice(0, 12)
+            .map((row) => (
+              <li>
+                <a href={`/countries/${row.slug}`} class="text-brand">{row.name}</a>
+                <span class="text-meta text-ink-2"> ({row.open_count})</span>
+              </li>
+            ))}
+        </ul>
+        <p class="mt-3 text-dense">
+          <a href="/opportunities?region=africa_wide" class="text-brand">Everything open Africa-wide</a>
+        </p>
+      </section>
+    )
+  }
+</Base>
+  )
+}

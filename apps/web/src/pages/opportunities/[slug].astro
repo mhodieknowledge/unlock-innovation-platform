@@ -9,13 +9,19 @@
 
 import Base from "../../layouts/Base.astro";
 import EligibilityCheck from "../../components/EligibilityCheck.svelte";
-import { getClient, getOpportunity } from "../../lib/db";
+import { getClient, getCountryNames, getOpportunity } from "../../lib/db";
 import { getIntentCount, getRoomState } from "../../lib/rooms";
 import { getRelatedProjects, stateLabel, type RelatedProject } from "../../lib/projects";
 import { countdownLabel, countdownWeight, deadlineFacts, freshnessLabel } from "../../lib/deadline";
 import { RULE_OUTCOME_GLYPH } from "../../lib/verdict";
 import { resolveLowData } from "../../lib/lowdata";
-import { NO_FEE_STATEMENT } from "@mbele/config";
+import {
+  breadcrumb,
+  opportunityDescription,
+  opportunityJsonLd,
+  opportunityTitle,
+} from "../../lib/seo";
+import { BRAND, NO_FEE_STATEMENT } from "@mbele/config";
 
 export const prerender = false;
 
@@ -59,6 +65,45 @@ Astro.response.headers.append("vary", "Save-Data, Cookie");
 const detail = found.ok ? found.data : null;
 const opp = detail?.opportunity ?? null;
 const rules = detail?.rules ?? [];
+
+/**
+ * SEO.md §3's structured data, and §4's title and description.
+ *
+ * This is the page the whole SEO strategy rests on — §1 calls it "Yes — primary" — and the two
+ * things that make it rank are the ones the incumbents cannot copy: a title that names the
+ * organisation and the closing date, and markup typed by what the thing actually IS.
+ *
+ * The country names are fetched because `eligibleRegion` needs names rather than ISO codes. A
+ * record with no explicit country list (africa_wide, global) fetches nothing — PRODUCT_SPEC.md
+ * §28 forbids naming "Africa" as a single origin, so there is nothing to name.
+ */
+const countryNames = detail
+  ? await getCountryNames(detail.opportunity.eligible_countries.slice(0, 12), env)
+  : [];
+
+const structured = detail ? opportunityJsonLd(detail.opportunity, Astro.url, countryNames) : null;
+const graphs = detail
+  ? [
+      breadcrumb(
+        [
+          { name: BRAND.name, path: "/" },
+          { name: "Opportunities", path: "/opportunities" },
+          ...(detail.opportunity.categories
+            ? [
+                {
+                  name: detail.opportunity.categories.name,
+                  path: `/categories/${detail.opportunity.categories.slug}`,
+                },
+              ]
+            : []),
+          { name: detail.opportunity.title, path: `/opportunities/${detail.opportunity.slug}` },
+        ],
+        Astro.url,
+      ),
+      ...(structured ? [structured] : []),
+    ]
+  : [];
+
 
 /**
  * The room entry point, and the CTA that stands in for it below the floor.
@@ -142,12 +187,14 @@ const factGrid: [string, string][] = opp
     </Base>
   ) : (
     <Base
-      title={opp.title}
-      description={opp.summary ?? undefined}
+      title={opportunityTitle(opp)}
+      description={opportunityDescription(opp, countryNames)}
       noindex={isExpired}
       canonical={`/opportunities/${opp.slug}`}
       lowData={lowData}
       offlineCapable
+      ogType="article"
+      jsonLd={graphs}
     >
       {
         isDisputed && (

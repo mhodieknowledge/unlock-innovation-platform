@@ -55,6 +55,14 @@ const BUDGETS = {
   // Phase 9. The board, measured with the eight rows §2 specifies and the whole country and
   // category link list under it.
   homepage: budgetFor("Homepage", "/"),
+  // Phase 10. The country page is measured with a full page of rows, every category cell and a
+  // dozen organisations; the index with all 54 countries; the matrix cell at its 50-row cap.
+  countryIndex: budgetFor("Country index", "/countries"),
+  country: budgetFor("Country page", "/countries/*"),
+  matrixCell: budgetFor("Country × category", "/countries/*/*"),
+  categoryIndex: budgetFor("Category index", "/categories"),
+  category: budgetFor("Category page", "/categories/*"),
+  publicProfile: budgetFor("Public profile", "/b/*"),
   detail: budgetFor("Opportunity detail", "/opportunities/*"),
   list: budgetFor("Opportunity list / search", "/opportunities"),
   organisation: budgetFor("Organisation page", "/organisations/*"),
@@ -620,7 +628,37 @@ const ADMIN_AUDIT = Array.from({ length: 50 }, (_, i) => ({
 }));
 
 /** Every RPC the Phase 5 pages call, with a filled-to-the-cap answer for each. */
+/**
+ * A public profile at its maximum: a 120-character headline, a 1,000-character bio, every link
+ * and every `open_to` value. The CHECK constraints in migration 0004 are the caps, so this is the
+ * heaviest profile the database will store — a thin one would flatter the budget.
+ */
+const PROFILE_ROW = [
+  {
+    user_id: "bbbb2222-2222-2222-2222-222222222222",
+    handle: "tadiwa-m",
+    display_name: "Tadiwa Moyo-Chikwanda",
+    visibility: "public",
+    indexable: true,
+    headline: "h".repeat(120),
+    bio: "b".repeat(1000),
+    country_iso2: "ZW",
+    country_name: "Zimbabwe",
+    country_slug: "zimbabwe",
+    city: "Bulawayo",
+    github_url: "https://github.example/tadiwa-moyo-chikwanda",
+    portfolio_url: "https://portfolio.example/tadiwa-moyo-chikwanda",
+    other_url: "https://writing.example/tadiwa-moyo-chikwanda",
+    open_to: ["hackathon_teams", "projects", "research", "mentoring"],
+    availability_hours_per_week: 12,
+    shared_context: true,
+    shared_opportunity_slug: "worst-case-1",
+    updated_at: "2026-09-01T00:00:00Z",
+  },
+];
+
 const ROOM_RPC: Record<string, unknown> = {
+  public_profile: PROFILE_ROW,
   room_state: [{ state: "open", intent_count: 14, team_count: 6, reason: "room is open" }],
   intent_count_public: 14,
   room_teams: ROOM_TEAMS,
@@ -853,6 +891,40 @@ const AFRICAN_COUNTRIES = [
   "Zambia", "Zimbabwe",
 ];
 
+/** All 54, which is what the country index renders. */
+const COUNTRY_COUNTS = AFRICAN_COUNTRIES.map((name, i) => ({
+  iso2: `C${i}`.slice(0, 2),
+  name,
+  slug: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+  region: ["northern_africa", "western_africa", "central_africa", "eastern_africa", "southern_africa"][i % 5]!,
+  open_count: 40 - (i % 40),
+  specific_count: i % 7,
+  soonest_deadline: "2026-09-20T00:00:00Z",
+}));
+
+/** Every category, for one country: the country page's own cell list. */
+const MATRIX_CELLS = [
+  "Hackathon", "Innovation challenge", "Grant", "Fellowship", "Scholarship", "Accelerator",
+  "Incubator", "Competition", "Residency", "Research call", "Award", "Bootcamp",
+].map((name, i) => ({
+  iso2: "ZW",
+  country_name: "Zimbabwe",
+  country_slug: "zimbabwe",
+  category_code: name.toLowerCase().replace(/ /g, "_"),
+  category_name: name,
+  category_slug: name.toLowerCase().replace(/ /g, "-"),
+  // Half above the five-item floor and half below it, so both link shapes are measured.
+  open_count: i % 2 === 0 ? 12 - i : 2,
+}));
+
+const CATEGORY_COUNTS = MATRIX_CELLS.map((cell) => ({
+  code: cell.category_code,
+  name: cell.category_name,
+  slug: cell.category_slug,
+  open_count: cell.open_count,
+  soonest_deadline: "2026-09-20T00:00:00Z",
+}));
+
 const ENTRY_POINTS = {
   countries: AFRICAN_COUNTRIES.map((name, i) => ({
     iso2: `C${String(i).padStart(1, "0")}`.slice(0, 2),
@@ -870,6 +942,23 @@ const ENTRY_POINTS = {
 };
 
 vi.mock("../src/lib/db", () => ({
+  getCountryBySlug: vi.fn(async (slug: string | undefined) =>
+    slug === "zimbabwe" ? { iso2: "ZW", name: "Zimbabwe", slug: "zimbabwe" } : null,
+  ),
+  getCountryCounts: vi.fn(async () => COUNTRY_COUNTS),
+  getMatrixCells: vi.fn(async () => MATRIX_CELLS),
+  getCategoryCounts: vi.fn(async () => CATEGORY_COUNTS),
+  getCountryOrganisations: vi.fn(async () =>
+    Array.from({ length: 12 }, (_, i) => ({
+      slug: `organisation-${i}`,
+      name: `Foundation for African Innovation number ${i}`,
+      verification: "verified",
+      open_count: 12 - i,
+    })),
+  ),
+  getCountryNames: vi.fn(async (codes: readonly string[]) =>
+    codes.map((code) => ({ ZW: "Zimbabwe", ZM: "Zambia", KE: "Kenya", NG: "Nigeria" })[code] ?? code),
+  ),
   getOpportunity: vi.fn(async () => ({ ok: true, data: DETAIL })),
   getCountry: vi.fn(async (iso2: string | null) =>
     iso2 ? { iso2, name: "Zimbabwe", slug: "zimbabwe" } : null,
@@ -1065,6 +1154,42 @@ beforeAll(async () => {
     "https://example.invalid/opportunities?q=remote+ai+hackathons+in+zimbabwe+closing+soon",
   );
   await render("homepage", () => import("../src/pages/index.astro"), {}, "https://example.invalid/");
+  await render(
+    "countryIndex",
+    () => import("../src/pages/countries/index.astro"),
+    {},
+    "https://example.invalid/countries",
+  );
+  await render(
+    "country",
+    () => import("../src/pages/countries/[slug].astro"),
+    { slug: "zimbabwe" },
+    "https://example.invalid/countries/zimbabwe",
+  );
+  await render(
+    "matrixCell",
+    () => import("../src/pages/countries/[slug]/[category].astro"),
+    { slug: "zimbabwe", category: "hackathon" },
+    "https://example.invalid/countries/zimbabwe/hackathon",
+  );
+  await render(
+    "categoryIndex",
+    () => import("../src/pages/categories/index.astro"),
+    {},
+    "https://example.invalid/categories",
+  );
+  await render(
+    "category",
+    () => import("../src/pages/categories/[slug].astro"),
+    { slug: "hackathon" },
+    "https://example.invalid/categories/hackathon",
+  );
+  await render(
+    "publicProfile",
+    () => import("../src/pages/b/[handle].astro"),
+    { handle: "tadiwa-m" },
+    "https://example.invalid/b/tadiwa-m",
+  );
   /**
    * The same list page in low-data mode. DESIGN_SYSTEM.md §10 sets a target of 40 KB for it,
    * which is a different number from the route budget and belongs to a different promise: the
@@ -1327,6 +1452,16 @@ describe("byte budgets — on-demand routes (invariant 5)", () => {
     expect(m.html).toContain("worst-case-1");
     expect(m.html).toContain("Low-data mode is on");
     expect(m.htmlBytes).toBeLessThan(measured.list!.htmlBytes);
+  });
+
+  it("measured the real country and profile pages, not their not-found states", () => {
+    // Both routes answer 404 for an unknown slug with a small page. A budget measured against
+    // that would pass trivially — the same vacuous-pass failure this file exists to prevent.
+    expect(measured.country!.html).toContain("Open to Zimbabwe");
+    expect(measured.country!.html).toContain("worst-case-1");
+    expect(measured.matrixCell!.html).toContain("for Zimbabweans");
+    expect(measured.publicProfile!.html).toContain("Tadiwa Moyo-Chikwanda");
+    expect(measured.publicProfile!.html).not.toContain("nothing at this address");
   });
 
   it("renders the real closing board on the homepage, not the placeholder", () => {

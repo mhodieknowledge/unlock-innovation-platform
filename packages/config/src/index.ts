@@ -11,6 +11,21 @@ export {
 export type { RouteBudget } from "./budgets.js";
 
 export { HOST_PLATFORMS, hostPlatformFor } from "./host-platforms.js";
+
+export {
+  DESCRIPTION_MAX,
+  demonymAdjective,
+  demonymPlural,
+  INDEXING,
+  ROBOTS_DISALLOW,
+  SCHEMA_TYPE_BY_CATEGORY,
+  SEO_MATRIX_FLOOR,
+  SITEMAP_MAX_URLS,
+  SITEMAP_SEGMENTS,
+  THIN_COUNTRY_FLOOR,
+  TITLE_MAX,
+} from "./seo.js";
+export type { IndexingRule, SchemaType, SitemapSegment } from "./seo.js";
 export { projectMatchReasons, scoreProjectMatches } from "./project-matching.mjs";
 export type { HostPlatform } from "./host-platforms.js";
 

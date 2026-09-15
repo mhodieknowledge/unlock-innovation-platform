@@ -17,6 +17,7 @@ import { getEntryPoints, getCountry, getLastVerifiedAt, getPublishedCount, listO
 import { getResidenceCountry, getSessionUser } from "../lib/auth";
 import { freshnessLabel } from "../lib/deadline";
 import { resolveLowData } from "../lib/lowdata";
+import { itemList, website } from "../lib/seo";
 import { BRAND } from "@mbele/config";
 
 export const prerender = false;
@@ -114,6 +115,27 @@ const builtAt = new Intl.DateTimeFormat("en-GB", {
   timeZone: "UTC",
 }).format(new Date());
 
+/**
+ * SEO.md §3: "`WebSite` with `SearchAction` on the homepage." That is the markup that lets a
+ * search engine offer a search box for this site directly in its results, and it is the only
+ * structured data on this page that is about the site rather than about a list.
+ *
+ * The board itself is an ItemList — but only when there is a board. Marking up an empty list
+ * would be a claim that there is nothing here, made in a machine-readable way.
+ */
+const jsonLd = [
+  website(Astro.url),
+  ...(rows.length > 0
+    ? [
+        itemList(
+          "Closing soonest",
+          rows.map((row) => ({ name: row.title, path: `/opportunities/${row.slug}` })),
+          Astro.url,
+        ),
+      ]
+    : []),
+];
+
 const scopeLine = country
   ? `Open to ${country.name}, and open to everyone.`
   : "Open to builders in all 54 African countries.";
@@ -125,6 +147,9 @@ const scopeLine = country
   user={user}
   lowData={lowData}
   offlineCapable
+  canonical="/"
+  jsonLd={jsonLd}
+  feed={{ path: "/feeds/closing-soon.xml", title: "Closing this week" }}
 >
   <!-- §2 item 1: one line stating what this is and the country scope. -->
   <h1 class="max-w-[28ch] text-display font-bold leading-[--text-display--line-height]">
@@ -253,10 +278,12 @@ const scopeLine = country
 
         {entryPoints.categories.length > 0 && (
           <>
-            <h3 class="mt-3 text-meta font-semibold text-ink-2">By kind</h3>
+            <h3 class="mt-3 text-meta font-semibold text-ink-2">
+              <a href="/categories" class="text-brand">By kind</a>
+            </h3>
             <p class="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-dense">
               {entryPoints.categories.map((category) => (
-                <a href={`/opportunities?category=${category.code}`} class="text-brand">
+                <a href={`/categories/${category.slug}`} class="text-brand">
                   {category.name}
                 </a>
               ))}
@@ -266,10 +293,12 @@ const scopeLine = country
 
         {entryPoints.countries.length > 0 && (
           <>
-            <h3 class="mt-4 text-meta font-semibold text-ink-2">By country</h3>
+            <h3 class="mt-4 text-meta font-semibold text-ink-2">
+              <a href="/countries" class="text-brand">By country</a>
+            </h3>
             <p class="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-dense">
               {entryPoints.countries.map((c) => (
-                <a href={`/opportunities?country=${c.iso2}`} class="text-brand">
+                <a href={`/countries/${c.slug}`} class="text-brand">
                   {c.name}
                 </a>
               ))}
