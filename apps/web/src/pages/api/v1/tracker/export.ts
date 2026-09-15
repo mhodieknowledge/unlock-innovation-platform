@@ -3,6 +3,7 @@ import type { APIRoute } from "astro";
 import { createAuthClient, getSessionUser } from "~/lib/auth";
 import { getTracker } from "~/lib/db";
 import { reportError } from "~/lib/errors";
+import { runtimeEnv } from "~/lib/runtime";
 
 /**
  * GET /api/v1/tracker/export?format=json|csv — API_SPEC.md §5, marked `[PR]`.
@@ -32,7 +33,7 @@ function toCsv(rows: Record<string, string | number | null>[]): string {
 }
 
 export const GET: APIRoute = async ({ url, cookies, locals, redirect }) => {
-  const env = (locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+  const env = runtimeEnv();
   const user = await getSessionUser(cookies, env);
   if (!user) return redirect(`/signin?returnTo=${encodeURIComponent("/tracker")}`, 302);
 

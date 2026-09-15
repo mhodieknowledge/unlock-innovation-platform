@@ -21,10 +21,11 @@ import {
 import { getSessionUser } from "../../lib/auth";
 import { resolveLowData } from "../../lib/lowdata";
 import { search } from "../../lib/search";
+import { runtimeEnv } from "~/lib/runtime";
 
 export const prerender = false;
 
-const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const env = runtimeEnv();
 const filters = parseFilters(Astro.url);
 
 // The viewer, for the eligibility boost in ranking (§6.1). Their profile never leaves the

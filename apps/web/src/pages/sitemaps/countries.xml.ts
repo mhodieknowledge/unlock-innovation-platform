@@ -3,6 +3,7 @@ import type { APIRoute } from "astro";
 import { INDEXING, SEO_MATRIX_FLOOR } from "@mbele/config";
 import { getCountryCounts, getMatrixCells } from "~/lib/db";
 import { sitemapXml, xmlResponse } from "~/lib/seo";
+import { runtimeEnv } from "~/lib/runtime";
 
 /**
  * Country pages, and the matrix cells that have enough in them to be pages.
@@ -22,7 +23,7 @@ const CELL = INDEXING.find((rule) => rule.pattern === "/countries/*/*");
 const INDEX = INDEXING.find((rule) => rule.pattern === "/countries");
 
 export const GET: APIRoute = async ({ url, locals }) => {
-  const env = (locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+  const env = runtimeEnv();
   const [countries, cells] = await Promise.all([getCountryCounts(env), getMatrixCells(null, env)]);
 
   return xmlResponse(

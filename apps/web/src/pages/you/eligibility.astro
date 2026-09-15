@@ -15,10 +15,11 @@ import Base from "../../layouts/Base.astro";
 import { createAuthClient, getSessionUser, personalWritesAllowed } from "../../lib/auth";
 import { getRuleTypeCounts } from "../../lib/db";
 import { reportError } from "../../lib/errors";
+import { runtimeEnv } from "~/lib/runtime";
 
 export const prerender = false;
 
-const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const env = runtimeEnv();
 const user = await getSessionUser(Astro.cookies, env);
 
 if (!user) {

@@ -3,12 +3,13 @@ import type { APIRoute } from "astro";
 import { BRAND } from "@mbele/config";
 import { getCategoryCounts, listOpportunities } from "~/lib/db";
 import { opportunityDescription, rssXml, xmlResponse } from "~/lib/seo";
+import { runtimeEnv } from "~/lib/runtime";
 
 /** One kind of opportunity, across the continent. SEO.md §7. */
 export const prerender = false;
 
 export const GET: APIRoute = async ({ params, url, locals }) => {
-  const env = (locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+  const env = runtimeEnv();
   const categories = await getCategoryCounts(env);
   const category = categories.find((row) => row.slug === params["slug"]) ?? null;
 

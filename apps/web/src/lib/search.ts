@@ -28,6 +28,7 @@ import {
 } from "@mbele/config";
 
 import { getClient, type Env } from "./db";
+import type { RuntimeEnv } from "./runtime";
 
 /** What a ranked result carries into the view. */
 export interface SearchResultRow {
@@ -58,20 +59,12 @@ export interface SearchOutcome {
   };
 }
 
-interface Runtime extends Env {
-  /** Workers AI, for the query embedding. Absent in dev and in a degraded deploy. */
-  AI?: { run: (model: string, input: Record<string, unknown>) => Promise<unknown> };
-  /** KV, for the 7-day query-compilation cache (§7) and the query-embedding cache (§3.3). */
-  QUERY_CACHE?: {
-    get: (key: string, type?: "text" | "json") => Promise<unknown>;
-    put: (key: string, value: string, options?: { expirationTtl?: number }) => Promise<void>;
-  };
-  /** The one LLM call permitted in a request handler (§7), and only because it is cached. */
-  GROQ_API_KEY?: string;
-  QUERY_EMBEDDING_MODEL?: string;
-  /** AI_SYSTEM.md §2 guardrail 6: model names are configuration, never code. */
-  QUERY_COMPILER_MODEL?: string;
-}
+/**
+ * The bindings this module needs — Workers AI, the KV cache, the Groq key and the model names —
+ * are declared once in lib/runtime.ts alongside every other var and binding, so `RuntimeEnv` is
+ * what this file used to redeclare for itself. The copy drifted from the real thing the moment
+ * `search()` started taking `Record<string, string>` and casting it straight back.
+ */
 
 /**
  * The live filter vocabulary, from our own tables.
@@ -116,7 +109,7 @@ export async function getQueryVocabulary(env: Env = {}): Promise<QueryVocabulary
  * Returns null rather than throwing on every failure path. §6.2 makes that the degraded
  * mode, and a null embedding is exactly what `search_candidates` treats as FTS-only.
  */
-async function queryEmbedding(query: string, runtime: Runtime): Promise<number[] | null> {
+async function queryEmbedding(query: string, runtime: RuntimeEnv): Promise<number[] | null> {
   // No hard-coded model name, anywhere. AI_SYSTEM.md §2 guardrail 6 `[PR]`: "No model
   // name in application code. Models are configuration rows." A default here would be a
   // name in code that outlives the model it refers to — Workers AI has renamed models —
@@ -165,7 +158,7 @@ async function queryEmbedding(query: string, runtime: Runtime): Promise<number[]
 async function compile(
   query: string,
   vocabulary: QueryVocabulary,
-  runtime: Runtime,
+  runtime: RuntimeEnv,
 ): Promise<{ compiled: CompiledQuery; source: "heuristic" | "model" | "cached" }> {
   const heuristic = compileQueryHeuristically(query, vocabulary);
 
@@ -318,8 +311,8 @@ export interface SearchInput {
  * point the user can edit (§7), and once they have edited one, the compiler must not
  * quietly put it back.
  */
-export async function search(input: SearchInput, env: Record<string, string> = {}): Promise<SearchOutcome> {
-  const runtime = env as unknown as Runtime;
+export async function search(input: SearchInput, env: RuntimeEnv = {}): Promise<SearchOutcome> {
+  const runtime = env;
   const client = getClient(env);
 
   if (!client) {

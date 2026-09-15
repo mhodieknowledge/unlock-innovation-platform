@@ -45,7 +45,13 @@ function parseDsn(dsn: string) {
 export async function reportError(
   error: unknown,
   context: ReportContext = {},
-  env: Record<string, string | undefined> = {},
+  /**
+   * The two keys this function reads, rather than `Record<string, string | undefined>`.
+   * The wide record looked harmless and was the one thing standing between callers and
+   * passing the app's real environment (lib/runtime.ts), which also carries bindings and so
+   * is not a record of strings. A parameter should ask for what it uses.
+   */
+  env: { SENTRY_DSN?: string; ENVIRONMENT?: string } = {},
 ): Promise<void> {
   const dsn = env["SENTRY_DSN"] ?? process.env["SENTRY_DSN"];
   const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);

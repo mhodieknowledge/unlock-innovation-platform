@@ -22,11 +22,12 @@ import {
   opportunityTitle,
 } from "../../lib/seo";
 import { BRAND, NO_FEE_STATEMENT } from "@mbele/config";
+import { runtimeEnv } from "~/lib/runtime";
 
 export const prerender = false;
 
 const { slug } = Astro.params;
-const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const env = runtimeEnv();
 
 const found = await getOpportunity(slug!, env);
 

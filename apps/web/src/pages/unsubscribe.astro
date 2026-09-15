@@ -20,10 +20,11 @@
 import Base from "../layouts/Base.astro";
 import { getClient } from "../lib/db";
 import { reportError } from "../lib/errors";
+import { runtimeEnv } from "~/lib/runtime";
 
 export const prerender = false;
 
-const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const env = runtimeEnv();
 const client = getClient(env);
 
 const token = (Astro.url.searchParams.get("t") ?? "").slice(0, 200);

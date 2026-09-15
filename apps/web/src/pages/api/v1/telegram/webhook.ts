@@ -4,6 +4,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { BRAND, NO_FEE_STATEMENT } from "@mbele/config";
 import { countdownLabel, deadlineFacts } from "~/lib/deadline";
 import { reportError } from "~/lib/errors";
+import { runtimeEnv } from "~/lib/runtime";
 
 /**
  * Telegram bot. API_SPEC.md §13, UX_FLOWS.md §15.
@@ -125,7 +126,7 @@ function verdictWord(verdict: string): string {
 }
 
 export const POST: APIRoute = async ({ request, locals }) => {
-  const env = (locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+  const env = runtimeEnv();
   const token = env["TELEGRAM_BOT_TOKEN"];
   const webhookSecret = env["TELEGRAM_WEBHOOK_SECRET"];
   const supabaseUrl = env["SUPABASE_URL"];

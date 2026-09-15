@@ -3,6 +3,7 @@ import type { APIRoute } from "astro";
 import { BRAND } from "@mbele/config";
 import { getOrganisation } from "~/lib/db";
 import { opportunityDescription, rssXml, xmlResponse } from "~/lib/seo";
+import { runtimeEnv } from "~/lib/runtime";
 
 /**
  * One organisation's open calls. SEO.md §7.
@@ -13,7 +14,7 @@ import { opportunityDescription, rssXml, xmlResponse } from "~/lib/seo";
 export const prerender = false;
 
 export const GET: APIRoute = async ({ params, url, locals }) => {
-  const env = (locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+  const env = runtimeEnv();
   const found = await getOrganisation(String(params["slug"] ?? ""), env);
 
   if (!found.ok) {

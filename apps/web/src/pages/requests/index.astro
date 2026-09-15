@@ -14,10 +14,11 @@ import Base from "../../layouts/Base.astro";
 import { createAuthClient, getSessionUser, socialWritesAllowed } from "../../lib/auth";
 import { reportError } from "../../lib/errors";
 import { builderName, getMyRequests, type RequestRow } from "../../lib/rooms";
+import { runtimeEnv } from "~/lib/runtime";
 
 export const prerender = false;
 
-const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const env = runtimeEnv();
 const user = await getSessionUser(Astro.cookies, env);
 if (!user) {
   return Astro.redirect(`/signin?returnTo=${encodeURIComponent(Astro.url.pathname)}`, 302);

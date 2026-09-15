@@ -10,10 +10,11 @@ import { getCategoryCounts } from "../../lib/db";
 import { resolveLowData } from "../../lib/lowdata";
 import { breadcrumb, itemList } from "../../lib/seo";
 import { BRAND } from "@mbele/config";
+import { runtimeEnv } from "~/lib/runtime";
 
 export const prerender = false;
 
-const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const env = runtimeEnv();
 const categories = await getCategoryCounts(env);
 const open = categories.reduce((sum, row) => sum + row.open_count, 0);
 

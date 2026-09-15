@@ -21,12 +21,13 @@ import {
   refreshProjectMatches,
   type ProjectRow,
 } from "../../../lib/projects";
+import { runtimeEnv } from "~/lib/runtime";
 
 export const prerender = false;
 
 const { slug } = Astro.params;
-const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
-const runtime = (Astro.locals as { runtime?: { env?: Record<string, unknown> } }).runtime?.env ?? {};
+const env = runtimeEnv();
+const runtime = runtimeEnv();
 const user = await getSessionUser(Astro.cookies, env);
 
 if (!user) {

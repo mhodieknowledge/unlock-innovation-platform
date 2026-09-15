@@ -3,6 +3,7 @@ import type { APIRoute } from "astro";
 import { createAuthClient, getSessionUser } from "~/lib/auth";
 import { reportError } from "~/lib/errors";
 import { getThreadHeader, getThreadMessages } from "~/lib/rooms";
+import { runtimeEnv } from "~/lib/runtime";
 
 /**
  * GET /api/v1/threads/:id — the messages in one thread, for polling.
@@ -20,7 +21,7 @@ import { getThreadHeader, getThreadMessages } from "~/lib/rooms";
 export const prerender = false;
 
 export const GET: APIRoute = async ({ params, request, cookies, locals }) => {
-  const env = (locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+  const env = runtimeEnv();
   const threadId = params["id"];
 
   const headers = {

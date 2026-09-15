@@ -14,10 +14,11 @@ import { getCountryCounts } from "../../lib/db";
 import { resolveLowData } from "../../lib/lowdata";
 import { breadcrumb, itemList } from "../../lib/seo";
 import { BRAND } from "@mbele/config";
+import { runtimeEnv } from "~/lib/runtime";
 
 export const prerender = false;
 
-const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const env = runtimeEnv();
 
 const counts = await getCountryCounts(env);
 const total = counts.reduce((sum, row) => Math.max(sum, row.open_count), 0);

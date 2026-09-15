@@ -19,6 +19,24 @@
 
   "observability": { "enabled": true },
 
+  // `directory` is the adapter's to set (see above); this is only about how a path maps onto a
+  // file it has already written.
+  //
+  // Every internal link and every canonical URL in this app is written without a trailing
+  // slash — `/privacy`, not `/privacy/`. Cloudflare's default for a prerendered
+  // `privacy/index.html` is the opposite: serve it at `/privacy/` and answer `/privacy` with a
+  // 307 to it. So the footer link on every page, and the URL search engines were told is
+  // canonical, both cost a redirect before the HTML arrives — on a 2G connection an extra
+  // round trip, and for a crawler an extra hop to the page it was told not to use.
+  //
+  // `drop-trailing-slash` inverts it: `/privacy` serves the file, `/privacy/` redirects to
+  // `/privacy`. The build output is untouched; only the mapping changes. It also puts the
+  // prerendered pages in agreement with the dynamic ones, which have never had a trailing
+  // slash to drop.
+  "assets": {
+    "html_handling": "drop-trailing-slash"
+  },
+
   "vars": {
     // Non-secret configuration only. PRODUCT_SPEC.md §1 keeps the brand name a
     // config token; it is provisional until the checks in README.md §6 item 1.

@@ -3,6 +3,7 @@ import type { APIRoute } from "astro";
 import { SITEMAP_MAX_URLS } from "@mbele/config";
 import { getSitemapProfiles } from "~/lib/db";
 import { sitemapXml, xmlResponse } from "~/lib/seo";
+import { runtimeEnv } from "~/lib/runtime";
 
 /**
  * Public profiles that asked to be indexed, and only those.
@@ -18,7 +19,7 @@ import { sitemapXml, xmlResponse } from "~/lib/seo";
 export const prerender = false;
 
 export const GET: APIRoute = async ({ url, locals }) => {
-  const env = (locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+  const env = runtimeEnv();
   const rows = await getSitemapProfiles(env, SITEMAP_MAX_URLS);
 
   return xmlResponse(

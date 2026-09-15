@@ -3,6 +3,7 @@ import type { APIRoute } from "astro";
 import { INDEXING, SITEMAP_MAX_URLS } from "@mbele/config";
 import { getSitemapOrganisations } from "~/lib/db";
 import { sitemapXml, xmlResponse } from "~/lib/seo";
+import { runtimeEnv } from "~/lib/runtime";
 
 /** Organisation pages. SEO.md §1: priority 0.7, weekly. */
 export const prerender = false;
@@ -10,7 +11,7 @@ export const prerender = false;
 const RULE = INDEXING.find((rule) => rule.pattern === "/organisations/*");
 
 export const GET: APIRoute = async ({ url, locals }) => {
-  const env = (locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+  const env = runtimeEnv();
   const rows = await getSitemapOrganisations(env, SITEMAP_MAX_URLS);
 
   return xmlResponse(

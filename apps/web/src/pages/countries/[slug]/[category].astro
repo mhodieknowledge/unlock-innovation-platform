@@ -21,10 +21,11 @@ import { getCountryBySlug, getMatrixCells, listOpportunities } from "../../../li
 import { resolveLowData } from "../../../lib/lowdata";
 import { breadcrumb, itemList, matrixTitle } from "../../../lib/seo";
 import { BRAND, SEO_MATRIX_FLOOR, demonymPlural } from "@mbele/config";
+import { runtimeEnv } from "~/lib/runtime";
 
 export const prerender = false;
 
-const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const env = runtimeEnv();
 const { slug, category: categorySlug } = Astro.params;
 
 const country = await getCountryBySlug(slug, env);

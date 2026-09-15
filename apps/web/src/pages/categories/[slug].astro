@@ -11,12 +11,13 @@ import { getCategoryCounts, getMatrixCells, listOpportunities } from "../../lib/
 import { resolveLowData } from "../../lib/lowdata";
 import { breadcrumb, categoryTitle, itemList } from "../../lib/seo";
 import { BRAND, SEO_MATRIX_FLOOR } from "@mbele/config";
+import { runtimeEnv } from "~/lib/runtime";
 
 export const prerender = false;
 
 const PER_PAGE = 20;
 
-const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const env = runtimeEnv();
 const { slug } = Astro.params;
 
 const categories = await getCategoryCounts(env);

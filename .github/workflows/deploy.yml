@@ -225,25 +225,86 @@ jobs:
             exit 1
           fi
 
+      # THE WORKER'S ENVIRONMENT IS NOT THE BUILD'S ENVIRONMENT, and the first live deployment of
+      # this repository is what that sentence cost. The Build step above hands SUPABASE_URL to
+      # `npm run build`, which is right for anything inlined at build time and does nothing at all
+      # for a Worker serving a request an hour later: `wrangler deploy` uploads a bundle plus
+      # whatever bindings its config declares, and this one declared BRAND_NAME and ENVIRONMENT.
+      # So every page that reads the database got an unconfigured client in production and
+      # nowhere else.
+      #
+      # Each key below is optional in the code (apps/web/src/lib/runtime.ts declares every one),
+      # and an unset key is skipped rather than passed empty — a `--var SENTRY_DSN:` would make
+      # `if (!dsn)` false and send envelopes nowhere.
+      #
+      # The split between the two lists is not a judgement call: `wrangler deploy` PRINTS the
+      # value of every var it binds, into a log that is public on this repository. So a var is
+      # here only if it is publishable. The anon key qualifies — it ships to browsers by design
+      # and RLS is the boundary (SECURITY.md §2) — and the service-role key is in neither list,
+      # because the request tier never gets it.
+      - name: Configure the Worker's environment
+        id: worker_env
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+          TELEGRAM_BOT_HANDLE: ${{ vars.TELEGRAM_BOT_HANDLE }}
+          QUERY_COMPILER_MODEL: ${{ vars.QUERY_COMPILER_MODEL }}
+          QUERY_EMBEDDING_MODEL: ${{ vars.QUERY_EMBEDDING_MODEL }}
+          PROJECT_EMBEDDING_MODEL: ${{ vars.PROJECT_EMBEDDING_MODEL }}
+        run: |
+          set -euo pipefail
+
+          args=""
+          configured=""
+          missing=""
+          for key in SUPABASE_URL SUPABASE_ANON_KEY TELEGRAM_BOT_HANDLE \
+                     QUERY_COMPILER_MODEL QUERY_EMBEDDING_MODEL PROJECT_EMBEDDING_MODEL; do
+            value="${!key}"
+            if [ -n "$value" ]; then
+              args="$args --var $key:$value"
+              configured="$configured $key"
+            else
+              missing="$missing $key"
+            fi
+          done
+
+          echo "Vars to bind:${configured:- none}"
+          echo "Not configured:${missing:- none}"
+
+          # The two the site cannot serve data without. A deploy that leaves them out produces a
+          # site that answers 200 to every request and shows an error state on every page, which
+          # is worse than a failed deploy because it looks like it worked.
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::SUPABASE_URL and SUPABASE_ANON_KEY are repository VARIABLES (Settings > Secrets and variables > Actions > Variables). Without them the Worker has no database and every page renders its error state."
+            exit 1
+          fi
+
+          # Quoted on the way out: the value is a URL and a JWT, neither of which needs a shell.
+          echo "vars=$args" >> "$GITHUB_OUTPUT"
+
       - name: Deploy
         id: deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           DOMAIN: ${{ steps.address.outputs.domain }}
+          VARS: ${{ steps.worker_env.outputs.vars }}
         working-directory: apps/web
         run: |
           set -o pipefail
 
+          # Deliberately unquoted: $VARS is a list of `--var K:V` arguments, and quoting it would
+          # hand wrangler one long argument instead of several.
+          # shellcheck disable=SC2086
           if [ -n "$DOMAIN" ]; then
             # `--route` resolves the zone from the pattern, so the zone has to be in this account.
             # A domain whose DNS lives elsewhere fails here with Cloudflare saying so, which is
             # the right place to learn it.
             echo "Publishing to $DOMAIN"
-            npx wrangler deploy --route "${DOMAIN}/*" 2>&1 | tee deploy.log
+            npx wrangler deploy --route "${DOMAIN}/*" $VARS 2>&1 | tee deploy.log
             echo "url=https://${DOMAIN}" >> "$GITHUB_OUTPUT"
           else
-            npx wrangler deploy 2>&1 | tee deploy.log
+            npx wrangler deploy $VARS 2>&1 | tee deploy.log
             # The live URL from wrangler's own output rather than rebuilt from the worker name and
             # the subdomain — the two can disagree, and the log is the truth.
             url=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' deploy.log | head -1)
@@ -258,7 +319,16 @@ jobs:
           echo "$url" >> "$GITHUB_STEP_SUMMARY"
           echo "::notice::Live at $url"
 
-      - name: Smoke-test the health endpoint
+      # ASK A REAL PAGE FOR REAL HTML. This step used to ask `/api/health` alone, and
+      # `/api/health` is the one route in the app that reads no configuration and touches no
+      # database: it answered 200 through a deployment where the board, every country page and
+      # every sitemap returned 500, and reported the deploy green. A liveness check that cannot
+      # fail when the site is broken is not a check.
+      #
+      # So the gate is the board: status, the sentence the page exists to show, and the security
+      # headers that only the SSR middleware can add. The first request after a deploy can land
+      # on a cold or still-propagating Worker, hence the retries.
+      - name: Smoke-test the deployment
         run: |
           # The URL the deploy actually reported, so a fresh environment needs no extra
           # variable to be smoke-tested. PRODUCTION_URL still wins when it is set, for the
@@ -266,17 +336,39 @@ jobs:
           url="${{ vars.PRODUCTION_URL }}"
           if [ -z "$url" ]; then url="${{ steps.deploy.outputs.url }}"; fi
           if [ -z "$url" ]; then
-            echo "::notice::No deployed URL to test — skipping smoke test."
-            exit 0
+            echo "::error::The deploy reported no URL, so nothing can be smoke-tested. A Worker nobody can reach is not a deployment."
+            exit 1
           fi
           echo "Smoke-testing $url"
+
           for i in 1 2 3 4 5; do
-            if curl -fsS "$url/api/health" | grep -q '"status":"ok"'; then
-              echo "Health check passed."
+            ok=true
+
+            curl -fsS "$url/api/health" | grep -q '"status":"ok"' || ok=false
+
+            # The board. 200 AND the copy, because a 200 carrying an error state is exactly the
+            # failure this step exists to catch.
+            body=$(curl -fsS -H 'accept: text/html' "$url/" || true)
+            printf '%s' "$body" | grep -q 'Search opportunities' || ok=false
+            # `if`, not `grep ... && ok=false`: GitHub runs these steps under `bash -e`, where a
+            # `&&` whose left side fails ends the step. The copy is matched without its
+            # apostrophe, which is a typographic one in the source and not a shell-safe byte.
+            if printf '%s' "$body" | grep -qi 'load the board right now'; then ok=false; fi
+
+            # Headers on an SSR response come from src/middleware.ts, not from public/_headers,
+            # which Cloudflare applies to static assets only.
+            curl -fsS -D - -o /dev/null "$url/" 2>/dev/null | grep -qi '^content-security-policy:' || ok=false
+
+            # A prerendered page at the URL every link in the app uses: no trailing-slash hop.
+            [ "$(curl -s -o /dev/null -w '%{http_code}' "$url/privacy")" = "200" ] || ok=false
+
+            if [ "$ok" = true ]; then
+              echo "Smoke test passed: health, the board with its own copy, CSP on an SSR response, /privacy without a redirect."
               exit 0
             fi
-            echo "Attempt $i failed; retrying in $((i * 4))s"
+            echo "Attempt $i did not pass; retrying in $((i * 4))s"
             sleep $((i * 4))
           done
-          echo "::error::Health endpoint did not report ok after the deploy."
+
+          echo "::error::The deployment is reachable but not serving correctly. Run 'npm run verify:deployment -- $url' for the itemised list."
           exit 1

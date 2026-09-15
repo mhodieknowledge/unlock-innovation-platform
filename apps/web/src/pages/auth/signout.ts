@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 
 import { createAuthClient, safeReturnTo } from "~/lib/auth";
+import { runtimeEnv } from "~/lib/runtime";
 
 /**
  * Sign out. SECURITY.md §1 requires session invalidation to be available, and
@@ -12,7 +13,7 @@ import { createAuthClient, safeReturnTo } from "~/lib/auth";
 export const prerender = false;
 
 export const POST: APIRoute = async ({ request, cookies, redirect, locals }) => {
-  const env = (locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+  const env = runtimeEnv();
   const client = createAuthClient(cookies, env);
 
   if (client) {

@@ -3,6 +3,7 @@ import type { APIRoute } from "astro";
 import { INDEXING, SITEMAP_MAX_URLS } from "@mbele/config";
 import { getSitemapOpportunities } from "~/lib/db";
 import { sitemapXml, xmlResponse } from "~/lib/seo";
+import { runtimeEnv } from "~/lib/runtime";
 
 /**
  * Every published, unexpired opportunity. SEO.md §1 gives them priority 0.9 and `daily`, and §5
@@ -14,7 +15,7 @@ export const prerender = false;
 const RULE = INDEXING.find((rule) => rule.pattern === "/opportunities/*");
 
 export const GET: APIRoute = async ({ url, locals }) => {
-  const env = (locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+  const env = runtimeEnv();
   const rows = await getSitemapOpportunities(env, SITEMAP_MAX_URLS);
 
   return xmlResponse(

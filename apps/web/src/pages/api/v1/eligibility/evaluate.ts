@@ -4,6 +4,7 @@ import { z } from "zod";
 import { evaluate, type EligibilityRule } from "@mbele/eligibility";
 import { getClient } from "~/lib/db";
 import { reportError } from "~/lib/errors";
+import { runtimeEnv } from "~/lib/runtime";
 
 /**
  * POST /api/v1/eligibility/evaluate — API_SPEC.md §3.
@@ -68,7 +69,7 @@ const error = (status: number, code: string, message: string, field?: string) =>
   json({ error: { code, message, ...(field ? { field } : {}) } }, status);
 
 export const POST: APIRoute = async ({ request, locals }) => {
-  const env = (locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+  const env = runtimeEnv();
 
   let raw: unknown;
   try {

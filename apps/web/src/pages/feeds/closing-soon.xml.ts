@@ -3,6 +3,7 @@ import type { APIRoute } from "astro";
 import { BRAND } from "@mbele/config";
 import { searchOpportunities } from "~/lib/db";
 import { opportunityDescription, rssXml, xmlResponse } from "~/lib/seo";
+import { runtimeEnv } from "~/lib/runtime";
 
 /**
  * Everything closing within a week. SEO.md §7 `[PR]`.
@@ -19,7 +20,7 @@ import { opportunityDescription, rssXml, xmlResponse } from "~/lib/seo";
 export const prerender = false;
 
 export const GET: APIRoute = async ({ url, locals }) => {
-  const env = (locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+  const env = runtimeEnv();
 
   const result = await searchOpportunities(
     { deadlineState: "closing_this_week", sort: "urgency", limit: 50 },

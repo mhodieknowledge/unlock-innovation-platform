@@ -24,11 +24,12 @@ import {
   type ThreadHeader,
   type ThreadMessage,
 } from "../../lib/rooms";
+import { runtimeEnv } from "~/lib/runtime";
 
 export const prerender = false;
 
 const { id } = Astro.params;
-const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const env = runtimeEnv();
 
 const user = await getSessionUser(Astro.cookies, env);
 if (!user) {

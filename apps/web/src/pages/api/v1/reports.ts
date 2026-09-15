@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { getClient } from "~/lib/db";
 import { reportError } from "~/lib/errors";
+import { runtimeEnv } from "~/lib/runtime";
 
 /**
  * POST /api/v1/reports — API_SPEC.md §3 (eligibility/flag) and §15, plus
@@ -91,7 +92,7 @@ async function turnstileOk(token: string | undefined, secret: string | undefined
 }
 
 export const POST: APIRoute = async ({ request, locals }) => {
-  const env = (locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+  const env = runtimeEnv();
 
   let raw: unknown;
   try {

@@ -3,6 +3,7 @@ import type { APIRoute } from "astro";
 import { BRAND } from "@mbele/config";
 import { getCountryBySlug, listOpportunities } from "~/lib/db";
 import { opportunityDescription, rssXml, xmlResponse } from "~/lib/seo";
+import { runtimeEnv } from "~/lib/runtime";
 
 /**
  * One country's feed. SEO.md §7: "RSS feeds per country, category, organisation and
@@ -16,7 +17,7 @@ import { opportunityDescription, rssXml, xmlResponse } from "~/lib/seo";
 export const prerender = false;
 
 export const GET: APIRoute = async ({ params, url, locals }) => {
-  const env = (locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+  const env = runtimeEnv();
   const country = await getCountryBySlug(params["slug"], env);
 
   if (!country) {

@@ -17,6 +17,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { scoreProjectMatches } from "@mbele/config";
+import type { RuntimeEnv } from "./runtime";
 
 export type ProjectState =
   | "idea"
@@ -144,12 +145,6 @@ const PROJECT_FIELDS =
 const firstRow = <T>(data: unknown): T | null =>
   Array.isArray(data) ? ((data[0] as T) ?? null) : ((data as T) ?? null);
 
-interface Runtime {
-  AI?: { run: (model: string, input: unknown) => Promise<unknown> };
-  PROJECT_EMBEDDING_MODEL?: string;
-  QUERY_EMBEDDING_MODEL?: string;
-}
-
 /**
  * A vector for a project, from Workers AI.
  *
@@ -162,7 +157,7 @@ interface Runtime {
  */
 export async function embedProjectText(
   text: string,
-  runtime: Runtime,
+  runtime: RuntimeEnv,
 ): Promise<number[] | null> {
   const model = runtime.PROJECT_EMBEDDING_MODEL ?? runtime.QUERY_EMBEDDING_MODEL;
   if (!text.trim() || !runtime.AI || !model) return null;

@@ -26,11 +26,12 @@ import { reportError } from "../../lib/errors";
 import { resolveLowData } from "../../lib/lowdata";
 import { stateLabel, type ProjectState } from "../../lib/projects";
 import { BRAND } from "@mbele/config";
+import { runtimeEnv } from "~/lib/runtime";
 
 export const prerender = false;
 
 const { handle } = Astro.params;
-const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const env = runtimeEnv();
 
 const viewer = await getSessionUser(Astro.cookies, env);
 const authed = createAuthClient(Astro.cookies, env);

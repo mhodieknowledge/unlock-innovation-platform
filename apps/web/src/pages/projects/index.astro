@@ -17,10 +17,11 @@ import { getSessionUser } from "../../lib/auth";
 import { getClient } from "../../lib/db";
 import { reportError } from "../../lib/errors";
 import { getProjectBrowseState, stateLabel, type ProjectState } from "../../lib/projects";
+import { runtimeEnv } from "~/lib/runtime";
 
 export const prerender = false;
 
-const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const env = runtimeEnv();
 const user = await getSessionUser(Astro.cookies, env);
 const client = getClient(env);
 

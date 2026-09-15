@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 
 import { createAuthClient, getSessionUser } from "~/lib/auth";
 import { reportError } from "~/lib/errors";
+import { runtimeEnv } from "~/lib/runtime";
 
 /**
  * POST /api/v1/telegram/link-code — issues a short-lived code for `/link`.
@@ -26,7 +27,7 @@ function newCode(): string {
 }
 
 export const POST: APIRoute = async ({ cookies, locals, redirect }) => {
-  const env = (locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+  const env = runtimeEnv();
   const user = await getSessionUser(cookies, env);
   if (!user) return redirect(`/signin?returnTo=${encodeURIComponent("/you/notifications")}`, 302);
 

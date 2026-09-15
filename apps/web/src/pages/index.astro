@@ -19,10 +19,11 @@ import { freshnessLabel } from "../lib/deadline";
 import { resolveLowData } from "../lib/lowdata";
 import { itemList, website } from "../lib/seo";
 import { BRAND } from "@mbele/config";
+import { runtimeEnv } from "~/lib/runtime";
 
 export const prerender = false;
 
-const env = (Astro.locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+const env = runtimeEnv();
 
 /** §2 item 3: 8 rows. Not 10, not 20 — enough to prove the board is alive, above the fold. */
 const BOARD_SIZE = 8;

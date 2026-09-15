@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 
 import { safeReturnTo } from "~/lib/auth";
 import { setLowDataCookie } from "~/lib/lowdata";
+import { runtimeEnv } from "~/lib/runtime";
 
 /**
  * The low-data toggle. DESIGN_SYSTEM.md §10, SYSTEM_ARCHITECTURE.md §3.4.
@@ -16,7 +17,7 @@ import { setLowDataCookie } from "~/lib/lowdata";
 export const prerender = false;
 
 export const POST: APIRoute = async ({ request, cookies, redirect, locals }) => {
-  const env = (locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+  const env = runtimeEnv();
 
   const form = await request.formData().catch(() => null);
   const on = String(form?.get("on") ?? "1") === "1";

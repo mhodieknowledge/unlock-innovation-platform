@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 
 import { createAuthClient, safeReturnTo } from "~/lib/auth";
 import { reportError } from "~/lib/errors";
+import { runtimeEnv } from "~/lib/runtime";
 
 /**
  * OAuth and OTP landing. SYSTEM_ARCHITECTURE.md §11.1.
@@ -22,7 +23,7 @@ export const prerender = false;
 const AGE_COOKIE = "mb_age_ack";
 
 export const GET: APIRoute = async ({ url, cookies, redirect, locals }) => {
-  const env = (locals as { runtime?: { env?: Record<string, string> } }).runtime?.env ?? {};
+  const env = runtimeEnv();
   const returnTo = safeReturnTo(url.searchParams.get("returnTo"));
   const code = url.searchParams.get("code");
   const oauthError = url.searchParams.get("error_description") ?? url.searchParams.get("error");
