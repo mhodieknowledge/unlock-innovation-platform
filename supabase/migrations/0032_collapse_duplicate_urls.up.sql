@@ -49,9 +49,7 @@ UPDATE review_queue q
    AND o.duplicate_of IS NOT NULL
    AND q.state <> 'done';
 
--- And make the state unrepresentable rather than merely cleaned up. A partial unique
--- index, so it constrains only the rows that are actually live: a merged copy keeps its
--- source_url, and so does a soft-deleted one.
-CREATE UNIQUE INDEX IF NOT EXISTS opportunities_one_live_row_per_url
-  ON opportunities (source_url)
-  WHERE source_url IS NOT NULL AND deleted_at IS NULL AND duplicate_of IS NULL;
+-- An index enforcing one live row per URL went here and was removed by 0033: one page
+-- can legitimately hold several opportunities, so the constraint was wrong on its own
+-- terms as well as breaking four fixtures that say so. What prevents the duplicates is
+-- ingest looking the URL up before inserting. The merges above stand.

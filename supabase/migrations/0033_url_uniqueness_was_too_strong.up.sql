@@ -1,0 +1,28 @@
+-- 0033 drop the unique index 0032 added; keep the behaviour it was protecting
+--
+-- 0032 fixed a real bug: a Devpost page changes on every fetch, so the content-hash
+-- check never matched and each run wrote the whole set again. Two things went in — ingest
+-- refreshing a known URL in place, and a partial unique index to make a second live row
+-- unrepresentable. The first is the fix. The second was belt-and-braces and it is wrong.
+--
+-- It broke four test fixtures, which was the visible symptom, and CI was right to stop:
+-- supabase/tests/profiles.sql builds two DIFFERENT opportunities that share a
+-- placeholder source_url, and seo.sql builds four. Rewriting them to fit the constraint
+-- was the first thing I reached for, and it would have been fitting the evidence to the
+-- theory.
+--
+-- Because the constraint is wrong on its own terms. A source_url is the page a record
+-- came FROM, and one page can hold several opportunities — a university calls page
+-- listing three scholarships, a foundation announcing two fellowships in one post. The
+-- schema never promised one record per URL and should not start: the day an extractor
+-- learns to split a listing into its parts, this index would refuse the result.
+--
+-- What actually prevents the duplicates is scripts/ingest.mjs looking up the URL before
+-- inserting and refreshing the row it finds. That was measured: the same URL ingested
+-- three times leaves one row, with the deadline updated and the slug and status
+-- untouched. It also handles the case an index cannot — deciding that a second sighting
+-- means fresher facts rather than a new record.
+--
+-- The merges 0032 performed are kept. Those were real duplicates and collapsing them was
+-- right; only the constraint goes.
+DROP INDEX IF EXISTS opportunities_one_live_row_per_url;
