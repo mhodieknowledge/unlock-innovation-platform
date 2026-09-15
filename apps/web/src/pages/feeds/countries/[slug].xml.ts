@@ -27,7 +27,12 @@ export const GET: APIRoute = async ({ params, url, locals }) => {
     });
   }
 
-  const result = await listOpportunities({ countryIso2: country.iso2, limit: 50 }, env);
+  const result = await listOpportunities(
+    // A feed is read by machines and by people scanning dates; it stays strictly in
+    // deadline order. The spread is for a page someone browses, not a subscription.
+    { countryIso2: country.iso2, limit: 50, strictUrgency: true },
+    env,
+  );
   const rows = result.ok ? result.data : [];
 
   return xmlResponse(

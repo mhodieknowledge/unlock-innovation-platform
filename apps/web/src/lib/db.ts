@@ -181,11 +181,69 @@ export async function getOpportunity(
 }
 
 /**
+ * The most a single category may take of one board page, once there is enough else.
+ *
+ * A quarter, not a fixed count: on a board of twenty that is five, and on a catalogue
+ * that genuinely holds only hackathons it relaxes rather than leaving the page half
+ * empty. Balance is a courtesy to the reader, not a claim about the collection.
+ */
+const BOARD_CATEGORY_SHARE = 0.25;
+
+/**
+ * Let no one category drown the board, without hiding anything or reordering within it.
+ *
+ * PRODUCT_SPEC.md §13.4 makes urgency the default sort and that stays: every row below
+ * is still in deadline order, and a row is only ever MOVED LATER, never earlier. Nothing
+ * urgent is pushed down past something less urgent in the same category.
+ *
+ * The problem this solves is a supply artefact rather than a ranking one. Devpost gives
+ * 183 free, dated, global hackathons with windows measured in weeks; a scholarship
+ * usually closes months out. Sorted purely by deadline, the soonest hundred rows are all
+ * hackathons and a Zimbabwean sees a page with no scholarship on it — while the
+ * catalogue holds several. The category pages remain strictly by deadline, because
+ * someone who clicked "Hackathons" wants all of them.
+ *
+ * Deliberately NOT applied to the closing-soon feed: that one is an urgency promise, and
+ * a deadline three days out must not be displaced to make a page look varied.
+ */
+export function spreadByCategory<T extends { categories?: { code?: string | null } | null }>(
+  rows: T[],
+  limit: number,
+): T[] {
+  const ceiling = Math.max(1, Math.ceil(limit * BOARD_CATEGORY_SHARE));
+  const taken = new Map<string, number>();
+  const spread: T[] = [];
+  const held: T[] = [];
+
+  for (const row of rows) {
+    const code = row.categories?.code ?? "other";
+    const used = taken.get(code) ?? 0;
+    if (used < ceiling) {
+      taken.set(code, used + 1);
+      spread.push(row);
+    } else {
+      held.push(row);
+    }
+  }
+
+  // Everything held back still appears, in its original order, after the spread. A
+  // catalogue of nothing but hackathons therefore renders exactly as it did before.
+  return [...spread, ...held].slice(0, limit);
+}
+
+/**
  * Published opportunities by deadline urgency. PRODUCT_SPEC.md §13.4: the
  * default sort is urgency, never relevance alone — this is a deadline product.
  */
 export async function listOpportunities(
-  options: { limit?: number; offset?: number; countryIso2?: string; categoryCode?: string } = {},
+  options: {
+    limit?: number;
+    offset?: number;
+    countryIso2?: string;
+    categoryCode?: string;
+    /** Let one category dominate. The closing-soon feed sets this; the board does not. */
+    strictUrgency?: boolean;
+  } = {},
   env: Env = {},
 ): Promise<{ ok: true; data: OpportunityRow[] } | { ok: false; reason: "unavailable" }> {
   const client = getClient(env);
@@ -193,6 +251,9 @@ export async function listOpportunities(
 
   const limit = Math.min(options.limit ?? 20, 50);
   const offset = Math.max(options.offset ?? 0, 0);
+  // A category page is already one category; spreading it would do nothing but cost a
+  // larger query. Strict urgency is for the feeds.
+  const spreading = !options.categoryCode && options.strictUrgency !== true;
 
   let query = client
     .from("opportunities")
@@ -206,7 +267,9 @@ export async function listOpportunities(
     .is("duplicate_of", null)
     .or(`deadline_at.is.null,deadline_at.gt.${new Date().toISOString()}`)
     .order("deadline_at", { ascending: true, nullsFirst: false })
-    .range(offset, offset + limit - 1);
+    // Over-fetch when spreading, because the rows held back have to come from somewhere:
+    // asking for exactly `limit` and then rebalancing can only ever return fewer.
+    .range(offset, offset + (spreading ? limit * 3 : limit) - 1);
 
   if (options.categoryCode) query = query.eq("categories.code", options.categoryCode);
 
@@ -220,7 +283,9 @@ export async function listOpportunities(
 
   const { data, error } = await query;
   if (error) return { ok: false, reason: "unavailable" };
-  return { ok: true, data: (data ?? []) as unknown as OpportunityRow[] };
+
+  const rows = (data ?? []) as unknown as OpportunityRow[];
+  return { ok: true, data: spreading ? spreadByCategory(rows, limit) : rows.slice(0, limit) };
 }
 
 export interface SearchResult {
@@ -597,16 +662,38 @@ export async function getEntryPoints(env: Env = {}): Promise<EntryPoints> {
       .select("iso2, name, slug")
       .eq("is_african", true)
       .order("name", { ascending: true }),
+    // !inner on the join is what makes this a filter rather than a decoration: with the
+    // default left join every category comes back whether or not anything is published in
+    // it, which is how a nav full of dead links gets built. The same PostgREST trap the
+    // category chip fell into.
     client
       .from("categories")
-      .select("code, name, slug")
+      .select("code, name, slug, opportunities!inner(id)")
       .is("parent_id", null)
+      .eq("opportunities.status", "published")
+      .is("opportunities.deleted_at", null)
+      .is("opportunities.duplicate_of", null)
+      // One row is the whole proof. Without this the nav query drags back every
+      // published id in every category on every page that renders it.
+      .limit(1, { referencedTable: "opportunities" })
       .order("sort_order", { ascending: true }),
   ]);
 
+  // A category page that renders nothing reads as abandoned, and MODERATION_AND_TRUST.md
+  // §1's refusal to "show a badge without a date" is the same instinct: do not publish a
+  // shape the catalogue does not have. A category reappears on its own the moment
+  // something lands in it, so this hides nothing permanently.
+  //
+  // The embedded rows are only there to make the join filter; one row per category is
+  // enough to prove it is not empty, and they are dropped here rather than shipped to
+  // every page that renders the nav.
+  const withRecords = (categories.data ?? []) as unknown as Array<
+    EntryPoints["categories"][number] & { opportunities?: unknown }
+  >;
+
   return {
     countries: (countries.data ?? []) as unknown as CountryRef[],
-    categories: (categories.data ?? []) as unknown as EntryPoints["categories"],
+    categories: withRecords.map(({ opportunities: _drop, ...category }) => category),
   };
 }
 
