@@ -43,7 +43,7 @@ on:
         default: false
         type: boolean
       url:
-        description: Put a single URL through the pipeline (ignores the registry)
+        description: Put a single URL through the pipeline (needs dry_run; ignores the registry)
         required: false
         default: ""
         type: string
@@ -169,7 +169,9 @@ jobs:
           case "$JOB" in
             ingest)
               if [ -n "$URL" ]; then
-                npm run ingest -- --url "$URL" $DRY $NOAI
+                # Quick-add cannot write (see scripts/ingest.mjs): force the dry flag on
+                # rather than letting the run reach a constraint violation.
+                npm run ingest -- --url "$URL" --dry-run $NOAI
               else
                 npm run ingest -- $DRY $NOAI $FORCE
               fi

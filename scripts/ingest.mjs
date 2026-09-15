@@ -83,6 +83,13 @@ const ONE_SOURCE = option("--source");
 const FORCE = flag("--force") || Boolean(ONE_SOURCE);
 const ONE_URL = option("--url");
 const LIMIT = Number(option("--limit") ?? 25);
+/**
+ * How long a stored document that produced nothing stays eligible for another
+ * extraction attempt. Long enough to cover a provider outage, a retired model name or
+ * a prompt fix; short enough that a page which is simply not an opportunity stops
+ * costing three provider calls a run.
+ */
+const RETRY_EXTRACTION_DAYS = Number(process.env.INGEST_RETRY_EXTRACTION_DAYS ?? 14);
 
 const CONN = process.env.DATABASE_URL ?? process.env.SUPABASE_DB_URL;
 if (!CONN) {
@@ -287,7 +294,7 @@ async function normalise(url, body, contentType) {
  * and JSON-LD alone as the NO_AI fallback (AI_SYSTEM.md §4).
  *
  * @param {any} doc
- * @returns {Promise<{ ok: false, reason: string, issues?: any[] }
+ * @returns {Promise<{ ok: false, reason: string, detail?: string, issues?: any[] }
  *                 | { ok: true, record: Record<string, any>, confidence: Record<string, number>,
  *                     issues: any[], provider: string | null, usedJsonLd: boolean,
  *                     jsonLdFields: string[] }>}
@@ -302,6 +309,19 @@ async function extract(doc) {
   /** @type {any[]} */
   let issues = [];
   let provider = null;
+  /**
+   * Why the model produced nothing, in the model's own terms.
+   *
+   * runTask already knows — it collects a detail per provider it tried, so the answer
+   * is something like "gemini: http 429 | groq: model_decommissioned" — and extract()
+   * used to drop it on the floor and return the bare word `extraction_failed`. That is
+   * what fifty-three log lines said on 2026-09-15 and forty-two said on the re-run:
+   * a label that names the stage and withholds the cause, which is the one thing the
+   * operator came to the log for. An exhausted quota, a retired model name and a page
+   * that genuinely holds no opportunity are three different problems with three
+   * different fixes, and they were indistinguishable.
+   */
+  let modelDetail = null;
 
   if (!NO_AI) {
     const p = prompt("extract.v1");
@@ -326,7 +346,9 @@ async function extract(doc) {
     });
     await logCalls(result.calls, "extract", p.version);
 
-    if (result.ok) {
+    if (!result.ok) {
+      modelDetail = result.detail ?? "every provider in the chain failed";
+    } else {
       provider = `${result.provider}/${result.model}`;
       const validated = validateExtraction(result.data, {
         sourceText: doc.text,
@@ -341,7 +363,17 @@ async function extract(doc) {
   if (!modelRecord && !fromJsonLd) {
     // AI_SYSTEM.md §4 `[PR]`: "Otherwise the document waits. Nothing is published
     // from a failed extraction."
-    return { ok: false, reason: NO_AI ? "no_ai_and_no_jsonld" : "extraction_failed" };
+    return {
+      ok: false,
+      reason: NO_AI ? "no_ai_and_no_jsonld" : "extraction_failed",
+      // A validated reply that simply found no opportunity is not a broken chain, and
+      // the two have to read differently or the next run is another guess.
+      detail:
+        modelDetail ??
+        (provider
+          ? `${provider} replied but no opportunity survived validation`
+          : "no provider was configured for the extract task"),
+    };
   }
 
   if (issues.some((i) => i.effect === "discard")) {
@@ -487,11 +519,36 @@ async function processDocument(source, item) {
   doc.hintRegion = source?.default_region ?? null;
   doc.hintCategories = source?.default_categories ?? [];
 
-  // §4.1: skip anything whose canonical URL plus content hash we already hold.
+  // §4.1: skip anything whose canonical URL plus content hash we already hold — but
+  // only where holding it meant something.
+  //
+  // This check used to match on the hash alone, and the code a dozen lines below
+  // stores a raw document even when extraction fails, "so the next run retries
+  // extraction without re-fetching". It did not. The failed document's hash was in the
+  // table, so the next run matched it, returned `unchanged`, and never reached
+  // extraction again. The comment described the intent and the code did the opposite.
+  //
+  // That turns any outage that spans one run into permanent loss: the 2026-09-15 run
+  // failed extraction on 53 documents and stored all 53, and the re-run reported 17 of
+  // them as `unchanged` — not because they were fine, but because they had already
+  // failed once. Fixing the underlying cause would not have brought them back.
+  //
+  // So `unchanged` now means what it says: we have this document AND it produced an
+  // opportunity. A stored document with nothing to show for it is retried.
   if (!DRY_RUN) {
     const { rows: existing } = await client.query(
-      "SELECT id FROM raw_documents WHERE canonical_url = $1 AND content_hash = $2 LIMIT 1",
-      [doc.canonicalUrl, doc.hash],
+      `SELECT r.id
+         FROM raw_documents r
+        WHERE r.canonical_url = $1
+          AND r.content_hash = $2
+          AND (EXISTS (SELECT 1 FROM opportunities o WHERE o.raw_document_id = r.id)
+               -- The bound on retrying. A provider outage resolves in hours; a page
+               -- that is genuinely not an opportunity never will, and re-asking three
+               -- providers about it on every run for the rest of the year is quota
+               -- spent to learn the same thing. After the window the document rests.
+               OR r.fetched_at < now() - make_interval(days => $3::int))
+        LIMIT 1`,
+      [doc.canonicalUrl, doc.hash, RETRY_EXTRACTION_DAYS],
     );
     if (existing[0]) return { outcome: "unchanged" };
   }
@@ -501,7 +558,10 @@ async function processDocument(source, item) {
     // The document is still stored: §1 wants an auditable row per stage, and the
     // next run retries extraction without re-fetching.
     await storeRawDocument(source, doc);
-    return { outcome: "extraction_failed", detail: extracted.reason };
+    return {
+      outcome: "extraction_failed",
+      detail: extracted.detail ?? extracted.reason,
+    };
   }
 
   const rawDocumentId = await storeRawDocument(source, doc);
@@ -778,6 +838,18 @@ try {
     const url = canonicaliseUrl(ONE_URL);
     if (!url) {
       console.error(`Not a usable URL: ${ONE_URL}`);
+      process.exit(1);
+    }
+    // raw_documents.source_id is NOT NULL and a pasted URL belongs to no source, so a
+    // writing run on this path dies on a constraint violation the moment the first
+    // document is stored — after the fetch, the render and the model calls have all
+    // been paid for. Say so now instead. Quick-add needs a source row of its own to
+    // hang these documents from; until that exists, this path reads and reports.
+    if (!DRY_RUN) {
+      console.error(
+        "--url has no source to attribute the document to, and raw_documents.source_id " +
+          "is NOT NULL. Re-run with --dry-run to put the URL through and print the result.",
+      );
       process.exit(1);
     }
     work.push({ source: null, items: [{ url, title: null, publishedAt: null, summary: null }] });
