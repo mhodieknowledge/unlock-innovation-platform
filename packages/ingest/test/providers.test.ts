@@ -206,7 +206,7 @@ describe("runTask", () => {
     expect(result.calls[0]?.detail).toContain("GROQ_API_KEY");
   });
 
-  it("counts an unparseable reply as schema-invalid and moves on", async () => {
+  it("repairs an unparseable reply on the provider that produced it", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(openAiReply("I'm sorry, I can't do that."))
@@ -222,11 +222,16 @@ describe("runTask", () => {
 
     expect(result.calls[0]?.outcome).toBe("schema_invalid");
     expect(result.ok).toBe(true);
+    // The repair is asked of groq, so cerebras is never reached.
+    if (result.ok) expect(result.provider).toBe("groq");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("rejects a well-formed reply that is the wrong shape", async () => {
+  it("rejects a well-formed reply that is the wrong shape, then repairs it", async () => {
     // A model that returns {"error":"..."} has answered successfully and said
-    // nothing useful. Accepting it would put junk into the pipeline.
+    // nothing useful. Accepting it would put junk into the pipeline — but it has also
+    // just read the document, and §2 guardrail 2 asks it once more before the chain
+    // throws that reading away on a weaker model.
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(openAiReply('{"error":"cannot comply"}'))
@@ -239,11 +244,115 @@ describe("runTask", () => {
       env: ENV,
       fetch: fetchMock as unknown as typeof globalThis.fetch,
       accept: (data) => typeof data === "object" && data !== null && "title" in data,
+      shapeHint: 'with a "title" field',
     });
 
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.provider).toBe("groq");
+
+    // The first answer is still counted against §12's schema-valid rate: the metric
+    // measures what the model said, not how well we recovered from it.
     expect(result.calls[0]?.outcome).toBe("schema_invalid");
+    expect(result.calls[0]?.detail).toContain("error");
+    expect(result.calls[1]?.outcome).toBe("ok");
+  });
+
+  it("tells the repair attempt what was wrong and what was wanted", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(openAiReply('{"summary":"...","deadline":"..."}'))
+      .mockResolvedValueOnce(openAiReply('{"title":"A grant"}'));
+
+    await runTask({
+      chain: CHAIN,
+      system: "s",
+      user: "PAGE TEXT: a grant page",
+      env: ENV,
+      fetch: fetchMock as unknown as typeof globalThis.fetch,
+      accept: (data) => typeof data === "object" && data !== null && "title" in data,
+      shapeHint: 'with a "title" field',
+    });
+
+    const second = fetchMock.mock.calls[1]?.[1] as { body: string };
+    const sent = JSON.parse(second.body) as { messages: Array<{ content: string }> };
+    const user = sent.messages.at(-1)?.content ?? "";
+
+    // The original request is still there — a repair is not a new task.
+    expect(user).toContain("PAGE TEXT: a grant page");
+    // And the one thing the model could not have known.
+    expect(user).toContain("summary, deadline");
+    expect(user).toContain('with a "title" field');
+  });
+
+  it("repairs once, then moves to the next provider", async () => {
+    // "retried once with a repair prompt, then routed to human review" — a model that
+    // answers in the wrong shape twice is not going to get it right on a third ask,
+    // and the quota is better spent on the next provider.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(openAiReply('{"error":"no"}'))
+      .mockResolvedValueOnce(openAiReply('{"error":"still no"}'))
+      .mockResolvedValueOnce(openAiReply('{"title":"A grant"}'));
+
+    const result = await runTask({
+      chain: CHAIN,
+      system: "s",
+      user: "u",
+      env: ENV,
+      fetch: fetchMock as unknown as typeof globalThis.fetch,
+      accept: (data) => typeof data === "object" && data !== null && "title" in data,
+    });
+
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.provider).toBe("cerebras");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(result.calls[0]?.outcome).toBe("schema_invalid");
+    expect(result.calls[1]?.outcome).toBe("schema_invalid");
+  });
+
+  it("returns NO_AI when every provider fails the shape check twice", async () => {
+    const fetchMock = vi.fn(async () => openAiReply('{"error":"no"}'));
+
+    const result = await runTask({
+      chain: CHAIN,
+      system: "s",
+      user: "u",
+      env: ENV,
+      fetch: fetchMock as unknown as typeof globalThis.fetch,
+      accept: (data) => typeof data === "object" && data !== null && "title" in data,
+    });
+
+    expect(result.ok).toBe(false);
+    // Two providers, two attempts each — and the caller is told why rather than
+    // being handed the bare word `extraction_failed`.
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    if (!result.ok) expect(result.detail).toContain("repaired once");
+  });
+
+  it("does not swallow a rate limit that arrives during a repair", async () => {
+    // The repair failed for a reason that has nothing to do with shape. That is the
+    // breaker's business, and the breaker only learns about it if the repair falls
+    // through to the ordinary handling instead of being reported as a shape failure.
+    const breakers = new Breakers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(openAiReply('{"error":"no"}'))
+      .mockResolvedValueOnce(new Response("slow down", { status: 429 }))
+      .mockResolvedValueOnce(openAiReply('{"title":"A grant"}'));
+
+    const result = await runTask({
+      chain: CHAIN,
+      system: "s",
+      user: "u",
+      env: ENV,
+      fetch: fetchMock as unknown as typeof globalThis.fetch,
+      breakers,
+      accept: (data) => typeof data === "object" && data !== null && "title" in data,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.provider).toBe("cerebras");
+    expect(breakers.isOpen("groq")).toBe(true);
   });
 
   it("returns NO_AI for an empty chain rather than pretending", async () => {

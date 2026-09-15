@@ -399,6 +399,7 @@ async function extract(doc) {
       fetch: globalThis.fetch,
       breakers,
       accept: (data) => typeof data === "object" && data !== null && "title" in data,
+      shapeHint: 'with a "title" field, plus whatever else the instructions ask for',
     });
     await logCalls(result.calls, "extract", p.version);
 
@@ -483,6 +484,7 @@ async function deriveRules(doc, record) {
     breakers,
     accept: (data) =>
       typeof data === "object" && data !== null && Array.isArray(/** @type {any} */ (data).rules),
+    shapeHint: 'whose "rules" key is an array (use [] if the document states no rules)',
   });
   await logCalls(result.calls, "rules", p.version);
 

@@ -423,6 +423,66 @@ function clampBackoff(ms) {
 }
 
 /**
+ * Why a reply cannot be used, or null if it can.
+ *
+ * Two different failures wear one name in AI_SYSTEM.md §2 guardrail 2, and both are
+ * "schema-invalid": a reply with no JSON in it at all (callProvider has already
+ * labelled that one), and a reply that parsed cleanly but is not the thing we asked
+ * for. Collapsing them here is what lets one repair path serve both.
+ *
+ * @param {{ok: boolean, data?: unknown, call: Call}} attempt
+ * @param {((data: unknown) => boolean) | undefined} accept
+ * @returns {string | null}
+ */
+function shapeRejection(attempt, accept) {
+  if (!attempt.ok) {
+    return attempt.call.outcome === "schema_invalid"
+      ? (attempt.call.detail ?? "no JSON in the reply")
+      : null;
+  }
+  if (accept && !accept(attempt.data)) {
+    return `failed the shape check: ${describeShape(attempt.data)}`;
+  }
+  return null;
+}
+
+/**
+ * The repair prompt §2 guardrail 2 has always promised and never had.
+ *
+ * "Output failing JSON-schema validation is discarded and retried once with a repair
+ * prompt, then routed to human review." Only the discard was implemented: a reply that
+ * parsed but came back as `keys: summary, deadline, cost` fell straight through to the
+ * next provider, and when that was the last one the document failed extraction and
+ * waited for a person. Eight documents in one run died that way, all of them from
+ * pages that had been fetched successfully and read correctly — the model simply
+ * answered in a shape nobody asked for.
+ *
+ * The retry costs one call, and it is the cheapest call in the pipeline: the document
+ * is already fetched, the provider is already warm, and the alternative is re-fetching
+ * and re-asking on the next run for the same answer. It is deliberately NOT a second
+ * chance at the task — the instructions are unchanged and the page is unchanged. It
+ * tells the model what came back and what was required, which is the one thing it
+ * could not know.
+ *
+ * @param {string} user       the original user message, already truncated
+ * @param {string} rejection  what was wrong, in the terms the log uses
+ * @param {string} [shapeHint] what the caller actually wants, e.g. `with a "title"`
+ * @returns {string}
+ */
+function repairUser(user, rejection, shapeHint) {
+  return [
+    user,
+    "",
+    "---",
+    `Your previous reply to this exact request was rejected: ${rejection}.`,
+    shapeHint
+      ? `Reply with ONLY a JSON object ${shapeHint}.`
+      : "Reply with ONLY the JSON object the instructions above describe.",
+    "No prose, no explanation and no markdown fence: the first character must be { and the last must be }.",
+  ].join("\n");
+}
+
+/**
  * Run a task down its chain until one provider answers, then stop.
  *
  * Returns NO_AI rather than throwing when the chain is exhausted — §13's failure
@@ -439,6 +499,8 @@ function clampBackoff(ms) {
  * @param {Breakers} [args.breakers]
  * @param {(data: unknown) => boolean} [args.accept]  reject a well-formed reply that
  *   is not what was asked for, so the chain falls through instead of returning junk
+ * @param {string} [args.shapeHint]  what `accept` is looking for, in words, so the
+ *   repair retry can say it. `accept` is a predicate and cannot describe itself.
  * @param {number} [args.timeoutMs]
  * @returns {Promise<AiResult>}
  */
@@ -491,21 +553,50 @@ export async function runTask(args) {
       calls.push(attempt.call);
     }
 
-    if (attempt.ok) {
-      if (args.accept && !args.accept(attempt.data)) {
-        // A reply that parsed but is not the right shape. Counted as schema-invalid
-        // so the metric in §12 ("schema-valid rate") reflects reality.
-        // Carry a slice of what actually came back. "failed the shape check" names the
-        // test and withholds the evidence — the same opacity that cost three runs of
-        // guessing at `extraction_failed`. A refusal, a reasoning preamble and a renamed
-        // field all read identically without it, and this appeared eight times in one run.
-        const got = describeShape(attempt.data);
-        calls[calls.length - 1] = {
-          ...attempt.call, outcome: "schema_invalid", detail: `failed the shape check: ${got}`,
-        };
-        details.push(`${row.provider}: reply failed the shape check — ${got}`);
+    // §2 guardrail 2: schema-invalid output is "retried once with a repair prompt".
+    // Once, on the provider that produced it — a model that answered in the wrong shape
+    // has still read the page, and stepping to the next provider throws that reading
+    // away to ask a weaker model the same question from scratch.
+    //
+    // Counted as schema-invalid either way, so §12's schema-valid rate measures the
+    // model's first answer rather than our recovery from it. Carrying a slice of what
+    // came back matters as much here as in the log: "failed the shape check" names the
+    // test and withholds the evidence, and a refusal, a reasoning preamble and a renamed
+    // field all read identically without it.
+    const rejection = shapeRejection(attempt, args.accept);
+    if (rejection !== null) {
+      if (attempt.ok) {
+        calls[calls.length - 1] = { ...attempt.call, outcome: "schema_invalid", detail: rejection };
+      }
+
+      const repaired = await callProvider(row, {
+        system: args.system,
+        user: repairUser(args.user.slice(0, MAX_INPUT_CHARS), rejection, args.shapeHint),
+        env: args.env,
+        fetch: args.fetch,
+        ...(args.timeoutMs === undefined ? {} : { timeoutMs: args.timeoutMs }),
+      });
+      calls.push(repaired.call);
+
+      const stillWrong = shapeRejection(repaired, args.accept);
+      if (stillWrong !== null) {
+        if (repaired.ok) {
+          calls[calls.length - 1] = {
+            ...repaired.call, outcome: "schema_invalid", detail: stillWrong,
+          };
+        }
+        details.push(`${row.provider}: ${rejection}; repaired once and ${stillWrong}`);
         continue;
       }
+
+      // The repair either worked or failed for a reason that has nothing to do with
+      // shape — a 429, a timeout, an outage that arrived between the two calls. The
+      // first case returns below; the second falls through to the breaker handling,
+      // which is the only place that knows what to do with it.
+      attempt = repaired;
+    }
+
+    if (attempt.ok) {
       return { ok: true, data: attempt.data, provider: row.provider, model: row.model, calls };
     }
 
