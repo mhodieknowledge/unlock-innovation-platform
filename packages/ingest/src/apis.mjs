@@ -158,7 +158,13 @@ export function parseDateRange(range) {
   const fallbackYear = trailingYear?.[1] ? Number(trailingYear[1]) : null;
 
   const start = parseDayMonth(halves[0] ?? "", fallbackYear);
-  const end = parseDayMonth(halves[1] ?? "", fallbackYear);
+  // A range inside one month states the month once: "Sep 06 - 20, 2026". The second half
+  // is then a bare day, and reading it as unparseable threw away the whole range —
+  // including the deadline, which is the field this exists for. 137 of Devpost's 183 open
+  // hackathons came back without a deadline before this branch existed.
+  const end =
+    parseDayMonth(halves[1] ?? "", fallbackYear) ??
+    (start ? parseBareDay(halves[1] ?? "", start) : null);
   if (!start || !end) return empty;
 
   // A range that ends before it starts is a year boundary the string did not spell out,
@@ -170,6 +176,35 @@ export function parseDateRange(range) {
     return { start: pulled ? iso(pulled) : null, end: iso(end) };
   }
   return { start: iso(start), end: iso(end) };
+}
+
+/**
+ * The second half of a same-month range: "20, 2026", or just "20". Takes its month and
+ * year from the half that stated them.
+ *
+ * @param {string} part
+ * @param {Date} start
+ * @returns {Date | null}
+ */
+function parseBareDay(part, start) {
+  const match = /^\s*(\d{1,2})(?:\s*,\s*(\d{4}))?\s*$/.exec(part);
+  if (!match) return null;
+  const day = Number(match[1]);
+  if (!Number.isFinite(day) || day < 1 || day > 31) return null;
+  const year = match[2] ? Number(match[2]) : start.getUTCFullYear();
+
+  // "Sep 30 - 02, 2026" states one month and crosses out of it: the second day is
+  // earlier in the month than the first, so it belongs to the NEXT month. Read as the
+  // same month it would fall before its own start, and the year-boundary rule above
+  // would then drag the start back a year — turning a fortnight into 2025-09-30 ..
+  // 2026-09-02. A deadline that wrong is worse than no deadline.
+  const month = day < start.getUTCDate() ? start.getUTCMonth() + 1 : start.getUTCMonth();
+  const date = new Date(Date.UTC(year, month, day));
+
+  // Date.UTC rolls an impossible day into the next month; reject rather than accept the
+  // rollover, and normalise the month for a December-to-January crossing.
+  const expected = ((month % 12) + 12) % 12;
+  return date.getUTCMonth() === expected && date.getUTCDate() === day ? date : null;
 }
 
 /**

@@ -118,6 +118,34 @@ describe("parseDateRange", () => {
     expect(start).toBe("2025-12-20T00:00:00.000Z");
   });
 
+  it("reads a range that states its month once", () => {
+    // "Sep 06 - 20, 2026". 137 of Devpost's 183 open hackathons were losing their
+    // deadline to this shape, because a bare day was read as unparseable and took the
+    // whole range down with it.
+    expect(parseDateRange("Sep 06 - 20, 2026")).toEqual({
+      start: "2026-09-06T00:00:00.000Z",
+      end: "2026-09-20T00:00:00.000Z",
+    });
+  });
+
+  it("rolls a bare day into the next month when it falls before the start", () => {
+    // "Sep 30 - 02, 2026" is a fortnight, not a year. Read as the same month the end
+    // lands before its own start, and the year-boundary rule then drags the start back
+    // to 2025 — a deadline wrong by a year, which is worse than no deadline.
+    expect(parseDateRange("Sep 30 - 02, 2026")).toEqual({
+      start: "2026-09-30T00:00:00.000Z",
+      end: "2026-10-02T00:00:00.000Z",
+    });
+    expect(parseDateRange("Dec 28 - 03, 2026")).toEqual({
+      start: "2026-12-28T00:00:00.000Z",
+      end: "2027-01-03T00:00:00.000Z",
+    });
+  });
+
+  it("rejects a bare day that does not exist in its month", () => {
+    expect(parseDateRange("Sep 06 - 31, 2026")).toEqual({ start: null, end: null });
+  });
+
   it("returns nulls rather than a guess", () => {
     // A wrong deadline is worse than none: the record either expires early and vanishes
     // or stays published telling people to apply for something that has closed.

@@ -92,6 +92,15 @@ const LIMIT = Number(option("--limit") ?? 25);
  */
 const RETRY_EXTRACTION_DAYS = Number(process.env.INGEST_RETRY_EXTRACTION_DAYS ?? 14);
 
+/**
+ * How many pages of an official API one run will walk, and how many of its items it will
+ * take. Both are generous because an API source spends no model quota — the ceiling that
+ * actually binds this pipeline — and stingy enough that a publisher who starts returning
+ * an infinite pager does not hang the run.
+ */
+const API_PAGE_CAP = Number(process.env.INGEST_API_PAGE_CAP ?? 25);
+const API_ITEM_CAP = Number(process.env.INGEST_API_ITEM_CAP ?? 200);
+
 const CONN = process.env.DATABASE_URL ?? process.env.SUPABASE_DB_URL;
 if (!CONN) {
   console.error("Set DATABASE_URL for this command only (invariant 11).");
@@ -233,6 +242,31 @@ async function discover(source) {
       // items reach a record without a single token being spent.
       try {
         items = itemsFromApi(source.api_adapter, result.body, source.url);
+
+        // AND THEN THE REST OF THE PAGES. Devpost answers 9 hackathons and a meta block
+        // saying total_count: 183 — so reading one page was reading 5% of the source and
+        // calling it done. It is the one source here where more volume costs no tokens
+        // at all, which makes it the only place where more volume is simply free.
+        //
+        // Each page is a request to the same host, so politeFetch takes its own turn on
+        // the §2.1 rule 4 clock and twenty-one pages spend three and a half minutes
+        // waiting. That is the price of the rule and it is worth paying for a source
+        // that then needs nothing from a provider.
+        const firstPage = items.length;
+        for (let page = 2; firstPage > 0 && page <= API_PAGE_CAP; page += 1) {
+          const url = new URL(source.url);
+          url.searchParams.set("page", String(page));
+          // No conditional headers past page 1: the ETag belongs to the first page, and
+          // sending it here would invite a 304 that means nothing about this one.
+          const next = await politeFetch(url.href);
+          if (next.status !== "ok" || !next.body) break;
+
+          const more = itemsFromApi(source.api_adapter, next.body, source.url);
+          if (more.length === 0) break;
+          items.push(...more);
+          // A short page is the last page.
+          if (more.length < firstPage) break;
+        }
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
         await recordFetch(source.id, "parse_error", result.httpStatus, 0, 0, detail);
@@ -250,7 +284,12 @@ async function discover(source) {
   const since = source.last_success_at ? new Date(new Date(source.last_success_at).getTime() - 7 * 86_400_000) : null;
   const fresh = itemsSince(items, since);
 
-  return { items: fresh.slice(0, LIMIT), status: "ok", etag: result.etag, lastModified: result.lastModified, seen: items.length };
+  // §9's budget is about MODEL calls, and an API source makes none: its items arrive as
+  // schema.org nodes that recordFromJsonLd turns into records directly. Capping those at
+  // the same 25 as a source that costs two provider calls per document is rationing the
+  // wrong resource — so the AI-free kinds get their own, larger ceiling.
+  const cap = source?.kind === "json_api" ? API_ITEM_CAP : LIMIT;
+  return { items: fresh.slice(0, cap), status: "ok", etag: result.etag, lastModified: result.lastModified, seen: items.length };
 }
 
 async function recordFetch(sourceId, status, httpStatus, seen, added, error, etag, lastModified) {
