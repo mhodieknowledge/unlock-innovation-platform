@@ -19,9 +19,26 @@
  * FAILS CLOSED on robots: a robots.txt we cannot read means we do not fetch. Most
  * crawlers treat an unreachable robots.txt as permission; §2 rates the legal posture
  * above coverage, and the higher source tiers exist so that losing a page is cheap.
+ *
+ * ESCALATION TO A BROWSER. A plain HTTP GET from a CI runner is now refused by a good
+ * part of §3's registry: a production run had three sources answer 403 outright and
+ * another fifty documents come back as interstitials — a 2xx, a proof-of-work script,
+ * and no page. Every one of those was logged as an extraction failure, which is where
+ * an operator would have spent the week. So when a response is a wall rather than a
+ * document, this module renders the URL in a real browser and returns what the browser
+ * got (see lib/browser-fetch.mjs).
+ *
+ * The escalation changes the transport and nothing else. It happens AFTER the robots
+ * check and AFTER the per-host wait, using the same gate as the plain path, so rules 1
+ * and 4 hold across both. Rule 2 holds because there is no credential anywhere in
+ * either path and because 401 and 407 are excluded from escalation by name: a wall may
+ * be rendered past, authentication may not.
  */
 
 import { CRAWLER_USER_AGENT } from "../../packages/config/src/brand.mjs";
+import { detectChallenge, looksUnrendered } from "../../packages/ingest/src/challenge.mjs";
+import { extractJsonLd } from "../../packages/ingest/src/jsonld.mjs";
+import { htmlToText } from "../../packages/ingest/src/text.mjs";
 import { delayFor, isAllowed, parseRobots } from "../../packages/ingest/src/robots.mjs";
 
 export const TIMEOUT_MS = 15_000;
@@ -43,6 +60,41 @@ export const ALLOWED_CONTENT_TYPES = [
 ];
 
 const AGENT_TOKEN = CRAWLER_USER_AGENT.split("/")[0] ?? "MbeleBot";
+
+/**
+ * The escape hatch. Rendering is the expensive path and an operator needs to be able to
+ * turn it off without editing code — to reproduce a plain-HTTP run, to check whether a
+ * source has stopped blocking us, or to keep a constrained runner inside its minutes.
+ */
+const BROWSER_ENABLED = process.env.INGEST_BROWSER !== "0";
+
+/**
+ * A ceiling on renders per run. §9 budgets the batch tier at about eight Actions
+ * minutes a day and a render costs seconds where a fetch costs milliseconds, so the day
+ * a large source goes behind a wall is the day the pipeline would quietly spend an hour
+ * on it. Past the ceiling the fetcher reports `challenged` and stops — a run that reads
+ * most of the catalogue and says which sources it could not reach beats a run that is
+ * still rendering when the runner is killed.
+ */
+const RENDER_BUDGET = Number(process.env.INGEST_BROWSER_BUDGET ?? 40);
+let rendersUsed = 0;
+
+/**
+ * Hosts whose wall we tried and could not pass, and how many times.
+ *
+ * A wall is a property of the host, not of the URL. Scholarship Region contributed ten
+ * documents to the 2026-09-15 run, and an interactive captcha in front of one of them
+ * is in front of all ten — so without this, a source we definitely cannot read costs
+ * ten full challenge timeouts, which at 45 seconds each is more than the batch tier's
+ * whole daily budget spent on nothing. After the second failure the host is taken as
+ * settled for the rest of the run and reported without another attempt.
+ *
+ * Two rather than one, because the first failure can be a slow page or a transient
+ * navigation error, and giving up on a readable source for that would be worse.
+ */
+const HOST_ATTEMPTS_BEFORE_GIVING_UP = 2;
+/** @type {Map<string, { failures: number, reason: string }>} */
+const wallsThatStood = new Map();
 
 /** @type {Map<string, { robots: import("../../packages/ingest/src/robots.mjs").RobotsRules | null, fetchedAt: number }>} */
 const robotsCache = new Map();
@@ -144,7 +196,7 @@ export async function robotsFor(origin) {
 
 /**
  * @typedef {object} FetchResult
- * @property {"ok"|"not_modified"|"fetch_error"|"blocked"|"rate_limited"|"parse_error"} status
+ * @property {"ok"|"not_modified"|"fetch_error"|"blocked"|"challenged"|"rate_limited"|"parse_error"} status
  * @property {number} [httpStatus]
  * @property {string} [body]
  * @property {string} [contentType]
@@ -153,6 +205,8 @@ export async function robotsFor(origin) {
  * @property {string | null} [lastModified]
  * @property {string} [error]
  * @property {boolean} [robotsAllowed]
+ * @property {"http"|"browser"} [via]      which transport produced the body
+ * @property {string | null} [wall]        the vendor whose wall we met, where known
  */
 
 /**
@@ -218,6 +272,14 @@ export async function politeFetch(url, conditional = {}) {
         : Math.min(60_000, 2 ** (attempt + 1) * 1000);
       attempt += 1;
       if (attempt > MAX_RETRIES) {
+        // Some walls answer 429 to everything from a datacentre range regardless of
+        // pace, so backing off further never clears it. One render, then give up.
+        const rendered = await escalate(url, parsed, delayMs, {
+          httpStatus: response.status,
+          vendor: null,
+          signal: `HTTP ${response.status} after ${attempt} backoffs`,
+        });
+        if (rendered.status === "ok") return rendered;
         return {
           status: "rate_limited",
           httpStatus: response.status,
@@ -230,6 +292,16 @@ export async function politeFetch(url, conditional = {}) {
     }
 
     if (!response.ok) {
+      // A refusal may be a wall rather than an answer. detectChallenge decides, and
+      // excludes 401 and 407 — authentication is never something we render past.
+      const verdict = detectChallenge({ status: response.status, headers: response.headers });
+      if (verdict.renderable) {
+        return await escalate(url, parsed, delayMs, {
+          httpStatus: response.status,
+          vendor: verdict.vendor,
+          signal: verdict.signal ?? `HTTP ${response.status}`,
+        });
+      }
       return {
         status: "fetch_error",
         httpStatus: response.status,
@@ -267,6 +339,55 @@ export async function politeFetch(url, conditional = {}) {
       return { status: "parse_error", httpStatus: response.status, error: read.error, robotsAllowed: true };
     }
 
+    // The expensive case: a 2xx carrying a wall instead of a document. Left unchecked
+    // this reaches extraction as a page with no text, and the run reports a failure to
+    // extract rather than a failure to fetch — which is what fifty-three of the lines
+    // in the September 15 log actually were.
+    //
+    // Text length is measured with the same htmlToText the pipeline extracts with, so
+    // "too thin to be a document" means the same thing here as it does downstream.
+    // Only HTML is measured: a feed is XML, its text is all in attributes and CDATA,
+    // and running a page heuristic over it would send every RSS source to a browser.
+    const isMarkup = /html/.test(contentType);
+    const textLength = isMarkup ? htmlToText(read.text).text.length : Number.POSITIVE_INFINITY;
+
+    const verdict = detectChallenge({
+      status: response.status,
+      body: read.text,
+      headers: response.headers,
+      contentType,
+      textLength,
+    });
+    if (verdict.challenged && verdict.renderable) {
+      return await escalate(url, parsed, delayMs, {
+        httpStatus: response.status,
+        vendor: verdict.vendor,
+        signal: verdict.signal ?? "interstitial",
+      });
+    }
+
+    // No wall, but no page either: markup that assembles itself in a browser. Render it
+    // rather than hand the model an empty shell and record the failure as the model's.
+    if (
+      isMarkup &&
+      looksUnrendered({
+        status: response.status,
+        body: read.text,
+        textLength,
+        contentType,
+        jsonLdCount: extractJsonLd(read.text).length,
+      })
+    ) {
+      const rendered = await escalate(url, parsed, delayMs, {
+        httpStatus: response.status,
+        vendor: null,
+        signal: `${textLength} characters of text in ${read.text.length} bytes of markup`,
+      });
+      // A render that fails here is not a block: we DID get a document, it is simply
+      // thin. Hand back what HTTP gave us and let extraction judge it.
+      if (rendered.status === "ok") return rendered;
+    }
+
     return {
       status: "ok",
       httpStatus: response.status,
@@ -276,6 +397,7 @@ export async function politeFetch(url, conditional = {}) {
       etag: response.headers.get("etag"),
       lastModified: response.headers.get("last-modified"),
       robotsAllowed: true,
+      via: "http",
     };
   }
 
@@ -314,8 +436,131 @@ async function readCapped(response) {
   return { ok: true, text: Buffer.concat(chunks).toString("utf8") };
 }
 
+/**
+ * Render a URL that plain HTTP could not read.
+ *
+ * Called only from politeFetch, only after the robots check has passed and only after
+ * a turn has been taken on this host. It takes ANOTHER turn before rendering, because
+ * the render is a second request to the same host and §2.1 rule 4 counts requests, not
+ * fetch strategies.
+ *
+ * A render that fails returns the original HTTP failure as `challenged`, not as a
+ * generic fetch error. That distinction is the point of the whole change: the log
+ * should say "this source is behind a wall we could not pass", because that is a fact
+ * about the source that an operator can act on, and "extraction failed" is not.
+ *
+ * @param {string} url
+ * @param {URL} parsed
+ * @param {number} delayMs
+ * @param {{ httpStatus: number, vendor: string | null, signal: string }} met
+ * @returns {Promise<FetchResult>}
+ */
+async function escalate(url, parsed, delayMs, met) {
+  const wall = met.vendor ? `${met.vendor} (${met.signal})` : met.signal;
+
+  if (!BROWSER_ENABLED) {
+    return {
+      status: "challenged",
+      httpStatus: met.httpStatus,
+      error: `blocked by ${wall}; browser rendering is off (INGEST_BROWSER=0)`,
+      robotsAllowed: true,
+      wall: met.vendor,
+    };
+  }
+
+  const settled = wallsThatStood.get(parsed.host);
+  if (settled && settled.failures >= HOST_ATTEMPTS_BEFORE_GIVING_UP) {
+    return {
+      status: "challenged",
+      httpStatus: met.httpStatus,
+      error: `blocked by ${wall}; ${parsed.host} already turned the browser away this run (${settled.reason})`,
+      robotsAllowed: true,
+      wall: met.vendor,
+    };
+  }
+
+  if (rendersUsed >= RENDER_BUDGET) {
+    return {
+      status: "challenged",
+      httpStatus: met.httpStatus,
+      error: `blocked by ${wall}; the run's render budget of ${RENDER_BUDGET} is spent`,
+      robotsAllowed: true,
+      wall: met.vendor,
+    };
+  }
+  rendersUsed += 1;
+
+  const { renderPage } = await import("./browser-fetch.mjs");
+
+  // §2.1 rule 4 again: the render is a request too.
+  await waitForTurn(parsed.host, delayMs);
+
+  const rendered = await renderPage(url);
+
+  if (!rendered.ok) {
+    const previous = wallsThatStood.get(parsed.host)?.failures ?? 0;
+    wallsThatStood.set(parsed.host, {
+      failures: previous + 1,
+      reason: rendered.reason ?? "render failed",
+    });
+    return {
+      status: "challenged",
+      httpStatus: rendered.httpStatus ?? met.httpStatus,
+      error: `blocked by ${wall}; browser could not pass it: ${rendered.reason}`,
+      robotsAllowed: true,
+      wall: met.vendor,
+      via: "browser",
+    };
+  }
+
+  // A success clears the host: a wall that let us through once is not a wall that
+  // stands, and one slow page earlier in the run should not condemn the rest.
+  wallsThatStood.delete(parsed.host);
+
+  if (Buffer.byteLength(rendered.html ?? "", "utf8") > MAX_BODY_BYTES) {
+    // §4.2's cap binds on this path too. A rendered DOM is bigger than the source
+    // HTML, so this fires more often here than it does on a plain fetch.
+    return {
+      status: "parse_error",
+      httpStatus: rendered.httpStatus ?? met.httpStatus,
+      error: `rendered body over the ${MAX_BODY_BYTES} byte cap`,
+      robotsAllowed: true,
+      via: "browser",
+    };
+  }
+
+  return {
+    status: "ok",
+    httpStatus: rendered.httpStatus ?? 200,
+    body: rendered.html,
+    contentType: rendered.contentType ?? "text/html",
+    finalUrl: rendered.finalUrl ?? url,
+    // A rendered page has no meaningful validators: the DOM is ours, not the
+    // publisher's, so an ETag from it would make the next conditional request lie.
+    etag: null,
+    lastModified: null,
+    robotsAllowed: true,
+    via: "browser",
+    wall: met.vendor,
+  };
+}
+
 /** Reset the per-process caches. For tests and for a long-lived process. */
 export function resetFetcherState() {
   robotsCache.clear();
   lastRequestAt.clear();
+  wallsThatStood.clear();
+  rendersUsed = 0;
+}
+
+/** How much of the render budget this run has spent. For the end-of-run summary. */
+export function renderStats() {
+  return {
+    used: rendersUsed,
+    budget: RENDER_BUDGET,
+    enabled: BROWSER_ENABLED,
+    hostsGivenUpOn: [...wallsThatStood.entries()]
+      .filter(([, v]) => v.failures >= HOST_ATTEMPTS_BEFORE_GIVING_UP)
+      .map(([host]) => host),
+  };
 }

@@ -42,6 +42,8 @@ All stages run in the batch tier (GitHub Actions). Each stage is independently r
 8. **Takedown SLA: 48 hours.** A published contact address, a documented process, and `sources.is_active=false` plus `status='rejected'` (HTTP 451) on request, no argument. `[PR]`
 9. Any source whose ToS restricts automated access is set `tos_posture='restricts_automation'` and may be ingested **only** via its RSS feed or not at all.
 
+> **On the browser fetch path.** §4.2 adds a last-resort transport: where a source answers with a bot wall instead of a document, the URL is rendered in a real browser. Rules 1, 2, 4 and 9 above apply to it unchanged, and rule 2 is the reason authentication statuses are excluded from it by name. Rule 3 is narrowed on that path alone — the user-agent must be a real browser's for the render to work at all, so honest identification moves to the `X-Crawled-By` and `From` headers. The reasoning is written out in §4.2 rather than left to a diff.
+
 ---
 
 ## 3. SOURCE REGISTRY
@@ -63,6 +65,38 @@ Per source kind: enumerate feed items, API result pages, or sitemap URLs. Filter
 
 ### 4.2 Fetch
 Conditional GET with stored `ETag`/`Last-Modified`. Timeout 15 s, max 2 retries. Content-type allowlist (`text/html`, `application/xml`, `application/json`, `application/pdf`). Max body 2 MB. Response written to `source_fetches`.
+
+#### Bot walls, and the browser fetch `[PR]`
+
+A plain GET from the batch tier is now refused by a significant part of §3's registry. The production run of 2026-09-15 stored nothing at all: 53 of 53 documents came back unusable, and the log recorded almost every one of them as `extraction_failed`. That was true of the text we held and false about what had happened, which is the expensive kind of wrong — it points an operator at the extraction prompt for a week, when the pipeline never had the page.
+
+Three things were happening, and they need different names:
+
+| What the source did | What the log said | What it was |
+|---|---|---|
+| `403` at the feed (TechCabal, Techpoint) | `fetch_error — HTTP 403` | correct |
+| `401` (Kaggle) | `fetch_error — HTTP 401` | correct — an API key, tier 1, not a wall |
+| `202` with a 171-byte proof-of-work interstitial (Scholarship Region) | `extraction_failed` | **wrong** — the wall was read as a document |
+| `200` with an unrendered application shell (Zindi, GDG chapters) | `extraction_failed` | **wrong** — the page assembles in a browser |
+
+So the fetcher classifies the response before extraction sees it (`packages/ingest/src/challenge.mjs`), and where the response is a wall rather than a document it renders the URL in a real Chromium and returns what the browser got (`scripts/lib/browser-fetch.mjs`). The solve loop is ported from CF-Clearance-Scraper (MIT): detect the challenge type, wait out the spinner, click the verify control or the turnstile frame, poll until the document arrives.
+
+**The escalation changes the transport and nothing else.**
+
+- §2.1 rule 1 holds. robots.txt is checked before the escalation, by the same code that gates a plain fetch. A disallowed URL is never rendered.
+- §2.1 rule 2 holds, and is the reason `401` and `407` are excluded from escalation **by name**. A bot wall may be rendered past; authentication may not, by any means. There is no credential, no stored cookie and no session on either path.
+- §2.1 rule 3 is **narrowed, deliberately**. The user-agent on the render path is a real Chrome string, because the UA is one of the inputs a wall fingerprints and `MbeleBot` in it means the render fails exactly as the plain fetch did. Honest identification moves to `X-Crawled-By` and `From`, carrying the same bot page and contact address. A publisher inspecting a request still learns who we are and how to stop us, which is what the rule is for. The plain path is unchanged and still sends the bot UA.
+- §2.1 rule 4 holds, and the render counts as a request: a second per-host turn is taken before the browser navigates.
+- §2.1 rule 9 is untouched. A source whose ToS restricts automated access is still feed-only or excluded, and rendering does not make it eligible.
+
+Two ceilings keep this inside §9's budget, because a render costs seconds where a fetch costs milliseconds:
+
+- a weak vendor marker — Cloudflare's challenge script sits on ordinary pages it has already served — only counts as a wall when the document is *also* too thin to be a document. Without that rule, a fully rendered Disrupt Africa article took a 15-second render to arrive at the 3,485 characters plain HTTP already had.
+- at most `INGEST_BROWSER_BUDGET` renders per run (default 40). Past the ceiling the fetcher reports `challenged` and carries on.
+
+A source we could not read is now reported as `challenged`, not as an extraction failure. That distinction is the point: "this source is behind a wall we could not pass" is a fact an operator can act on — lower its tier, drop it, or find its feed — and "extraction failed" is a dead end.
+
+The browser is optional. With `INGEST_BROWSER=0`, or with Chromium simply not installed, the pipeline runs and reports what it could not reach. A degraded run, not a broken one (AI_SYSTEM.md §13).
 
 ### 4.3 Normalise
 - HTML → readable text (Readability-style main-content extraction), scripts/nav/footer stripped.

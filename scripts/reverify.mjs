@@ -460,6 +460,11 @@ try {
   failure = err instanceof Error ? err : new Error(String(err));
 } finally {
   await client.end();
+  // Link checking goes through the same fetcher, so it may have started a browser —
+  // and a live opportunity behind a bot wall used to read as an unreachable link, which
+  // is the one failure here that can un-publish something true.
+  const { closeBrowser } = await import("./lib/browser-fetch.mjs");
+  await closeBrowser();
 }
 
 if (failure) {

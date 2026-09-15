@@ -69,6 +69,24 @@ jobs:
           cache: npm
       - run: npm ci
 
+      # The last-resort fetch path (scripts/lib/browser-fetch.mjs) needs a real Chromium.
+      # Cached by Playwright version, so this is a download on the day the dependency
+      # moves and a restore every other day.
+      #
+      # If this step is removed, the pipeline still runs: the fetcher reports the
+      # sources it could not reach as `challenged` and carries on with the rest. That is
+      # a worse run, not a broken one — but it is the run that produced 53 unusable
+      # documents on 2026-09-15, so keep the step.
+      - name: Cache the browser
+        id: browser-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
       - name: Guard against an unconfigured run
         run: |
           if [ -z "$DATABASE_URL" ]; then

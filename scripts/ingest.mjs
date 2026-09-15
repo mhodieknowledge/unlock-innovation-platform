@@ -52,7 +52,7 @@ import {
   validateRules,
   Breakers,
 } from "../packages/ingest/src/index.mjs";
-import { politeFetch } from "./lib/fetcher.mjs";
+import { politeFetch, renderStats } from "./lib/fetcher.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -178,7 +178,12 @@ async function discover(source) {
     return { items: [], status: "not_modified" };
   }
   if (result.status !== "ok" || !result.body) {
-    await recordFetch(source.id, result.status, result.httpStatus, 0, 0, result.error);
+    // `challenged` is not one of source_fetch_status's values, and inventing one would
+    // mean a migration for a distinction the table does not need: for the source's
+    // health history a wall IS a fetch error. The precise reason goes in the error
+    // column, where the health report reads it.
+    const recorded = result.status === "challenged" ? "fetch_error" : result.status;
+    await recordFetch(source.id, recorded, result.httpStatus, 0, 0, result.error);
     return { items: [], status: result.status, error: result.error };
   }
 
@@ -451,6 +456,13 @@ async function processDocument(source, item) {
 
   if (fetched.status === "blocked") {
     return { outcome: "blocked", detail: fetched.error };
+  }
+  if (fetched.status === "challenged") {
+    // Distinct from fetch_failed on purpose. "We were refused by a bot wall and a real
+    // browser could not get past it either" is a fact about the source that an operator
+    // can act on — lower its tier, drop it, or find its feed. "Extraction failed", which
+    // is what this used to surface as, points at the model and is a dead end.
+    return { outcome: "challenged", detail: fetched.error };
   }
   if (fetched.status !== "ok" || !fetched.body) {
     return { outcome: "fetch_failed", detail: fetched.error ?? fetched.status };
@@ -825,6 +837,20 @@ try {
 
   console.log("");
   console.log(`Ingestion: ${stored} stored, ${unchanged} unchanged, ${failed} not usable.`);
+  const renders = renderStats();
+  if (!renders.enabled) {
+    console.log("Browser rendering was off (INGEST_BROWSER=0): anything behind a wall was skipped.");
+  } else if (renders.used > 0) {
+    console.log(`Browser renders: ${renders.used} of ${renders.budget} budgeted.`);
+    if (renders.used >= renders.budget) {
+      console.log("The render budget ran out — some sources were reported as challenged without being tried.");
+    }
+    if (renders.hostsGivenUpOn.length > 0) {
+      // Worth naming. A host that turns a browser away twice is a source decision —
+      // find its feed, lower its tier, or drop it — not something the next run fixes.
+      console.log(`Walls that stood: ${renders.hostsGivenUpOn.join(", ")}`);
+    }
+  }
   if (stored > 0) {
     console.log("Everything lands in review. §4.9 publishes only after the link check,");
     console.log("and an unproven source's first five records always wait for a person.");
@@ -834,6 +860,11 @@ try {
   failure = err instanceof Error ? err : new Error(String(err));
 } finally {
   await client.end();
+  // The browser is started lazily and held open for the whole run, so it is this
+  // block's job to shut it down. A leaked Chromium keeps the runner alive until the
+  // job times out, which turns a good run into a red one.
+  const { closeBrowser } = await import("./lib/browser-fetch.mjs");
+  await closeBrowser();
 }
 
 if (failure) {

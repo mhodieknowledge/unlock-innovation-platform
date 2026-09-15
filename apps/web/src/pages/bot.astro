@@ -28,6 +28,22 @@ import { BRAND, CONTACT, CRAWLER_USER_AGENT } from "@mbele/config";
       {CRAWLER_USER_AGENT}
     </p>
 
+    <p class="mt-3 text-dense">
+      One exception, so that your logs make sense. Some sites answer that user-agent with a bot
+      challenge rather than a page. Where that happens we load the page once in an ordinary
+      headless browser, which sends a normal Chrome user-agent because the challenge reads the
+      user-agent to decide. Those requests are still ours, and they still say so — in two headers
+      you can grep for and block on:
+    </p>
+    <p class="mt-2 select-all overflow-x-auto rounded-row bg-sunken px-3 py-2 font-mono text-dense">
+      X-Crawled-By: {CRAWLER_USER_AGENT}<br />From: {CONTACT.takedown}
+    </p>
+    <p class="mt-2 text-dense">
+      It is the same crawler under the same rules: robots.txt first, one request per ten seconds,
+      and never past a login or a paywall. If you disallow us in
+      <code class="font-mono">robots.txt</code>, that path stops too.
+    </p>
+
     <h2 class="mt-8 text-subtitle font-semibold">To make it stop</h2>
     <p class="mt-2 text-dense">
       Write to <a href={`mailto:${CONTACT.takedown}`} class="text-brand">{CONTACT.takedown}</a> and
