@@ -199,8 +199,9 @@ jobs:
 
           # Already registered? Nothing to do — and re-PUTting a name is not something to do
           # casually, because the account keeps it.
-          current=$(curl -fsS "$api" -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-                    | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"].get("subdomain") or "")' 2>/dev/null || true)
+          # A 404 here is the "none registered yet" answer rather than an error, which is why the
+          # failure is swallowed instead of reported.
+          current=$(curl -sS "$api" -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" | python3 -c "import json,sys; b=json.load(sys.stdin); print((b.get('result') or {}).get('subdomain') or '')" 2>/dev/null || true)
           if [ -n "$current" ]; then
             echo "Already registered: $current"
             exit 0
@@ -212,7 +213,11 @@ jobs:
             -H "Content-Type: application/json" \
             --data "{\"subdomain\":\"$SUBDOMAIN\"}")
 
-          if printf '%s' "$response" | grep -q '"success":true'; then
+          # PARSED, not grepped. Cloudflare pretty-prints this response — `"success": true`, with a
+          # space — so a grep for '"success":true' reported a registration that had just SUCCEEDED
+          # as a failure, and the deploy stopped one step from the end. An assertion about JSON
+          # belongs in a JSON parser.
+          if printf '%s' "$response" | python3 -c "import json,sys; sys.exit(0 if json.load(sys.stdin).get('success') else 1)"; then
             echo "Registered."
           else
             echo "::error::Could not register \"$SUBDOMAIN\". Cloudflare said: $response"
