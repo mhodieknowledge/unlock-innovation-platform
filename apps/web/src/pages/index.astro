@@ -153,7 +153,13 @@ const scopeLine = country
   feed={{ path: "/feeds/closing-soon.xml", title: "Closing this week" }}
 >
   <!-- §2 item 1: one line stating what this is and the country scope. -->
-  <h1 class="max-w-[28ch] text-display font-bold leading-[--text-display--line-height]">
+  {/* No `leading-*` here. Tailwind v4 pairs `--text-title--line-height` with the
+      `text-title` utility automatically, and the explicit override that used to sit on
+      this heading was written `leading-[--text-display--line-height]` — which compiles
+      to the literal `line-height: --text-display--line-height`, is invalid CSS, and was
+      dropped. The heading inherited the body's 26px and set 34px type on it, so the two
+      lines of this sentence overlapped on every screen wide enough to wrap it twice. */}
+  <h1 class="max-w-[28ch] text-title font-bold md:text-display">
     Everything here is open, and we tell you whether you can apply.
   </h1>
   <p class="prose-measure mt-2 text-body text-ink-2">{scopeLine}</p>
@@ -277,33 +283,53 @@ const scopeLine = country
       <section class="mt-10 border-t border-line pt-6" aria-labelledby="browse">
         <h2 id="browse" class="text-subtitle font-semibold">Browse</h2>
 
+        {/* Kinds are few, so they get chips — §5.4's shape, 4px radius on --sunken, sized
+            to §8's 44px touch target. A handful of links in a wrapped paragraph reads as
+            an afterthought; the same links as chips read as a control. */}
         {entryPoints.categories.length > 0 && (
           <>
-            <h3 class="mt-3 text-meta font-semibold text-ink-2">
+            <h3 class="mt-4 text-meta font-semibold text-ink-2">
               <a href="/categories" class="text-brand">By kind</a>
             </h3>
-            <p class="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-dense">
+            <ul class="mt-2 flex list-none flex-wrap gap-2 p-0">
               {entryPoints.categories.map((category) => (
-                <a href={`/categories/${category.slug}`} class="text-brand">
-                  {category.name}
-                </a>
+                <li>
+                  <a
+                    href={`/categories/${category.slug}`}
+                    class="inline-flex min-h-11 items-center rounded-row bg-sunken px-3 text-dense text-ink no-underline hover:bg-brand-wash hover:text-brand"
+                  >
+                    {category.name}
+                  </a>
+                </li>
               ))}
-            </p>
+            </ul>
           </>
         )}
 
+        {/* Fifty-four countries cannot be chips — that is a solid block of them — and as a
+            wrapped paragraph they were an undifferentiated wall of blue text that you had
+            to read linearly to search. A column grid is alphabetical down each column and
+            scannable in a glance, and every entry is its own 44px row.
+
+            §28 makes each country a first-class page, so none of them is hidden behind a
+            "show more": the list is long because the promise is that all 54 are here. */}
         {entryPoints.countries.length > 0 && (
           <>
-            <h3 class="mt-4 text-meta font-semibold text-ink-2">
+            <h3 class="mt-6 text-meta font-semibold text-ink-2">
               <a href="/countries" class="text-brand">By country</a>
             </h3>
-            <p class="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-dense">
+            <ul class="mt-2 grid list-none grid-cols-2 gap-x-4 p-0 md:grid-cols-3 lg:grid-cols-4">
               {entryPoints.countries.map((c) => (
-                <a href={`/countries/${c.slug}`} class="text-brand">
-                  {c.name}
-                </a>
+                <li>
+                  <a
+                    href={`/countries/${c.slug}`}
+                    class="flex min-h-11 items-center border-b border-line text-dense text-brand no-underline hover:underline"
+                  >
+                    {c.name}
+                  </a>
+                </li>
               ))}
-            </p>
+            </ul>
           </>
         )}
       </section>

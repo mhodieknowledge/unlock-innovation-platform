@@ -49,19 +49,45 @@ const team =
       ? "Individual"
       : null;
 
-// Collapses to the two most important facts on the narrowest viewports and in
-// low-data mode (DESIGN_SYSTEM.md §10): the countdown and eligibility.
+/**
+ * The facts worth a cell, and only those.
+ *
+ * `Closes` is deliberately NOT among them. §5.1's diagram carries the countdown inside
+ * the grid, but this row also renders it above at `countdown-sm` in black, because §1.2
+ * makes it "the single most typographically prominent thing on any card". Keeping both
+ * printed the deadline twice, four millimetres apart — "4 days left" and then
+ * "Closes / 4 Days Left" — which is the kind of duplication that makes a dense list feel
+ * padded rather than informative.
+ *
+ * A fact we do not have is omitted rather than rendered as an em dash. A grid of
+ * "Format —" and "Team —" tells the reader nothing and costs them a cell they have to
+ * read to discover that. §6.4's instinct about empty states applies inside a row too.
+ */
+const candidates: ([string, string] | null)[] = [
+  o.participation_mode === "unknown"
+    ? null
+    : ["Format", o.participation_mode.replace(/_/g, " ")],
+  team ? ["Team", team] : null,
+  prize ? ["Prize", prize] : null,
+  // Cost last, and only when stated. Invariant 13 turns on this field, so `unknown` is
+  // shown as nothing rather than implied to be free.
+  o.cost === "free" ? ["Cost", "Free"] : o.cost === "paid" ? ["Cost", "Has a cost"] : null,
+];
+
+const known = candidates.filter((c): c is [string, string] => c !== null);
+
+/**
+ * §10: in low-data mode the grid collapses to "the two most important facts (countdown,
+ * eligibility)" — the ones a decision turns on, not the first two that happen to exist.
+ *
+ * The countdown is one of them and is already rendered above, so it costs this grid
+ * nothing. Of what remains, only cost can change whether someone should apply at all:
+ * invariant 13 turns on that field. Format and team size are context, and context is
+ * what a reader paying by the kilobyte is choosing not to buy.
+ */
 const cells: [string, string][] = lowData
-  ? [
-      ["Closes", countdownLabel(facts)],
-      ["Cost", o.cost === "free" ? "Free" : o.cost === "paid" ? "Has a cost" : "—"],
-    ]
-  : [
-      ["Closes", countdownLabel(facts)],
-      ["Format", o.participation_mode === "unknown" ? "—" : o.participation_mode.replace(/_/g, " ")],
-      ...((team ? [["Team", team]] : []) as [string, string][]),
-      ...((prize ? [["Prize", prize]] : []) as [string, string][]),
-    ];
+  ? known.filter(([label]) => label === "Cost")
+  : known;
 ---
 
 <article
@@ -94,17 +120,20 @@ const cells: [string, string][] = lowData
       {closed ? "Closed" : countdownLabel(facts)}
     </p>
 
-    <!-- Fact grid: labelled cells with hairlines, never a middle-dot string. -->
-    <dl class="mt-2 grid grid-cols-2 border-t border-line md:grid-cols-4">
-      {
-        cells.map(([label, value]) => (
-          <div class="border-b border-r border-line px-2 py-1 last:border-r-0">
-            <dt class="text-micro font-semibold text-ink-2">{label}</dt>
-            <dd class="text-dense capitalize">{value}</dd>
-          </div>
-        ))
-      }
-    </dl>
+    <!-- Fact grid: labelled cells with hairlines, never a middle-dot string. Absent
+         entirely when there is no fact to put in it, rather than drawn empty. -->
+    {
+      cells.length > 0 && (
+        <dl class="mt-2 grid grid-cols-2 border-t border-line md:grid-cols-4">
+          {cells.map(([label, value]) => (
+            <div class="border-b border-r border-line px-2 py-1 last:border-r-0">
+              <dt class="text-micro font-semibold text-ink-2">{label}</dt>
+              <dd class="text-dense capitalize">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )
+    }
 
     <p class="mt-2 flex items-center justify-between gap-3 text-meta text-ink-2">
       <!-- Freshness: monochrome, deliberately quiet. Dropped in low-data mode, where the

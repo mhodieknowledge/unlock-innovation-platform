@@ -331,8 +331,15 @@ describe("low-data and offline (DESIGN_SYSTEM.md §10, SYSTEM_ARCHITECTURE.md §
     // The flag is on the root element, which is what a stylesheet and a future font link can
     // key off without any JavaScript at all.
     expect(html).toContain('data-low-data="1"');
-    // Two fact cells, not four: the countdown and the cost.
-    expect(html).toContain(">Closes<");
+    // The deadline is still the first thing on the row, but it is no longer a cell
+    // labelled "Closes": it is the countdown line above the grid, black and weighted by
+    // urgency, which is where §1.2 wants "the single most typographically prominent
+    // thing on any card". It used to be in both places, four millimetres apart.
+    expect(html).toContain("text-countdown-sm");
+    expect(html).not.toContain(">Closes<");
+    // One fact cell, not four. Cost is the only one a decision turns on — invariant 13
+    // turns on that field — and format and team size are context a reader paying by the
+    // kilobyte is choosing not to buy.
     expect(html).toContain(">Cost<");
     expect(html).not.toContain(">Prize<");
     expect(html).not.toContain(">Format<");

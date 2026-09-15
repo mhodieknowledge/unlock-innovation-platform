@@ -7,7 +7,10 @@
 // by icon alone.
 
 import "../styles/tokens.css";
-import { BRAND, NO_FEE_STATEMENT } from "@mbele/config";
+import { BRAND } from "@mbele/config";
+
+import SiteFooter from "../components/SiteFooter.astro";
+import SiteHeader from "../components/SiteHeader.astro";
 
 interface Props {
   title: string;
@@ -160,41 +163,7 @@ const ogImage = new URL("/og.png", Astro.url).href;
       >Skip to content</a
     >
 
-    <header class="border-b border-line bg-surface">
-      <div class="mx-auto flex max-w-[1160px] items-center gap-4 px-4 py-3">
-        <!-- DESIGN_SYSTEM.md §11: wordmark only. No symbol at launch — it costs
-             bytes and design debt and earns nothing until the name is settled. -->
-        <a
-          href="/"
-          class="text-title font-bold tracking-[-0.015em] text-brand no-underline"
-          >{BRAND.name}</a
-        >
-
-        <nav aria-label="Your pages" class="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-dense">
-          {
-            user ? (
-              <>
-                <a href="/tracker" class="text-brand">Tracker</a>
-                <!-- Projects are a private tool first (COLLABORATION_SYSTEM.md §1.1), so
-                     this link is not behind a density flag the way a social surface is.
-                     /projects — the browse surface — is the one that disappears. -->
-                <a href="/you/projects" class="text-brand">Projects</a>
-                <a href="/you/inbox" class="text-brand">
-                  Messages{unread > 0 ? ` (${unread})` : ""}
-                </a>
-                <a href="/you/eligibility" class="text-brand">Eligibility</a>
-                <a href="/you/profile" class="text-brand">Profile</a>
-                <a href="/you/account" class="text-brand">Account</a>
-              </>
-            ) : (
-              <a href={`/signin?returnTo=${encodeURIComponent(Astro.url.pathname)}`} class="text-brand">
-                Sign in
-              </a>
-            )
-          }
-        </nav>
-      </div>
-    </header>
+    <SiteHeader user={user} unread={unread} pathname={Astro.url.pathname} />
 
     <main id="main" class="mx-auto max-w-[1160px] px-4 py-6">
       {
@@ -223,41 +192,11 @@ const ogImage = new URL("/og.png", Astro.url).href;
       <slot />
     </main>
 
-    <footer class="mt-12 border-t border-line bg-surface">
-      <div
-        class="mx-auto max-w-[1160px] space-y-2 px-4 py-6 text-meta leading-[--text-meta--line-height] text-ink-2"
-      >
-        <!-- MODERATION_AND_TRUST.md §2.1 rule 3: permanent and prominent. -->
-        <p class="font-semibold text-ink">{NO_FEE_STATEMENT}</p>
-        <nav aria-label="Site information" class="flex flex-wrap gap-x-4 gap-y-1">
-          <a href="/submit" class="text-brand">Tell us about an opportunity</a>
-          <a href="/anti-scam" class="text-brand">Spotting scams</a>
-          <a href="/verification" class="text-brand">What verification means</a>
-          <a href="/privacy" class="text-brand">Privacy</a>
-          <a href="/terms" class="text-brand">Terms</a>
-          <a href="/content-policy" class="text-brand">Content policy</a>
-          <a href="/bot" class="text-brand">About our crawler</a>
-          <a href="/changelog" class="text-brand">Policy changes</a>
-        </nav>
-
-        <!-- §10: "A persistent meta line in the footer: 'Low-data mode is on.' with a
-             toggle." A form, not a script: the mode exists for people whose connection
-             cannot afford a bundle, and a toggle that needs one would be a joke at their
-             expense. -->
-        <form method="post" action="/low-data" class="flex flex-wrap items-center gap-2">
-          <input type="hidden" name="on" value={lowData ? "0" : "1"} />
-          <input type="hidden" name="returnTo" value={Astro.url.pathname + Astro.url.search} />
-          <span>
-            {lowData
-              ? "Low-data mode is on: no images, shorter rows, nothing loaded speculatively."
-              : "Paying by the megabyte?"}
-          </span>
-          <button type="submit" class="min-h-11 text-brand underline">
-            {lowData ? "Turn it off" : "Turn on low-data mode"}
-          </button>
-        </form>
-      </div>
-    </footer>
+    <SiteFooter
+      lowData={lowData}
+      pathname={Astro.url.pathname}
+      search={Astro.url.search}
+    />
 
     {
       /* Registration is a bundled module, never inline: the CSP in public/_headers carries

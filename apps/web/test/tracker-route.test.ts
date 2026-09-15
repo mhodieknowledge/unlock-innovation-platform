@@ -150,8 +150,13 @@ describe("the install prompt (IMPLEMENTATION_PLAN.md §11)", () => {
     expect(html).toContain("Add to home screen");
     expect(html).toContain("No thanks");
     // Not a modal and not an interstitial: no dialog, no overlay, no fixed positioning.
+    // Scoped to the prompt's own element, because the page-wide form of this assertion
+    // also caught the primary navigation — which is a fixed bottom bar on a phone by
+    // design (DESIGN_SYSTEM.md §5.7) and has nothing to do with the install prompt.
     expect(html).not.toMatch(/role="dialog"/);
-    expect(html).not.toMatch(/class="[^"]*\bfixed\b/);
+    const promptTag = /<[^>]*\bdata-install-prompt\b[^>]*>/.exec(html)?.[0] ?? "";
+    expect(promptTag, "the install prompt element was not found").not.toBe("");
+    expect(promptTag).not.toMatch(/\bfixed\b/);
   });
 
   it("is revealed only by the browser's own offer, never on a timer", async () => {

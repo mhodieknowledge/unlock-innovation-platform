@@ -1,0 +1,91 @@
+---
+// DESIGN_SYSTEM.md §5.7, desktop half: "top bar, 56px, logotype left, primary nav
+// centre-left, search centre, account right. No mega-menu."
+//
+// And its prohibition, which shapes this file more than the description does:
+// "Never: hamburger menu hiding primary navigation." Nothing here collapses behind a
+// button at any width. Below `lg` the five destinations are still on the page — see
+// PrimaryNav.astro, which is a child of this header in the DOM and a fixed bar on the
+// bottom edge on a phone. The navigation moves; it never hides.
+//
+// §11: wordmark only, Archivo 700, letter-spacing -0.015em, --brand. No symbol.
+
+import { BRAND } from "@mbele/config";
+
+import Icon from "./Icon.astro";
+import PrimaryNav from "./PrimaryNav.astro";
+
+interface Props {
+  user?: { display_name: string | null } | null;
+  unread?: number;
+  pathname: string;
+}
+
+const { user = null, unread = 0, pathname } = Astro.props;
+---
+
+<header class="sticky top-0 z-40 border-b border-line bg-surface">
+  <div class="mx-auto flex h-14 max-w-[1160px] items-center gap-6 px-4">
+    <a
+      href="/"
+      class="shrink-0 text-title font-bold tracking-[-0.015em] text-brand no-underline"
+      >{BRAND.name}</a
+    >
+
+    <PrimaryNav pathname={pathname} />
+
+    {/* Search sits in the bar on desktop (§5.7 "search centre"). On mobile it is a
+         tab, not a field: a permanently expanded input would eat the header on a
+         360px screen to save one tap. */}
+    <form
+      method="get"
+      action="/opportunities"
+      role="search"
+      class="ml-auto hidden lg:flex lg:items-center"
+    >
+      <label class="contents">
+        <span class="sr-only">Search opportunities</span>
+        <input
+          type="search"
+          name="q"
+          placeholder="Search opportunities"
+          class="h-10 w-56 rounded-row border border-line-strong bg-surface px-3 text-dense"
+        />
+      </label>
+    </form>
+
+    <div class="ml-auto flex items-center gap-1 lg:ml-0">
+      {
+        user ? (
+          <>
+            <a
+              href="/you/inbox"
+              class="inline-flex min-h-11 items-center gap-2 rounded-row px-3 text-dense text-ink-2 no-underline hover:bg-sunken"
+            >
+              <Icon name="mail" size={20} />
+              <span class="hidden sm:inline">Messages</span>
+              {/* The count is part of the link's accessible name, not a bare number
+                  floating beside it. */}
+              {unread > 0 && <span class="font-semibold text-brand">({unread})</span>}
+              <span class="sr-only">{unread > 0 ? `${unread} unread` : "no unread messages"}</span>
+            </a>
+            <a
+              href="/you"
+              class="inline-flex min-h-11 items-center gap-2 rounded-row px-3 text-dense text-ink-2 no-underline hover:bg-sunken"
+            >
+              <Icon name="you" size={20} />
+              <span class="hidden sm:inline">{user.display_name ?? "You"}</span>
+            </a>
+          </>
+        ) : (
+          <a
+            href={`/signin?returnTo=${encodeURIComponent(pathname)}`}
+            class="inline-flex min-h-11 items-center rounded-row border border-line-strong bg-surface px-4 text-dense font-semibold text-ink no-underline hover:bg-sunken"
+          >
+            Sign in
+          </a>
+        )
+      }
+    </div>
+  </div>
+</header>

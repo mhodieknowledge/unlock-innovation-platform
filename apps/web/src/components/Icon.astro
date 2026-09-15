@@ -1,0 +1,72 @@
+---
+// The icon set. DESIGN_SYSTEM.md §12: "inline SVG sprite, stroke 1.5, 20×20 and 24×24
+// only, ≤ 4 KB total, no icon font ever."
+//
+// Inline paths rather than a <symbol>/<use> sprite, for two reasons specific to this
+// product. A sprite has to be injected into every document whether or not the page uses
+// an icon, and it is dead weight on the policy pages that use none. And gzip collapses
+// the repetition an inline set costs — the five nav icons compress to less than the
+// sprite element they would otherwise need.
+//
+// §8 `[PR]`: "No content conveyed by icon alone." Every icon here is decorative and
+// aria-hidden; the label beside it carries the meaning. An icon that is the only thing
+// in a control must be given a `title`, which renders as an accessible name.
+//
+// One geometry for all of them: 24×24 box, stroke 1.5, round caps and joins, no fill.
+// Mixing stroke and fill icons is the fastest way to make a set look bought rather than
+// drawn.
+
+interface Props {
+  name: keyof typeof PATHS;
+  /** §12 allows 20 and 24 only. */
+  size?: 20 | 24;
+  class?: string;
+  /** An accessible name, for the rare icon that stands alone. Omit for decoration. */
+  title?: string;
+}
+
+const PATHS = {
+  // Board — a notice board: a sheet with pinned lines. The product's own metaphor
+  // (§1.1: "The reference is a public notice board").
+  board: "M4 5h16M4 5v14M20 5v14M4 19h16M8 9h8M8 13h5",
+  search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14ZM20 20l-4-4",
+  // Categories — four cells, which is what a category index is.
+  categories: "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
+  // Tracker — a bookmark, the thing you press to keep something.
+  tracker: "M6 4h12v16l-6-4-6 4V4Z",
+  you: "M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM4 20c0-3.3 3.6-5 8-5s8 1.7 8 5",
+  // Countries — a globe with a meridian, not a map of Africa (§1.1 rejects the map).
+  globe: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM3 12h18M12 3c2.5 2.6 2.5 15.4 0 18M12 3c-2.5 2.6-2.5 15.4 0 18",
+  // Trust — a shield, used for the anti-scam and verification surfaces.
+  shield: "M12 3l7 3v5c0 4.4-2.9 8.2-7 10-4.1-1.8-7-5.6-7-10V6l7-3Z",
+  alert: "M12 4 2.5 20h19L12 4ZM12 10v4M12 17.5v.5",
+  mail: "M3 6h18v12H3zM3 7l9 6 9-6",
+  // Leaving the site. §8 wants the destination stated, not implied — this sits beside
+  // the words "opens their site", never in place of them.
+  external: "M14 4h6v6M20 4l-8 8M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5",
+  chevron: "M9 5l7 7-7 7",
+  check: "M4 12.5 9 18 20 6",
+  clock: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM12 7v5.5l3.5 2",
+} as const;
+
+const { name, size = 24, class: className = "", title } = Astro.props;
+---
+
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width={size}
+  height={size}
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="1.5"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+  class={className}
+  role={title ? "img" : undefined}
+  aria-hidden={title ? undefined : "true"}
+  focusable="false"
+>
+  {title && <title>{title}</title>}
+  <path d={PATHS[name]}></path>
+</svg>

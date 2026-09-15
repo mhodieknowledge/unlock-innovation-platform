@@ -306,7 +306,11 @@ describe("§9.3 project browse is absent below its floor", () => {
     // "12 of the 40 we need" tells a visitor the place is empty.
     expect(html).not.toMatch(/\d+ projects?/);
     expect(html).not.toMatch(/\d+ public projects/);
-    expect(html).not.toContain("40");
+    // The floor itself must not appear. Checked against the page's TEXT rather than its
+    // markup: a bare "40" also occurs inside Tailwind class names like `z-40`, so the
+    // markup form of this assertion failed the moment the shell grew a fixed nav bar —
+    // it was measuring the stylesheet, not what the visitor reads.
+    expect(html.replace(/<[^>]*>/g, " ")).not.toMatch(/\b40\b/);
   });
 
   it("404s when the flag is off, whatever the count says", async () => {

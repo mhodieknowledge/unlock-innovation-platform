@@ -1,0 +1,73 @@
+---
+// The primary navigation. ONE landmark, two presentations.
+//
+// DESIGN_SYSTEM.md §5.7 asks for a bottom bar on mobile and a top bar at lg, and §9
+// insists mobile is "designed first and independently, not derived by shrinking the
+// desktop layout". The obvious way to build that is two components — and it was, until
+// axe caught what it costs: two `<nav aria-label="Primary">` elements in one document.
+// `display:none` does take the hidden one out of the accessibility tree, so a browser
+// would have behaved, but the duplication is real in the markup and a screen reader
+// meeting the page before the stylesheet does hears "Primary navigation" twice with no
+// way to tell which is which.
+//
+// So it is one list, rendered once, laid out two ways. The destinations are identical
+// at every width — only the geometry changes — which is exactly the case CSS is for.
+// It lives inside the header's DOM and is `position: fixed` below lg, which is how a
+// bottom bar can be a child of the top bar without either lying about the other.
+//
+// §5.7's prohibition is what makes this shape mandatory rather than merely tidy:
+// "Never: hamburger menu hiding primary navigation." Nothing here collapses behind a
+// button at any width.
+
+import Icon from "./Icon.astro";
+import { PRIMARY_NAV, isCurrent } from "../lib/nav";
+
+interface Props {
+  pathname: string;
+}
+
+const { pathname } = Astro.props;
+---
+
+{/*
+  Below lg: a fixed bar on the bottom edge. pb-[env(safe-area-inset-bottom)] keeps the
+  labels clear of an iPhone's home indicator and resolves to 0 everywhere else.
+  At lg: an ordinary inline row inside the header, and every fixed-position class is
+  switched off in the same breakpoint.
+*/}
+<nav
+  aria-label="Primary"
+  class="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] lg:static lg:z-auto lg:border-0 lg:bg-transparent lg:pb-0"
+>
+  <ul class="mx-auto flex max-w-[1160px] list-none p-0 lg:mx-0 lg:gap-1">
+    {
+      PRIMARY_NAV.map((item) => {
+        const current = isCurrent(item.href, pathname);
+        return (
+          <li class="flex-1 lg:flex-none">
+            <a
+              href={item.href}
+              aria-current={current ? "page" : undefined}
+              class={`relative flex min-h-14 flex-col items-center justify-center gap-[2px] px-1 py-2 text-micro no-underline lg:min-h-11 lg:flex-row lg:gap-2 lg:rounded-row lg:px-3 lg:py-0 lg:text-dense ${
+                current
+                  ? "font-semibold text-brand lg:bg-brand-wash"
+                  : "text-ink-2 lg:hover:bg-sunken"
+              }`}
+            >
+              {/* §5.7's mobile active state: a 2px top rule in --brand. A span rather
+                  than a border so it spans the whole tab. At lg the active state is the
+                  brand wash above, so the rule is switched off. */}
+              {current && (
+                <span aria-hidden="true" class="absolute inset-x-0 top-0 h-[2px] bg-brand lg:hidden" />
+              )}
+              <Icon name={item.icon} size={20} />
+              {/* Labels are always visible. §5.7 is explicit that icon-only bars fail
+                  for first-time users, and most of this product's readers arrive once. */}
+              <span>{item.label}</span>
+            </a>
+          </li>
+        );
+      })
+    }
+  </ul>
+</nav>

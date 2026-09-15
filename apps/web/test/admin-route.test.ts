@@ -226,8 +226,18 @@ describe("§2 the dashboard answers 'is anything wrong'", () => {
 
   it("carries no vanity metric and no chart (§2 [PR])", async () => {
     const html = plain(await (await dashboard()).text()).toLowerCase();
-    for (const word of ["impressions", "page views", "followers", "engagement", "<canvas", "<svg"]) {
+    for (const word of ["impressions", "page views", "followers", "engagement", "<canvas"]) {
       expect(html, `dashboard contains ${word}`).not.toContain(word);
+    }
+
+    // `<svg` used to be banned outright as a proxy for "no chart". It stopped being one
+    // when the shell grew an icon set: ADMIN_SYSTEM.md §12 has the admin wrap the public
+    // layout on purpose — "same design system as the public product" — so the header and
+    // footer icons arrive here too. The rule is still no chart, so it is now stated as
+    // what a chart actually is: every svg on this page must be one of the 24-box icons
+    // from components/Icon.astro. A plotted chart would not be.
+    for (const tag of html.match(/<svg\b[^>]*>/g) ?? []) {
+      expect(tag, `non-icon svg on the dashboard: ${tag}`).toContain('viewbox="0 0 24 24"');
     }
   });
 });
