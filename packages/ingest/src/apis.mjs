@@ -56,6 +56,31 @@ export function devpostHackathons(payload, sourceUrl) {
     const title = text(row["title"]);
     if (!url || !title) continue;
 
+    const location = text(asObject(row["displayed_location"])?.["location"])?.trim() ?? "";
+
+    // ── Three reasons to refuse an entry Devpost is happy to list ────────────────
+    //
+    // Measured against the live endpoint on 2026-09-15: of 183 open hackathons, 113
+    // are physical events and NOT ONE of them is in Africa. They are campus events at
+    // Georgia Tech, Rutgers, Syracuse, Bengaluru, Vancouver, Munich. The 2026-09-15
+    // run published them all, so an Africa-first board filled up with hackathons a
+    // reader in Harare cannot attend and usually cannot enter — most are open only to
+    // students of the host university.
+    //
+    // PRODUCT_SPEC.md §11's promise is that what is on the board is open to the person
+    // reading it. A listing nobody in the audience can act on is not a cheap extra
+    // record; it is the thing that makes the other records look untrustworthy.
+    if (!isReachableFromAfrica(location)) continue;
+
+    // Invite-only. Devpost states it outright, and there is nothing to apply to — 20
+    // of the 183 carry this flag. An opportunity you cannot enter is not one.
+    if (row["invite_only"] === true) continue;
+
+    // Placeholders the organiser never cleaned up. The same run published "N/A",
+    // "Meow" and "REMOVE" as live opportunities, because every other gate in the
+    // pipeline was happy: they have URLs, dates and an organiser.
+    if (isPlaceholderTitle(title)) continue;
+
     // "Aug 21 - Sep 30, 2026", and occasionally a range that crosses a year.
     const period = parseDateRange(text(row["submission_period_dates"]));
 
@@ -79,7 +104,6 @@ export function devpostHackathons(payload, sourceUrl) {
     const organiser = text(row["organization_name"]);
     if (organiser) event["organizer"] = { "@type": "Organization", name: organiser };
 
-    const location = text(asObject(row["displayed_location"])?.["location"]);
     if (location) {
       event["eventAttendanceMode"] =
         location.toLowerCase() === "online"
@@ -115,6 +139,54 @@ export function devpostHackathons(payload, sourceUrl) {
   }
 
   return items;
+}
+
+/**
+ * Every African country and the continent itself, as Devpost spells locations.
+ *
+ * Devpost gives one free-text line — "Online", "Baltimore, MD, USA", "Bengaluru,
+ * India", "Ngee Ann Polytechnic School of ICT" — with no country code, so this is a
+ * name match and nothing cleverer. It errs towards keeping: a venue name with no
+ * country in it at all is rare, and the cost of dropping a real African event is
+ * higher than the cost of letting one foreign one through.
+ */
+const AFRICAN_PLACE =
+  /\b(africa|algeria|angola|benin|botswana|burkina|burundi|cabo verde|cape verde|cameroon|central african|chad|comoros|congo|c[ôo]te d.?ivoire|ivory coast|djibouti|egypt|equatorial guinea|eritrea|eswatini|swaziland|ethiopia|gabon|gambia|ghana|guinea|guinea-bissau|kenya|lesotho|liberia|libya|madagascar|malawi|mali|mauritania|mauritius|morocco|mozambique|namibia|niger|nigeria|rwanda|s[ãa]o tom[ée]|senegal|seychelles|sierra leone|somalia|south africa|south sudan|sudan|tanzania|togo|tunisia|uganda|zambia|zimbabwe)\b/i;
+
+/**
+ * Can somebody reading this board in Africa actually take part?
+ *
+ * Online: yes, wherever it is run from. A physical event: only if it is on the
+ * continent. An empty location is treated as online, because Devpost leaves it blank
+ * on remote events more often than on venues.
+ *
+ * @param {string} location
+ * @returns {boolean}
+ */
+export function isReachableFromAfrica(location) {
+  const value = location.trim();
+  if (value === "") return true;
+  if (/^online$/i.test(value)) return true;
+  return AFRICAN_PLACE.test(value);
+}
+
+/**
+ * A title that is not a name.
+ *
+ * Organisers create a Devpost page before they have decided what it is called, and
+ * some never come back. These reach the writer with a URL, a date and an organiser,
+ * so nothing downstream rejects them — "Meow" published as an opportunity on
+ * 2026-09-15 with a deadline and a Save button.
+ *
+ * @param {string} title
+ * @returns {boolean}
+ */
+export function isPlaceholderTitle(title) {
+  const value = title.trim();
+  if (value.length < 4) return true;
+  return /^(n\/?a|none|null|meow|remove|removed|test|testing|untitled|demo|sample|tbd|todo|asdf+|x+|\.+)$/i.test(
+    value,
+  );
 }
 
 /**

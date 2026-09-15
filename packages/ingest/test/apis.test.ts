@@ -10,7 +10,13 @@
 
 import { describe, expect, it } from "vitest";
 
-import { devpostHackathons, itemsFromApi, parseDateRange } from "../src/apis.mjs";
+import {
+  devpostHackathons,
+  isPlaceholderTitle,
+  isReachableFromAfrica,
+  itemsFromApi,
+  parseDateRange,
+} from "../src/apis.mjs";
 import { recordFromJsonLd } from "../src/jsonld.mjs";
 
 /** Trimmed from https://devpost.com/api/hackathons on 2026-09-15. */
@@ -164,5 +170,79 @@ describe("itemsFromApi", () => {
     expect(() => itemsFromApi("devpost_hackathons", "<html>bot wall</html>", "https://x.test")).toThrow(
       /not JSON/,
     );
+  });
+});
+
+describe("what Devpost lists and this catalogue will not carry", () => {
+  /**
+   * The counts behind these tests, measured against the live endpoint on 2026-09-15:
+   * 183 open hackathons, 113 of them physical events, and NOT ONE of those 113 in
+   * Africa. 20 invite-only. Three called "N/A", "Meow" and "REMOVE". The run that
+   * morning published all of them.
+   */
+  const payload = (row: Record<string, unknown>) => ({
+    hackathons: [
+      {
+        id: 1,
+        title: "A Hackathon",
+        displayed_location: { location: "Online" },
+        url: "https://a.devpost.com/",
+        submission_period_dates: "Jul 31 - Oct 01, 2026",
+        themes: [],
+        organization_name: "Someone",
+        invite_only: false,
+        ...row,
+      },
+    ],
+  });
+
+  const titles = (p: unknown) =>
+    devpostHackathons(p, "https://devpost.com/api/hackathons").map((i) => i.title);
+
+  it("keeps an online hackathon wherever it is run from", () => {
+    expect(titles(payload({}))).toEqual(["A Hackathon"]);
+  });
+
+  it("keeps a physical event on the continent", () => {
+    expect(titles(payload({ displayed_location: { location: "Lagos, Nigeria" } }))).toEqual([
+      "A Hackathon",
+    ]);
+  });
+
+  it("drops a campus event nobody on this board can attend", () => {
+    // The shapes that filled the board: US campuses, and the other continents too.
+    for (const location of [
+      "Atlanta, Georgia, USA",
+      "Baltimore, MD, USA",
+      "Bengaluru, India",
+      "Vancouver, Canada",
+      "Munich, Germany",
+      "Ngee Ann Polytechnic School of ICT",
+    ]) {
+      expect(titles(payload({ displayed_location: { location } })), location).toEqual([]);
+    }
+  });
+
+  it("drops an invite-only listing, because there is nothing to apply to", () => {
+    expect(titles(payload({ invite_only: true }))).toEqual([]);
+  });
+
+  it("drops a page the organiser never named", () => {
+    for (const title of ["N/A", "Meow", "REMOVE", "test", "Untitled", "TBD", "..."]) {
+      expect(titles(payload({ title })), title).toEqual([]);
+    }
+  });
+
+  it("treats a blank location as online rather than guessing it is foreign", () => {
+    // Devpost leaves the line empty on remote events more often than on venues, so the
+    // error this direction loses nothing and the other direction loses real listings.
+    expect(isReachableFromAfrica("")).toBe(true);
+    expect(isReachableFromAfrica("   ")).toBe(true);
+  });
+
+  it("does not mistake a real name for a placeholder", () => {
+    for (const title of ["HackGT", "Lagos Climate Hack", "AI Builders Hackathon"]) {
+      expect(isPlaceholderTitle(title), title).toBe(false);
+    }
   });
 });
