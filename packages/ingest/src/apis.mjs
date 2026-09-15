@@ -101,10 +101,37 @@ export function devpostHackathons(payload, sourceUrl) {
       publishedAt: null,
       summary: null,
       jsonld: [event],
+      // The category, stated rather than inferred. recordFromJsonLd does not derive one
+      // — schema.org has no field for it — so every record built from structured data
+      // was reaching the writer with category_code undefined and falling through to
+      // `other`. All 183 of these are hackathons filed under Other, which is why the
+      // hackathon page was empty while the catalogue was not.
+      //
+      // The endpoint settles the base category: this is /api/hackathons. Devpost's own
+      // themes then narrow it where they are unambiguous, and where they are not the
+      // base stands — a hackathon tagged "Design" is still a hackathon.
+      categoryCode: categoryFromThemes(themes),
     });
   }
 
   return items;
+}
+
+/**
+ * Devpost themes into one of the catalogue's category codes.
+ *
+ * Only the themes that mean something specific move the answer. "Machine Learning/AI"
+ * on a hackathon makes it an AI challenge; "Design" does not make it a design contest.
+ * Everything else stays a hackathon, which is what the endpoint said it was.
+ *
+ * @param {string[]} themes
+ * @returns {string}
+ */
+function categoryFromThemes(themes) {
+  const joined = themes.join(" ").toLowerCase();
+  if (/machine learning|\bai\b|artificial intelligence/.test(joined)) return "ai_challenge";
+  if (/data science|analytics|\bdata\b/.test(joined)) return "data_competition";
+  return "hackathon";
 }
 
 /** Adapters by the `kind` recorded against the source. */

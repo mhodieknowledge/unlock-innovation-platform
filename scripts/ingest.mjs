@@ -647,6 +647,12 @@ async function processDocument(source, item) {
   const candidate = {
     ...extracted.record,
     title: extracted.record.title ?? item.title ?? "Untitled",
+    // The model's category wins where there is one, because it read the page. Where
+    // there is not — every record built from structured data, since schema.org has no
+    // category field and recordFromJsonLd derives none — the discovery adapter's answer
+    // stands. Without this the whole Devpost set files under `other`, and a catalogue
+    // whose hackathon page is empty while it holds 183 hackathons is not a catalogue.
+    category_code: extracted.record.category_code ?? item.categoryCode ?? undefined,
     source_url: doc.canonicalUrl,
     organisation_id: organisation.id,
     raw_document_id: rawDocumentId,
