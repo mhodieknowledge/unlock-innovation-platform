@@ -20,6 +20,20 @@
 -- have moved by the time anyone activates them; the check script reports that rather
 -- than failing silently.
 
+-- MEASURED 2026-09-15, BEFORE LAUNCH. Migration 0030 is the authority for a database
+-- that already exists; these URLs are kept in step so a FRESH database starts where the
+-- live one ended up rather than repeating a pass that has already been done.
+--
+-- Five rows below point at a programme page rather than a home page. discover() treats
+-- an html_page source as a single document, so a row pointing at "/" spends a fetch, a
+-- possible browser render and two model calls per run on a navigation menu. The home
+-- pages extracted to things like "Study @ Unza Undergraduates Postgraduates
+-- International Students Distance Education" — nothing a model can find a grant in.
+--
+-- Nine rows here are inactive in the live database for the same reason and 0030 says
+-- which and why. They are left in this file because the research in them is real and
+-- because deleting a row invites someone to re-add it without the finding attached.
+--
 INSERT INTO sources
   (name, kind, url, cadence_minutes, tos_posture, legal_note, attribution_required,
    default_region, trust_score, is_active)
@@ -38,7 +52,7 @@ VALUES
   ('After School Africa', 'rss', 'https://www.afterschoolafrica.com/feed/', 240, 'restricts_automation',
    'Tier 2 RSS in §7''s table, but robots.txt disallows */feed (checked 2026-09-14). Not usable by crawl. If their content matters, ask them for permission and record it as tos_posture=permits_feeds.',
    true, 'africa_wide', 0.50, false),
-  ('Scholarship Region', 'rss', 'https://scholarshipregion.com/feed/', 240, NULL,
+  ('Scholarship Region', 'rss', 'https://www.scholarshipregion.com/feed/', 240, NULL,
    'Tier 2 RSS. Also publishes to Telegram and WhatsApp, so items may appear here after reaching readers elsewhere.',
    true, 'africa_wide', 0.50, false),
   ('TechCabal', 'rss', 'https://techcabal.com/feed/', 360, NULL,
@@ -66,15 +80,15 @@ VALUES
   ('Zindi competitions', 'html_page', 'https://zindi.africa/competitions', 360, NULL,
    'Tier 6. Priority African ML competitions. §7 flags this one explicitly: legal check required before activation.',
    true, 'africa_wide', 0.50, false),
-  ('Tony Elumelu Foundation', 'html_page', 'https://www.tonyelumelufoundation.org/', 1440, NULL,
+  ('Tony Elumelu Foundation', 'html_page', 'https://www.tonyelumelufoundation.org/tef-entrepreneurship-programme/', 1440, NULL,
    'Tier 6. Direct organisation source, so provenance is good where the terms allow it.',
    true, 'africa_wide', 0.60, false),
-  ('Mastercard Foundation', 'html_page', 'https://mastercardfdn.org/', 1440, NULL,
+  ('Mastercard Foundation', 'html_page', 'https://mastercardfdn.org/en/what-we-do/our-programs/mastercard-foundation-scholars-program/', 1440, NULL,
    'Tier 6. Direct organisation source.', true, 'africa_wide', 0.60, false),
   ('Anzisha Prize', 'html_page', 'https://anzishaprize.org/', 1440, NULL,
    'Tier 6. NOTE: under-18 eligible. PRODUCT_SPEC.md §22.1 — list it, but accounts stay 18+.',
    true, 'africa_wide', 0.60, false),
-  ('Africa''s Business Heroes', 'html_page', 'https://africabusinessheroes.org/', 1440, NULL,
+  ('Africa''s Business Heroes', 'html_page', 'https://africabusinessheroes.org/en/the-prize/application-guidelines', 1440, NULL,
    'Tier 6. Direct organisation source.', true, 'africa_wide', 0.60, false),
   ('Deep Learning Indaba', 'html_page', 'https://deeplearningindaba.com/', 1440, NULL,
    'Tier 6. Per-country IndabaX chapters are separate sources worth adding individually. Its robots.txt did not respond when checked on 2026-09-14; re-run the check before drawing any conclusion — an unreachable robots.txt is treated as a refusal, which is the safe reading but not necessarily a permanent one.',
@@ -82,11 +96,11 @@ VALUES
   ('She Code Africa', 'html_page', 'https://shecodeafrica.org/', 1440, NULL,
    'Tier 6. Produces gender_restricted rules — handle carefully. PRODUCT_SPEC.md §12.2: gender is self-declared, never inferred, and used only for rules like these.',
    true, 'africa_wide', 0.60, false),
-  ('MEST Africa', 'html_page', 'https://meltwater.org/', 1440, NULL,
+  ('MEST Africa', 'html_page', 'https://meltwater.org/mestx/', 1440, NULL,
    'Tier 6. Accelerator cycles.', true, 'africa_wide', 0.55, false),
   ('CcHUB', 'html_page', 'https://cchubnigeria.com/', 1440, NULL,
    'Tier 6. Accelerator cycles.', true, 'africa_wide', 0.55, false),
-  ('Injini', 'html_page', 'https://injini.co.za/', 1440, NULL,
+  ('Injini', 'html_page', 'https://injini.co.za/edtech-fellowship', 1440, NULL,
    'Tier 6. EdTech accelerator, South Africa.', true, 'africa_wide', 0.55, false),
 
   -- ── The deliberate priority. §7 `[C]`. ────────────────────────────────────
