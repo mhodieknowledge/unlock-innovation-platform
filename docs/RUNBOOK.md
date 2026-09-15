@@ -843,14 +843,22 @@ an approval list."*
 Activation has two halves and only one is a machine's.
 
 **The objective half has been run.** `Actions → Ingestion → Run workflow → job: check-sources`
-fetched and recorded robots.txt for every source on 15 September 2026: **21 allow our path, 1
-disallows it, 2 could not be read** — and an unreadable robots.txt is recorded as a refusal, not
-as permission. Those findings are on the rows now, so the activate step will accept them. Re-run
-it whenever a source's site changes; it is safe and it writes nothing but the finding.
+fetched and recorded robots.txt for every source on 15 September 2026:
 
-That run is also what surfaced the duplicate-sources bug fixed in migration 0025: it reported
-"432 source(s) checked" against a registry of 24, because the seed had been re-inserting itself on
-every deploy. Worth knowing if you see an older log.
+    24 source(s) checked: 20 allowed by robots, 1 disallowed, 3 unreadable.
+
+Those findings are on the rows now, so the activate step will accept the twenty.
+
+**A refusal here is not always the site's answer.** An unreadable robots.txt is recorded as a
+refusal rather than as permission, which is the right default and also means a timeout looks
+exactly like a disallow. Two runs an hour apart returned 21/1/2 and then 20/1/3 — one host simply
+did not answer the second time. So if a source you expect to be usable reads `robots_allowed =
+false`, re-run the check before concluding anything; it is safe, it writes nothing but the
+finding, and it costs one request per host.
+
+That first run is also what surfaced the duplicate-sources bug fixed in migration 0025: it
+reported "432 source(s) checked" against a registry of 24, because the seed had been re-inserting
+itself on every deploy. Worth knowing if you see an older log.
 
 ```bash
 # The objective half, again, later:
