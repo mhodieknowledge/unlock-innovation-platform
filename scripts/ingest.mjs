@@ -133,6 +133,16 @@ let RULE_TYPES = [];
 /** @type {Map<string, string[]>} */
 let REGIONS = new Map();
 let CATEGORY_BY_CODE = new Map();
+/**
+ * The same table the other way round, for the ONE place that starts from an id.
+ *
+ * sources.default_categories is a uuid[], and the extract prompt's category hint was
+ * joining those uuids straight into the message — so a source configured with a hint
+ * would have told the model `categories=6f1c0a3e-...`, which is not a hint, it is
+ * noise in a prompt whose whole budget is measured in tokens. It has never misfired
+ * because no source sets the column, which is exactly the kind of bug that waits.
+ */
+let CATEGORY_CODE_BY_ID = new Map();
 
 async function loadReferenceData() {
   const { rows: countries } = await client.query("SELECT iso2 FROM countries");
@@ -150,6 +160,7 @@ async function loadReferenceData() {
 
   const { rows: categories } = await client.query("SELECT id, code FROM categories");
   CATEGORY_BY_CODE = new Map(categories.map((r) => [r.code, r.id]));
+  CATEGORY_CODE_BY_ID = new Map(categories.map((r) => [r.id, r.code]));
 }
 
 /** §5 rule 2 / §4.5: region words expand from OUR table, never a model's list. */
@@ -580,7 +591,11 @@ async function processDocument(source, item) {
   if (!doc.ok) return { outcome: doc.skip };
 
   doc.hintRegion = source?.default_region ?? null;
-  doc.hintCategories = source?.default_categories ?? [];
+  // Codes, not the uuids the column stores: the model is being told "this source
+  // usually carries scholarships", and it cannot read a primary key.
+  doc.hintCategories = (source?.default_categories ?? [])
+    .map((/** @type {string} */ id) => CATEGORY_CODE_BY_ID.get(id))
+    .filter((/** @type {string | undefined} */ code) => typeof code === "string");
 
   // §4.1: skip anything whose canonical URL plus content hash we already hold — but
   // only where holding it meant something.
