@@ -157,7 +157,8 @@ export function parseJsonLoose(text) {
  * does not hold. The caller stops using that provider for the run.
  *
  * @returns {Promise<{ ok: true, data: unknown, call: Call }
- *                 | { ok: false, call: Call, permanent?: boolean, retryAfterMs?: number }>}
+ *                 | { ok: false, call: Call, permanent?: boolean, transient?: boolean,
+ *                     retryAfterMs?: number }>}
  */
 export async function callProvider(row, args) {
   const started = Date.now();
@@ -228,6 +229,14 @@ export async function callProvider(row, args) {
       const detail = await response.text().catch(() => "");
       return {
         ok: false,
+        // 503 is the service saying it is busy, not the account saying it is out.
+        // Gemini's is "This model is currently experiencing high demand. Spikes in
+        // demand are usually temporary. Please try again later." — an invitation to
+        // retry, which §3.2 never asked us to treat as a breaker: it names "429 or
+        // timing out", and 503 is neither. Lumping them together took the primary
+        // extraction provider out for a whole run over a spike that had passed by the
+        // next document.
+        transient: response.status === 503,
         // How long the provider itself asked us to wait. Groq answers a TPM overage
         // with "Please try again in 37.5ms" and Gemini with a retryDelay; taking that
         // at its word is the difference between skipping a beat and sitting out the
@@ -336,6 +345,18 @@ function usageFrom(payload) {
 const MIN_BACKOFF_MS = 1_000;
 
 /**
+ * How many times a busy provider is asked again before the chain moves on, and how long
+ * it is given to stop being busy. Small on purpose: two extra attempts at a second and
+ * two seconds costs three seconds on a document that was going to fail anyway, and
+ * saves the run when the spike is the momentary kind the provider says it is.
+ */
+const TRANSIENT_RETRIES = 2;
+const TRANSIENT_BACKOFF_MS = 1_000;
+
+/** @param {number} ms */
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
  * The wait a provider asked for, in milliseconds, or null if it did not say.
  *
  * Three shapes, because three providers: the Retry-After header (seconds, per RFC
@@ -418,7 +439,11 @@ export async function runTask(args) {
       continue;
     }
 
-    const attempt = await callProvider(row, {
+    // A busy service gets asked again before the chain gives up on it. The free tiers
+    // this project runs on answer 503 under load often enough that one refusal is not
+    // evidence of anything, and the next provider down the chain is usually a worse
+    // model or, on 2026-09-15, an unpaid account.
+    let attempt = await callProvider(row, {
       system: args.system,
       user: args.user.slice(0, MAX_INPUT_CHARS),
       env: args.env,
@@ -426,6 +451,18 @@ export async function runTask(args) {
       ...(args.timeoutMs === undefined ? {} : { timeoutMs: args.timeoutMs }),
     });
     calls.push(attempt.call);
+
+    for (let retry = 1; retry <= TRANSIENT_RETRIES && !attempt.ok && attempt.transient; retry += 1) {
+      await sleep(attempt.retryAfterMs ?? TRANSIENT_BACKOFF_MS * retry);
+      attempt = await callProvider(row, {
+        system: args.system,
+        user: args.user.slice(0, MAX_INPUT_CHARS),
+        env: args.env,
+        fetch: args.fetch,
+        ...(args.timeoutMs === undefined ? {} : { timeoutMs: args.timeoutMs }),
+      });
+      calls.push(attempt.call);
+    }
 
     if (attempt.ok) {
       if (args.accept && !args.accept(attempt.data)) {
@@ -436,6 +473,14 @@ export async function runTask(args) {
         continue;
       }
       return { ok: true, data: attempt.data, provider: row.provider, model: row.model, calls };
+    }
+
+    // A service that was busy every time we asked is worth stepping around for this
+    // document, but not worth banning: the spike it reported is measured in seconds and
+    // the breaker in minutes, so it is left open for the next document to try again.
+    if (attempt.transient) {
+      if (attempt.call.detail) details.push(`${row.provider}: ${attempt.call.detail}`);
+      continue;
     }
 
     if (attempt.call.outcome === "rate_limited") {

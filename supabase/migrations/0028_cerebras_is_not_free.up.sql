@@ -1,0 +1,20 @@
+-- 0028 Cerebras stopped being free, so it leaves the chain
+--
+-- On 2026-09-15 every extraction attempt against Cerebras answered:
+--
+--   402 {"message":"Payment required to access this resource. Visit your billing tab.",
+--        "type":"payment_required_error","param":"quota","code":"payment_required"}
+--
+-- Not a spike and not a retired model — the account has no free allowance left, and
+-- this project has no budget. FREE_INFRASTRUCTURE.md is the whole shape of the thing:
+-- a provider that requires a card is not a fallback, it is a wasted round trip on
+-- every document plus a line of noise in every log.
+--
+-- Disabled rather than deleted. The rows carry the model names, endpoints, quotas and
+-- priorities that were researched for §3.1, and Cerebras has moved its free offering
+-- before; re-enabling is then one UPDATE rather than an archaeology exercise. An
+-- operator who adds billing can turn them back on the same way.
+--
+-- ai_chain_for filters on `enabled`, so this takes effect on the next run with no code
+-- change: extract becomes Gemini then Groq, and rules becomes Groq then Gemini.
+UPDATE ai_providers SET enabled = false WHERE provider = 'cerebras';

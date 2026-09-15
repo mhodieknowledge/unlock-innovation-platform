@@ -5,6 +5,12 @@
 -- catalogues change without notice (Cerebras has dropped models silently; Gemini
 -- removed Pro from the free tier)." When that happens the fix is an UPDATE.
 --
+-- CEREBRAS IS DISABLED in any database that has run migration 0028: on 2026-09-15 it
+-- answered every call with 402 "Payment required to access this resource." Its rows are
+-- kept here and there because they hold researched configuration and because a free
+-- allowance may come back — but nothing in this chain should be counted on to answer
+-- until someone checks that it does.
+--
 -- RETIRED ONCE ALREADY. On 2026-09-15 all three models here answered 404: Gemini said
 -- gemini-2.5-flash "is no longer available to new users", Groq moved
 -- llama-3.1-8b-instant behind Contact Sales, and Cerebras dropped llama3.1-8b from its
