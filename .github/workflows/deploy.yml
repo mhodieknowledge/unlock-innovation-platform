@@ -13,6 +13,13 @@ name: Deploy
 # NEXT_PUBLIC-equivalent values must be readable at build time):
 #   SUPABASE_URL, SUPABASE_ANON_KEY
 #
+# And ONE of these, which is the address the Worker publishes to:
+#   CUSTOM_DOMAIN           a zone in this Cloudflare account, e.g. mbele.africa (preferred)
+#   WORKERS_DEV_SUBDOMAIN   an account-wide workers.dev name, registered automatically
+#
+# With neither, the deploy stops and says so: a Worker with no address is not deployable,
+# and wrangler's own answer to that is an interactive prompt that cannot work in CI.
+#
 # The whole workflow no-ops with a clear message when the secrets are absent,
 # so a fork or a fresh clone does not fail confusingly.
 
@@ -126,20 +133,108 @@ jobs:
       - name: Byte budgets
         run: npm run budget
 
-      - name: Deploy
+      # A Worker has to be reachable at SOME address, and Cloudflare offers two: a route on
+      # a zone you own, or a workers.dev subdomain. `wrangler deploy` with neither prompts
+      # interactively, and in CI a prompt is a failure — which is exactly how the first
+      # twenty-two deploys of this repository ended, after doing everything else correctly.
+      #
+      # So the address is configuration, like everything else here:
+      #
+      #   CUSTOM_DOMAIN             a zone in this Cloudflare account, e.g. mbele.africa.
+      #                             Preferred: it is the address the product actually wants,
+      #                             and it skips workers.dev entirely.
+      #   WORKERS_DEV_SUBDOMAIN     the account-wide workers.dev name, registered below if it
+      #                             does not exist yet. Cosmetic and temporary, but permanent
+      #                             on the account once taken — which is why this workflow
+      #                             will not invent one.
+      #
+      # With neither set the step says so in one sentence and names the two ways to fix it,
+      # rather than leaving wrangler's interactive prompt to fail on its own terms.
+      - name: Register the workers.dev subdomain, if that is the chosen address
+        if: vars.CUSTOM_DOMAIN == '' && vars.WORKERS_DEV_SUBDOMAIN != ''
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SUBDOMAIN: ${{ vars.WORKERS_DEV_SUBDOMAIN }}
+        run: |
+          set -o pipefail
+          api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain"
+
+          # Already registered? Then there is nothing to do, and re-PUTting a name is not
+          # something to do casually: the account keeps it.
+          current=$(curl -fsS "$api" -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                    | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"].get("subdomain") or "")' 2>/dev/null || true)
+          if [ -n "$current" ]; then
+            echo "workers.dev subdomain already registered: $current"
+            exit 0
+          fi
+
+          echo "Registering workers.dev subdomain: $SUBDOMAIN"
+          response=$(curl -sS -X PUT "$api" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data "{\"subdomain\":\"$SUBDOMAIN\"}")
+
+          if printf '%s' "$response" | grep -q '"success":true'; then
+            echo "Registered."
+          else
+            echo "::error::Could not register the subdomain. Cloudflare said: $response"
+            echo "::error::A name already taken by another account, or an API token without Workers Scripts:Edit, both look like this."
+            exit 1
+          fi
+
+      - name: Deploy
+        id: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
+          WORKERS_DEV_SUBDOMAIN: ${{ vars.WORKERS_DEV_SUBDOMAIN }}
         working-directory: apps/web
-        run: npx wrangler deploy
+        run: |
+          set -o pipefail
+
+          if [ -z "$CUSTOM_DOMAIN" ] && [ -z "$WORKERS_DEV_SUBDOMAIN" ]; then
+            echo "::error::This Worker has no address to publish to, so there is nothing to deploy."
+            echo "::error::Set repository variable CUSTOM_DOMAIN to a zone in this Cloudflare account (preferred), or WORKERS_DEV_SUBDOMAIN to an account-wide workers.dev name."
+            exit 1
+          fi
+
+          if [ -n "$CUSTOM_DOMAIN" ]; then
+            # `--route` resolves the zone from the pattern, so the zone has to be in this
+            # account. A domain registered elsewhere fails here with Cloudflare saying so,
+            # which is the right place to find that out.
+            echo "Publishing to $CUSTOM_DOMAIN"
+            npx wrangler deploy --route "${CUSTOM_DOMAIN}/*" 2>&1 | tee deploy.log
+            echo "url=https://${CUSTOM_DOMAIN}" >> "$GITHUB_OUTPUT"
+          else
+            npx wrangler deploy 2>&1 | tee deploy.log
+            # The live URL, read from wrangler's own output rather than reconstructed from the
+            # worker name and the subdomain — the two can disagree, and the log is the truth.
+            url=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' deploy.log | head -1)
+            echo "url=$url" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Say where it is
+        run: |
+          url="${{ steps.deploy.outputs.url }}"
+          echo "### Deployed" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "$url" >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice::Live at $url"
 
       - name: Smoke-test the health endpoint
         run: |
+          # The URL the deploy actually reported, so a fresh environment needs no extra
+          # variable to be smoke-tested. PRODUCTION_URL still wins when it is set, for the
+          # case where the Worker sits behind something else.
           url="${{ vars.PRODUCTION_URL }}"
+          if [ -z "$url" ]; then url="${{ steps.deploy.outputs.url }}"; fi
           if [ -z "$url" ]; then
-            echo "::notice::PRODUCTION_URL not set — skipping smoke test. Set it to the deployed origin."
+            echo "::notice::No deployed URL to test — skipping smoke test."
             exit 0
           fi
+          echo "Smoke-testing $url"
           for i in 1 2 3 4 5; do
             if curl -fsS "$url/api/health" | grep -q '"status":"ok"'; then
               echo "Health check passed."

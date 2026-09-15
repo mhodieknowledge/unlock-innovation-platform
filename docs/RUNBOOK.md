@@ -653,7 +653,41 @@ as not done, and no amount of this is a substitute for them.
 
 ---
 
-## 16. What has NOT been exercised
+## 16. Putting it online
+
+The pipeline is `.github/workflows/deploy.yml`, on every push to `main`. It stops early with a
+notice when the Cloudflare credentials are absent, so a fork never fails confusingly.
+
+**The one thing it cannot decide for you** is the address the Worker publishes to. Cloudflare
+offers two and needs one of them:
+
+| Variable | Use | Result |
+|---|---|---|
+| `CUSTOM_DOMAIN` | A zone already in this Cloudflare account, e.g. `mbele.africa` | Published at that domain; workers.dev is never involved |
+| `WORKERS_DEV_SUBDOMAIN` | An account-wide name, e.g. `mbele` | Published at `mbele-web.<name>.workers.dev`, registered by the workflow through the API on the first run |
+
+Both are repository *variables* (Settings → Secrets and variables → Actions → Variables), not
+secrets — neither is sensitive. `CUSTOM_DOMAIN` wins when both are set.
+
+The workflow will not invent a workers.dev name. It is cosmetic and temporary, but the account
+keeps it once taken, and a name in every URL of a product that has not settled its own brand
+(README.md §6 item 1) is not a machine's decision.
+
+**What happens on a successful run**, in order: migrations, reference seed, build, byte budgets,
+publish, then a smoke test of `/api/health` against the URL the deploy itself reported — no extra
+variable needed. The live URL is printed as a notice and in the run summary.
+
+**After the first successful deploy**, two things need doing by hand:
+
+1. **Supabase → Authentication → URL Configuration.** Add the deployed origin to the redirect
+   allowlist, or sign-in completes and bounces to nowhere.
+2. **Nothing else.** The catalogue is empty and every density flag is off, so what publishes is an
+   honest empty product: the board says nothing is published yet, the country pages say what they
+   have, and no social surface exists. §9–§12 are how each one comes on.
+
+---
+
+## 17. What has NOT been exercised
 
 Stated because a runbook that implies more coverage than it has is worse than a short
 one.
@@ -662,7 +696,7 @@ one.
 |---|---|
 | R2 upload | **Never run.** The signing code is written and the request shape is per the S3 spec, but no R2 bucket or token has existed to send it to. First run will either work or produce a 403 from R2 naming the problem. |
 | Restore from an R2 object | Never run end to end. Restoring from a local dump file is tested on every push; the missing step is the download. |
-| Production deploy | Blocked: the Cloudflare account has no `workers.dev` subdomain registered. One click at the Workers onboarding page. |
+| Production deploy | **Partly done, and the failing half is one variable.** Every deploy since the Cloudflare secrets were added has run migrations against the production Supabase and seeded it successfully — that half IS exercised, on 22 runs. The publish step has never succeeded: the account has no `workers.dev` subdomain and the Worker has no route, so `wrangler deploy` has nothing to publish to and its answer to that is an interactive prompt, which in CI is an exit code. Set `CUSTOM_DOMAIN` (a zone in the account, preferred) or `WORKERS_DEV_SUBDOMAIN` (registered automatically by the workflow) and it publishes. See §16. |
 | Telegram webhook against the real API | Never run. No bot token has been configured. |
 | Brevo send | Never run. No sending domain verified. |
 | An LLM provider call against a live API | Never run in this environment — no key present. The provider layer is unit-tested against the OpenAI and Gemini response shapes with an injected fetch, and the NO_AI path is tested end to end. |
