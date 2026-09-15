@@ -189,10 +189,26 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
+          BRAND_DOMAIN: ${{ vars.BRAND_DOMAIN }}
           WORKERS_DEV_SUBDOMAIN: ${{ vars.WORKERS_DEV_SUBDOMAIN }}
         working-directory: apps/web
         run: |
           set -o pipefail
+
+          # BRAND_DOMAIN is already configured for the brand (PRODUCT_SPEC.md §1) and is almost
+          # always the domain this is meant to be served from, so it is used when CUSTOM_DOMAIN
+          # is not set. That is following configuration rather than inventing an address: the
+          # placeholders are skipped, and a domain whose DNS is not on this Cloudflare account
+          # fails at the route with Cloudflare saying so, which is the right place to learn it.
+          if [ -z "$CUSTOM_DOMAIN" ] && [ -n "$BRAND_DOMAIN" ]; then
+            case "$BRAND_DOMAIN" in
+              *.invalid|example.*|localhost*|"")
+                echo "BRAND_DOMAIN is a placeholder ($BRAND_DOMAIN); not using it as an address." ;;
+              *)
+                echo "No CUSTOM_DOMAIN set; using BRAND_DOMAIN ($BRAND_DOMAIN)."
+                CUSTOM_DOMAIN="$BRAND_DOMAIN" ;;
+            esac
+          fi
 
           if [ -z "$CUSTOM_DOMAIN" ] && [ -z "$WORKERS_DEV_SUBDOMAIN" ]; then
             echo "::error::This Worker has no address to publish to, so there is nothing to deploy."
