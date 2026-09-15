@@ -53,6 +53,7 @@ import {
   validateRules,
   Breakers,
 } from "../packages/ingest/src/index.mjs";
+import { itemsFromApi } from "../packages/ingest/src/apis.mjs";
 import { politeFetch, renderStats } from "./lib/fetcher.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -226,6 +227,18 @@ async function discover(source) {
       // A single page IS the item. Scoped HTML fetch is §2's tier 6, last resort.
       items = [{ url: canonicaliseUrl(source.url) ?? source.url, title: null, publishedAt: null, summary: null }];
       break;
+    case "json_api":
+      // §2 tier 1, and the cheapest tier to read: the adapter returns schema.org nodes,
+      // §4.4 gives publisher-authored structured data priority over the model, so these
+      // items reach a record without a single token being spent.
+      try {
+        items = itemsFromApi(source.api_adapter, result.body, source.url);
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        await recordFetch(source.id, "parse_error", result.httpStatus, 0, 0, detail);
+        return { items: [], status: "parse_error", error: detail };
+      }
+      break;
     default:
       await recordFetch(source.id, "parse_error", result.httpStatus, 0, 0,
         `no discovery implemented for kind "${source.kind}"`);
@@ -265,7 +278,7 @@ async function recordFetch(sourceId, status, httpStatus, seen, added, error, eta
  *                     jsonld: unknown[], hash: string,
  *                     hintRegion?: string | null, hintCategories?: string[] }>}
  */
-async function normalise(url, body, contentType) {
+async function normalise(url, body, contentType, extraJsonLd = []) {
   if (contentType === "application/pdf") {
     // §4.3: "PDF -> text via pdftotext; if empty (scanned), mark needs_manual and
     // stop — NO OCR at $0." pdftotext is not available in the batch image, so a PDF
@@ -273,7 +286,11 @@ async function normalise(url, body, contentType) {
     return { ok: false, skip: "pdf_needs_manual" };
   }
 
-  const jsonld = extractJsonLd(body);
+  // An API adapter's nodes come FIRST, so findOpportunityNode reaches them before
+  // anything the landing page happens to carry: the API is the publisher speaking about
+  // the opportunity, and the page it points at is often a marketing site whose own
+  // JSON-LD describes the organisation running it rather than the thing on offer.
+  const jsonld = [...extraJsonLd, ...extractJsonLd(body)];
   const { text, title } = htmlToText(body);
   const stored = truncateForStorage(text);
 
@@ -513,7 +530,12 @@ async function processDocument(source, item) {
     return { outcome: "fetch_failed", detail: fetched.error ?? fetched.status };
   }
 
-  const doc = await normalise(fetched.finalUrl ?? item.url, fetched.body, fetched.contentType);
+  const doc = await normalise(
+    fetched.finalUrl ?? item.url,
+    fetched.body,
+    fetched.contentType,
+    Array.isArray(item.jsonld) ? item.jsonld : [],
+  );
   if (!doc.ok) return { outcome: doc.skip };
 
   doc.hintRegion = source?.default_region ?? null;

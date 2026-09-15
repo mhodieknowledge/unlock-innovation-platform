@@ -45,6 +45,8 @@ export { extractJsonLd, findOpportunityNode, recordFromJsonLd } from "./jsonld.m
 
 export { THIN_TEXT_CHARS, detectChallenge, looksUnrendered, stillChallenged } from "./challenge.mjs";
 
+export { API_ADAPTERS, devpostHackathons, itemsFromApi, parseDateRange } from "./apis.mjs";
+
 export { BREAKER_MS, Breakers, MAX_INPUT_CHARS, callProvider, parseJsonLoose, runTask } from "./providers.mjs";
 export { delayFor, isAllowed, parseRobots } from "./robots.mjs";
 export { itemsSince, parseFeed, parseSitemap } from "./feeds.mjs";
