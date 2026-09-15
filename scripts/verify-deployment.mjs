@@ -17,7 +17,7 @@
 
 import { gunzipSync } from "node:zlib";
 
-import { SECURITY_HEADERS } from "../packages/config/src/security-headers.ts";
+import { SECURITY_HEADERS } from "../packages/config/src/security-headers.mjs";
 
 const base = (process.argv[2] ?? "").replace(/\/$/, "");
 if (!base) {
@@ -54,9 +54,15 @@ async function get(path, options = {}) {
       signal: AbortSignal.timeout(20_000),
     });
   } catch (error) {
+    // Named rather than `any`: the three places Node puts the reason, in the order they are
+    // worth reading. `cause.code` is the errno — ENOTFOUND, ECONNREFUSED — and the only one of
+    // them an operator can act on directly.
+    const thrown = /** @type {{ cause?: { code?: string }; name?: string; message?: string }} */ (
+      error
+    );
     return {
       status: 0,
-      unreachable: String(error?.cause?.code ?? error?.name ?? error?.message ?? error),
+      unreachable: String(thrown.cause?.code ?? thrown.name ?? thrown.message ?? error),
       headers: new Headers(),
       text: async () => "",
     };
@@ -70,7 +76,10 @@ console.log(`\nVerifying ${base}\n`);
   // than forty identical failures.
   const probe = await get("/api/health");
   if (probe.status === 0) {
-    console.log(`  ✗ ${base} is not reachable  (${probe.unreachable})`);
+    // `in`, because the successful branch of get() returns a Response and a Response has no
+    // reason to explain.
+    const reason = "unreachable" in probe ? probe.unreachable : "no response";
+    console.log(`  ✗ ${base} is not reachable  (${reason})`);
     console.log("\nNothing else can be checked until it responds.\n");
     process.exit(1);
   }
@@ -213,7 +222,7 @@ console.log("\nPWA (PRODUCT_SPEC.md §25.3)");
   ]) {
     const response = await get(path);
     const contentType = response.headers.get("content-type") ?? "";
-    if (response.status === 200 && contentType.includes(type.split("/").pop())) {
+    if (response.status === 200 && contentType.includes(type.split("/")[1])) {
       pass(`${path} served as ${contentType.split(";")[0]}`);
     } else {
       fail(`${path}`, `${response.status} ${contentType}`);
