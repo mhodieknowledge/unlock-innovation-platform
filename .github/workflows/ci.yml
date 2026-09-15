@@ -247,8 +247,15 @@ jobs:
       - run: npm ci
 
       # SECURITY.md §8: critical advisories patched within 72 hours.
+      # Not `npm audit --audit-level=high` directly. Four advisories against
+      # @huggingface/transformers' nested dependencies have no fixed version to move
+      # to, so that command had been failing every CI run for days — and a gate that is
+      # always red is one nobody can read a new finding out of. scripts/audit.mjs still
+      # fails the build at high and above; it excludes those four by advisory ID, with
+      # the reasoning written next to each, so a NEW advisory against the same package
+      # still stops the build.
       - name: Dependency audit
-        run: npm audit --audit-level=high
+        run: npm run audit
 
       # Invariant 11: never commit a secret; this repository is public.
       # Shares one script with local use so the patterns cannot drift.

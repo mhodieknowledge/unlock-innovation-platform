@@ -25,6 +25,7 @@
     "db:seed": "node scripts/migrate.mjs seed",
     "verify": "npm run typecheck && npm run secretscan && npm run budget:selftest && npm run build && npm test && npm run budget",
     "verify:deployment": "node scripts/verify-deployment.mjs",
+    "audit": "node scripts/audit.mjs",
     "secretscan": "bash scripts/secret-scan.sh",
     "db:test": "bash scripts/db-test.sh",
     "parity": "vitest run --config vitest.db.config.ts test/engine-parity.test.ts",

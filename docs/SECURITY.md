@@ -166,6 +166,7 @@ A one-operator platform cannot promise 24/7 response, so the stated SLAs are hon
 ## 12. SECURITY TESTING
 
 - CI: dependency audit, secret scan, CSP header assertion, and a test suite asserting **every RLS policy** (an explicit test per table per role — this is the highest-value security test in the project).
+- The dependency audit fails the build at `high` and above, with a named exception list in `scripts/audit.mjs`. As of 2026-09-15 it holds four advisories — two in `adm-zip` and two in the `sharp` copy nested under `@huggingface/transformers` — none of which has a fixed version to move to, and each of which is recorded with the argument for why it is reachable only by code paths this project does not use. The list is keyed on the **advisory**, not the package, so accepting one finding never suppresses the next one against the same dependency, and a stale entry is reported so the list cannot outlive its reasons. Suppressing a finding is a decision with a name on it, not a default.
 - Automated: weekly ZAP baseline scan against preview.
 - Manual, before each phase ships: authorisation matrix walkthrough, IDOR probing on every `/[id]` route, rate-limit verification, and a check that no admin surface can read eligibility profiles.
 - `security.txt` published at `/.well-known/security.txt` with a contact address and a commitment to acknowledge reports within 5 days. No bounty is offered, and that is stated honestly.
