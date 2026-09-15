@@ -140,6 +140,35 @@ Otherwise → `in_review` in the appropriate queue.
 - Any Safe Browsing hit on `apply_url` or `official_url`.
 - First ever record from a brand-new source (the source's first 5 records are always reviewed).
 
+#### `sources.auto_publish` — a vetted source may skip the caution gates `[PR]`
+
+Migration 0031. The list above is two kinds of rule wearing one name, and the operator's
+launch made the difference matter: one person cannot hand-review the ≥300 records §2 of
+CONTENT_AND_LAUNCH.md asks for before launch, a card at a time.
+
+**Five of them protect a reader** — a fee to apply, a Safe Browsing hit, a prize above USD
+50,000, unclear eligibility beside a stated prize, and source trust below 0.4. Being wrong
+on any of these costs somebody money or an application they were entitled to make. These
+apply to **every** source and `auto_publish` does not reach them.
+
+**The rest protected the pipeline from itself** — the first-five rule, the 0.60 trust floor,
+organisation resolution, and the link-health pre-check that a brand-new record cannot have
+passed yet. On a source an operator has read and vetted, these describe our caution rather
+than any risk to the reader, and together they were absolute: nine of the seeded sources
+carry `trust_score = 0.50`, so no record from them could ever auto-publish however good the
+extraction. `auto_publish = true` sets them aside for that source.
+
+Two narrower checks replace them, because these are still about the reader:
+- a deadline that was **extracted but is uncertain** (`0 < confidence < 0.80`) goes to review.
+  Somebody plans around a date. An absent deadline is honest; a wrong one is not.
+- an **asserted country list** below 0.80 confidence goes to review. `global`, `africa_wide`
+  and `unclear` assert nothing and are displayed as such, so they are unaffected.
+
+**It never applies to people.** `kind IN ('org_submission','manual')` is refused by a CHECK
+constraint. Public submissions never reach this function at all — `public_submit_opportunity`
+writes `status='draft'` straight to the `ugc` queue — and that is the half of the policy the
+operator asked to keep: publish what we fetch, review what a stranger sends.
+
 ### 4.8 Review
 Admin queues, designed to be cleared on a phone in minutes. See `ADMIN_SYSTEM.md` §3. The reviewer sees the extracted record, the source text with rule quotes highlighted, and the confidence per field, with approve / edit / reject / merge actions.
 

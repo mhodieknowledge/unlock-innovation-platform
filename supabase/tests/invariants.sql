@@ -146,6 +146,25 @@ SELECT assert_accepts(
   $q$INSERT INTO sources (name, kind, url, tos_posture)
      VALUES ('Restricted feed', 'rss', 'https://example.org/restricted-feed', 'restricts_automation')$q$);
 
+-- Migration 0031 lets a vetted SCRAPED source publish without a person. What a stranger
+-- sends must never get that: public_submit_opportunity writes straight to the 'ugc'
+-- queue and never calls route_for_publication, and this makes the other half
+-- unrepresentable rather than merely unwritten.
+SELECT assert_rejects(
+  'ingestion: a submission source can never be marked auto_publish',
+  $q$INSERT INTO sources (name, kind, url, robots_allowed, robots_checked_at, auto_publish)
+     VALUES ('People', 'org_submission', 'https://example.org/people-submit', true, now(), true)$q$);
+
+SELECT assert_rejects(
+  'ingestion: a manual source can never be marked auto_publish either',
+  $q$INSERT INTO sources (name, kind, url, robots_allowed, robots_checked_at, auto_publish)
+     VALUES ('By hand', 'manual', 'https://example.org/by-hand', true, now(), true)$q$);
+
+SELECT assert_accepts(
+  'ingestion: a feed may be marked auto_publish',
+  $q$INSERT INTO sources (name, kind, url, robots_allowed, robots_checked_at, auto_publish)
+     VALUES ('Vetted feed', 'rss', 'https://example.org/vetted-feed', true, now(), true)$q$);
+
 -- A source's URL is its identity (migration 0025). Before that constraint existed, the seed's
 -- `ON CONFLICT DO NOTHING` had nothing to conflict on and eighteen deploys turned 24 researched
 -- sources into 432 rows — eighteen fetchers of every feed, against a promise of one request per

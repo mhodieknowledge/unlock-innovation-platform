@@ -63,6 +63,16 @@ VALUES
   ('bbbb0000-0000-0000-0000-00000000000b', 'Brand new feed', 'rss', 'https://new.example/feed', 0.80, 0, true, now(), 'permits_feeds', true),
   ('bbbb0000-0000-0000-0000-00000000000c', 'Untrusted feed', 'rss', 'https://sketchy.example/feed', 0.30, 40, true, now(), 'silent', true);
 
+-- A vetted source with auto_publish set (migration 0031). Deliberately given the
+-- properties that block every other source here — brand new, trust 0.50, which is where
+-- nine of the seeded registry sits — so the tests below prove the caution gates are
+-- skipped and NOT that the record happened to clear them anyway.
+INSERT INTO sources (id, name, kind, url, trust_score, records_published,
+                     robots_allowed, robots_checked_at, tos_posture, is_active, auto_publish)
+VALUES
+  ('bbbb0000-0000-0000-0000-00000000000d', 'Vetted feed', 'rss', 'https://vetted.example/feed', 0.50, 0, true, now(), 'permits_feeds', true, true),
+  ('bbbb0000-0000-0000-0000-00000000000e', 'Vetted but sketchy', 'rss', 'https://vetted-sketchy.example/feed', 0.30, 99, true, now(), 'silent', true, true);
+
 -- ── §4.7 score and route ────────────────────────────────────────────────────
 
 SELECT assert_eq(
@@ -158,6 +168,98 @@ SELECT assert_eq(
   (SELECT decision FROM route_for_publication(
      'bbbb0000-0000-0000-0000-00000000000a', 0.95, 0.95, 0.95, 'free', NULL, NULL,
      'africa_wide', NULL, 'aaaa0000-0000-0000-0000-00000000000a')),
+  'review');
+
+
+-- ── 0031: auto_publish skips caution, never safety ──────────────────────────
+--
+-- The operator's ask was "publish what we scrape, review what strangers send". These
+-- assert the second half is untouched and the first half did not quietly take the
+-- scam gates with it.
+
+SELECT assert_eq(
+  'a vetted source publishes on its FIRST record, at trust 0.50, with no organisation',
+  (SELECT decision FROM route_for_publication(
+     'bbbb0000-0000-0000-0000-00000000000d', 0.50, 0, 0, 'free', NULL, NULL,
+     'africa_wide', NULL, NULL)),
+  'publish');
+
+SELECT assert_eq(
+  'a fee to apply still never auto-publishes, vetted source or not',
+  (SELECT decision FROM route_for_publication(
+     'bbbb0000-0000-0000-0000-00000000000d', 1.0, 1.0, 1.0, 'paid', NULL, NULL,
+     'africa_wide', true, 'aaaa0000-0000-0000-0000-00000000000a')),
+  'review');
+
+SELECT assert_eq(
+  'a fee KEYWORD still never auto-publishes on a vetted source',
+  (SELECT decision FROM route_for_publication(
+     'bbbb0000-0000-0000-0000-00000000000d', 1.0, 1.0, 1.0, 'free', NULL, NULL,
+     'africa_wide', true, 'aaaa0000-0000-0000-0000-00000000000a', true)),
+  'review');
+
+SELECT assert_eq(
+  'Safe Browsing still never auto-publishes on a vetted source',
+  (SELECT decision FROM route_for_publication(
+     'bbbb0000-0000-0000-0000-00000000000d', 1.0, 1.0, 1.0, 'free', NULL, NULL,
+     'africa_wide', true, 'aaaa0000-0000-0000-0000-00000000000a', false, true)),
+  'review');
+
+SELECT assert_eq(
+  'a prize above USD 50,000 still goes to a person on a vetted source',
+  (SELECT decision FROM route_for_publication(
+     'bbbb0000-0000-0000-0000-00000000000d', 1.0, 1.0, 1.0, 'free', 75000, 'USD',
+     'africa_wide', true, 'aaaa0000-0000-0000-0000-00000000000a')),
+  'review');
+
+SELECT assert_eq(
+  'unclear scope beside a stated prize still goes to a person on a vetted source',
+  (SELECT decision FROM route_for_publication(
+     'bbbb0000-0000-0000-0000-00000000000d', 1.0, 1.0, 1.0, 'free', 5000, 'USD',
+     'unclear', true, 'aaaa0000-0000-0000-0000-00000000000a')),
+  'review');
+
+SELECT assert_eq(
+  'auto_publish cannot rescue a source trusted below 0.4',
+  (SELECT decision FROM route_for_publication(
+     'bbbb0000-0000-0000-0000-00000000000e', 1.0, 1.0, 1.0, 'free', NULL, NULL,
+     'africa_wide', true, 'aaaa0000-0000-0000-0000-00000000000a')),
+  'review');
+
+-- The two checks that survive because a reader plans around them.
+SELECT assert_eq(
+  'a deadline extracted at 0.5 is reviewed even on a vetted source',
+  (SELECT decision FROM route_for_publication(
+     'bbbb0000-0000-0000-0000-00000000000d', 1.0, 0.5, 1.0, 'free', NULL, NULL,
+     'africa_wide', true, 'aaaa0000-0000-0000-0000-00000000000a')),
+  'review');
+
+SELECT assert_eq(
+  'NO deadline is fine — absent is honest, unsure is not',
+  (SELECT decision FROM route_for_publication(
+     'bbbb0000-0000-0000-0000-00000000000d', 1.0, 0, 1.0, 'free', NULL, NULL,
+     'africa_wide', true, 'aaaa0000-0000-0000-0000-00000000000a')),
+  'publish');
+
+SELECT assert_eq(
+  'an asserted country list at low confidence is reviewed on a vetted source',
+  (SELECT decision FROM route_for_publication(
+     'bbbb0000-0000-0000-0000-00000000000d', 1.0, 1.0, 0.3, 'free', NULL, NULL,
+     'country_list', true, 'aaaa0000-0000-0000-0000-00000000000a')),
+  'review');
+
+SELECT assert_eq(
+  'africa_wide asserts no country list, so low country confidence does not block it',
+  (SELECT decision FROM route_for_publication(
+     'bbbb0000-0000-0000-0000-00000000000d', 1.0, 1.0, 0.0, 'free', NULL, NULL,
+     'africa_wide', true, 'aaaa0000-0000-0000-0000-00000000000a')),
+  'publish');
+
+SELECT assert_eq(
+  'a source WITHOUT auto_publish is unchanged: its first five still wait',
+  (SELECT decision FROM route_for_publication(
+     'bbbb0000-0000-0000-0000-00000000000b', 1.0, 1.0, 1.0, 'free', NULL, NULL,
+     'africa_wide', true, 'aaaa0000-0000-0000-0000-00000000000a')),
   'review');
 
 -- ── Region expansion comes from OUR table, never a model ────────────────────
