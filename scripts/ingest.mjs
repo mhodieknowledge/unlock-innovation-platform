@@ -25,6 +25,7 @@
  *   DATABASE_URL=... node scripts/ingest.mjs --url <url>      §8's admin quick-add
  *   ... --dry-run    fetch, extract, print, write nothing
  *   ... --no-ai      force the NO_AI path, to prove the fallback works
+ *   ... --force      ignore cadence and run every active source now
  */
 
 import { readFileSync } from "node:fs";
@@ -68,6 +69,18 @@ const option = (name) => {
 const DRY_RUN = flag("--dry-run");
 const NO_AI = flag("--no-ai");
 const ONE_SOURCE = option("--source");
+/**
+ * Ignore cadence. Naming a source is itself that instruction — the console has always
+ * told operators that "--source forces one" while the query went on ANDing the cadence
+ * gate, so a named source that had been read an hour ago returned nothing and printed
+ * the message promising it would have. The flag makes the promise true and generalises
+ * it: --force runs the whole registry now.
+ *
+ * This is the switch that makes a fix verifiable. Without it, the only way to see a
+ * change to the fetch path in production is to wait out the longest cadence in the
+ * registry and hope the run lands on the sources you changed something for.
+ */
+const FORCE = flag("--force") || Boolean(ONE_SOURCE);
 const ONE_URL = option("--url");
 const LIMIT = Number(option("--limit") ?? 25);
 
@@ -773,14 +786,36 @@ try {
       `SELECT * FROM sources
         WHERE is_active
           AND ($1::uuid IS NULL OR id = $1::uuid)
-          AND (last_fetch_at IS NULL
+          AND ($2::boolean
+               OR last_fetch_at IS NULL
                OR last_fetch_at < now() - make_interval(mins => cadence_minutes))
         ORDER BY last_fetch_at NULLS FIRST`,
-      [ONE_SOURCE],
+      [ONE_SOURCE, FORCE],
     );
 
     if (sources.length === 0) {
-      console.log("No source is due. (Cadence is per source; --source forces one.)");
+      // "No source is due" on its own leaves an operator guessing whether the pipeline
+      // is idle or broken, which is the question they came to the log with. Say when.
+      const { rows: next } = await client.query(
+        `SELECT name,
+                last_fetch_at + make_interval(mins => cadence_minutes) AS due_at
+           FROM sources
+          WHERE is_active AND ($1::uuid IS NULL OR id = $1::uuid)
+          ORDER BY due_at NULLS FIRST
+          LIMIT 1`,
+        [ONE_SOURCE],
+      );
+      if (next[0]?.due_at) {
+        const dueAt = new Date(next[0].due_at);
+        const minutes = Math.max(0, Math.round((dueAt.getTime() - Date.now()) / 60_000));
+        console.log(
+          `No source is due. Next is ${next[0].name} at ${dueAt.toISOString().slice(0, 16)}Z, ` +
+            `in ${minutes} minute(s).`,
+        );
+      } else {
+        console.log("No source is due, and none is active.");
+      }
+      console.log("Run with --force to ignore cadence, or --url <url> to put one page through.");
     }
 
     for (const source of sources) {

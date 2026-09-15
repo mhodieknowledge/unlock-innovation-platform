@@ -37,6 +37,16 @@ on:
         required: false
         default: false
         type: boolean
+      force:
+        description: Ignore cadence and read every active source now
+        required: false
+        default: false
+        type: boolean
+      url:
+        description: Put a single URL through the pipeline (ignores the registry)
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -147,9 +157,23 @@ jobs:
           JOB: ${{ github.event.inputs.job }}
           DRY: ${{ github.event.inputs.dry_run == 'true' && '--dry-run' || '' }}
           NOAI: ${{ github.event.inputs.no_ai == 'true' && '--no-ai' || '' }}
+          FORCE: ${{ github.event.inputs.force == 'true' && '--force' || '' }}
+          URL: ${{ github.event.inputs.url }}
         run: |
+          # A scheduled run reads only what cadence says is due, which is right for a
+          # pipeline and wrong for checking a change: the registry's shortest cadence is
+          # three hours, so a manual run minutes after a scheduled one finds nothing to
+          # do and proves nothing. force and url are how an operator sees the fetch path
+          # actually run. URL is quoted rather than word-split because a query string
+          # contains characters the shell would otherwise take an interest in.
           case "$JOB" in
-            ingest)        npm run ingest -- $DRY $NOAI ;;
+            ingest)
+              if [ -n "$URL" ]; then
+                npm run ingest -- --url "$URL" $DRY $NOAI
+              else
+                npm run ingest -- $DRY $NOAI $FORCE
+              fi
+              ;;
             check-sources) npm run sources:check ;;
             embed)         npm run embed -- $DRY ;;
             recommend)     npm run recommend -- $DRY ;;
