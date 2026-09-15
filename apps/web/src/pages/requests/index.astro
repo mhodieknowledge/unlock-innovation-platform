@@ -151,7 +151,7 @@ const daysLeft = (iso: string) =>
         {openedThread && (
           <>
             {" "}
-            <a href={`/threads/${openedThread}`} class="text-brand">Open it →</a>
+            <a href={`/threads/${openedThread}`} class="text-brand">Open it</a>
           </>
         )}
       </p>
@@ -175,7 +175,7 @@ const daysLeft = (iso: string) =>
           blue here, by design. Say you're going for something and the room will show you who else
           is.
         </p>
-        <p class="mt-3"><a href="/opportunities" class="text-brand">Find something →</a></p>
+        <p class="mt-3"><a href="/opportunities" class="text-brand">Find something</a></p>
       </div>
     )
   }
@@ -311,7 +311,7 @@ const daysLeft = (iso: string) =>
               {r.state === "accepted" && (
                 <>
                   {" "}
-                  <a href="/threads" class="text-brand">Open the conversation →</a>
+                  <a href="/threads" class="text-brand">Open the conversation</a>
                 </>
               )}
             </li>
@@ -322,6 +322,6 @@ const daysLeft = (iso: string) =>
   }
 
   <p class="mt-10 text-micro text-ink-2">
-    <a href="/threads" class="underline">Your conversations →</a>
+    <a href="/threads" class="underline">Your conversations</a>
   </p>
 </Base>

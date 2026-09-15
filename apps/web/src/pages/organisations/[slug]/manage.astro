@@ -130,7 +130,7 @@ const STATUS_WORD: Record<string, string> = {
   !org ? (
     <Base title="Not found" noindex user={user}>
       <h1 class="text-title font-semibold">That organisation isn't here</h1>
-      <p class="mt-4"><a href="/opportunities" class="text-brand">Browse what's open →</a></p>
+      <p class="mt-4"><a href="/opportunities" class="text-brand">Browse what's open</a></p>
     </Base>
   ) : (
     <Base title={`Manage ${org.name}`} noindex user={user}>
@@ -172,7 +172,7 @@ const STATUS_WORD: Record<string, string> = {
               domain.
             </p>
             <p class="mt-3">
-              <a href={`/organisations/${org.slug}/claim`} class="text-brand">Claim it →</a>
+              <a href={`/organisations/${org.slug}/claim`} class="text-brand">Claim it</a>
             </p>
           </div>
         ) : !verified ? (

@@ -160,7 +160,7 @@
           maxlength="2"
           placeholder="ZW"
           autocomplete="country"
-          class="mt-1 h-11 w-full rounded-row border border-line px-3 uppercase"
+          class="mt-1 h-11 w-full rounded-row border border-line-strong px-3 uppercase"
         />
       </label>
 
@@ -168,7 +168,7 @@
         <span class="block text-micro font-semibold text-ink-2">Student status</span>
         <select
           bind:value={studentStatus}
-          class="mt-1 h-11 w-full rounded-row border border-line bg-surface px-3"
+          class="mt-1 h-11 w-full rounded-row border border-line-strong bg-surface px-3"
         >
           {#each STATUSES as [value, label] (value)}
             <option {value}>{label}</option>
@@ -183,7 +183,7 @@
           inputmode="numeric"
           maxlength="4"
           placeholder="2004"
-          class="mt-1 h-11 w-full rounded-row border border-line px-3"
+          class="mt-1 h-11 w-full rounded-row border border-line-strong px-3"
         />
         <span class="mt-1 block text-meta text-ink-2"
           >We ask for the year only, never a full date of birth.</span
@@ -282,7 +282,7 @@
         {/if}
       </p>
 
-      <button onclick={reopen} class="mt-2 block text-meta text-brand underline"
+      <button onclick={reopen} class="mt-2 inline-flex min-h-11 items-center text-meta text-brand underline"
         >Change my details</button
       >
     </div>

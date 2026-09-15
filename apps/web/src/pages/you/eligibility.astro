@@ -328,7 +328,7 @@ const unlocks = (field: { resolves: number }) =>
         maxlength="2"
         placeholder="ZW"
         autocomplete="country"
-        class="mt-1 h-11 w-full rounded-row border border-line px-3 uppercase"
+        class="mt-1 h-11 w-full rounded-row border border-line-strong px-3 uppercase"
       />
       <span class="mt-1 block text-meta text-ink-2">
         {unlocks(FIELDS[0]!)} Residency and nationality are different things and we keep them apart.
@@ -343,7 +343,7 @@ const unlocks = (field: { resolves: number }) =>
         inputmode="numeric"
         maxlength="4"
         placeholder="2004"
-        class="mt-1 h-11 w-full rounded-row border border-line px-3"
+        class="mt-1 h-11 w-full rounded-row border border-line-strong px-3"
       />
       <span class="mt-1 block text-meta text-ink-2">
         {unlocks(FIELDS[1]!)} We ask for the year only, never a full date of birth — which means a
@@ -355,7 +355,7 @@ const unlocks = (field: { resolves: number }) =>
       <span class="block text-micro font-semibold text-ink-2">Student status</span>
       <select
         name="student_status"
-        class="mt-1 h-11 w-full rounded-row border border-line bg-surface px-3"
+        class="mt-1 h-11 w-full rounded-row border border-line-strong bg-surface px-3"
       >
         {
           STUDENT_STATUSES.map(([value, label]) => (
@@ -374,7 +374,7 @@ const unlocks = (field: { resolves: number }) =>
         name="nationalities"
         value={(Array.isArray(p["nationalities"]) ? (p["nationalities"] as string[]) : []).join(", ")}
         placeholder="ZW, GB"
-        class="mt-1 h-11 w-full rounded-row border border-line px-3 uppercase"
+        class="mt-1 h-11 w-full rounded-row border border-line-strong px-3 uppercase"
       />
       <span class="mt-1 block text-meta text-ink-2">
         {unlocks(FIELDS[3]!)} Two-letter codes, comma separated if you hold more than one.
@@ -388,7 +388,7 @@ const unlocks = (field: { resolves: number }) =>
         value={String(p["year_of_study"] ?? "")}
         inputmode="numeric"
         maxlength="2"
-        class="mt-1 h-11 w-full rounded-row border border-line px-3"
+        class="mt-1 h-11 w-full rounded-row border border-line-strong px-3"
       />
       <span class="mt-1 block text-meta text-ink-2">{unlocks(FIELDS[4]!)}</span>
     </label>
@@ -397,7 +397,7 @@ const unlocks = (field: { resolves: number }) =>
       <span class="block text-micro font-semibold text-ink-2">Institution type</span>
       <select
         name="institution_type"
-        class="mt-1 h-11 w-full rounded-row border border-line bg-surface px-3"
+        class="mt-1 h-11 w-full rounded-row border border-line-strong bg-surface px-3"
       >
         {
           INSTITUTION_TYPES.map(([value, label]) => (
@@ -416,7 +416,7 @@ const unlocks = (field: { resolves: number }) =>
         name="institution_name"
         value={String(p["institution_name"] ?? "")}
         maxlength="200"
-        class="mt-1 h-11 w-full rounded-row border border-line px-3"
+        class="mt-1 h-11 w-full rounded-row border border-line-strong px-3"
       />
       <span class="mt-1 block text-meta text-ink-2">
         Optional. We never ask for a student ID, a transcript or any document.
@@ -430,7 +430,7 @@ const unlocks = (field: { resolves: number }) =>
         value={p["years_experience"] === null || p["years_experience"] === undefined ? "" : String(p["years_experience"])}
         inputmode="numeric"
         maxlength="2"
-        class="mt-1 h-11 w-full rounded-row border border-line px-3"
+        class="mt-1 h-11 w-full rounded-row border border-line-strong px-3"
       />
       <span class="mt-1 block text-meta text-ink-2">{unlocks(FIELDS[6]!)} Zero is a real answer.</span>
     </label>
@@ -441,7 +441,7 @@ const unlocks = (field: { resolves: number }) =>
         name="languages"
         value={(Array.isArray(p["languages"]) ? (p["languages"] as string[]) : []).join(", ")}
         placeholder="English, French"
-        class="mt-1 h-11 w-full rounded-row border border-line px-3"
+        class="mt-1 h-11 w-full rounded-row border border-line-strong px-3"
       />
       <span class="mt-1 block text-meta text-ink-2">{unlocks(FIELDS[7]!)}</span>
     </label>
@@ -450,7 +450,7 @@ const unlocks = (field: { resolves: number }) =>
       <span class="block text-micro font-semibold text-ink-2">Can you travel?</span>
       <select
         name="can_travel"
-        class="mt-1 h-11 w-full rounded-row border border-line bg-surface px-3"
+        class="mt-1 h-11 w-full rounded-row border border-line-strong bg-surface px-3"
       >
         <option value="" selected={p["can_travel"] === null || p["can_travel"] === undefined}>
           Prefer not to say
@@ -472,7 +472,7 @@ const unlocks = (field: { resolves: number }) =>
           name="gender"
           value={String(p["gender"] ?? "")}
           maxlength="40"
-          class="mt-1 h-11 w-full rounded-row border border-line px-3"
+          class="mt-1 h-11 w-full rounded-row border border-line-strong px-3"
         />
         <span class="mt-1 block text-meta text-ink-2">
           Only used to evaluate programmes that are open to a specific group — women-in-tech

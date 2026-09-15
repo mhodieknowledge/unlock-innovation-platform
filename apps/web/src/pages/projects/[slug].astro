@@ -174,7 +174,7 @@ const nextPrompt = (p: ProjectRow): { label: string; field: string } | null => {
           ? "Something on our side is unavailable. Nothing has been lost."
           : "It may have been deleted, or it may be private. A private project is visible only to the person who made it."}
       </p>
-      <p class="mt-4"><a href="/you/projects" class="text-brand">Your projects →</a></p>
+      <p class="mt-4"><a href="/you/projects" class="text-brand">Your projects</a></p>
     </Base>
   ) : (
     <Base
@@ -275,7 +275,7 @@ const nextPrompt = (p: ProjectRow): { label: string; field: string } | null => {
                           <form method="post" class="inline">
                             <input type="hidden" name="submitted_opportunity" value={match.opportunity_id} />
                             <input type="hidden" name="outcome" value="submitted" />
-                            <button type="submit" class="text-ink-2 underline">I entered this</button>
+                            <button type="submit" class="inline-flex min-h-11 items-center text-ink-2 underline">I entered this</button>
                           </form>
                         </p>
                       </li>
@@ -315,7 +315,7 @@ const nextPrompt = (p: ProjectRow): { label: string; field: string } | null => {
         isOwner && nextPrompt(project) && (
           <p class="mt-4 max-w-prose text-dense">
             <a href={`/projects/${project.slug}/edit`} class="text-brand font-semibold">
-              {nextPrompt(project)!.label} →
+              {nextPrompt(project)!.label}
             </a>
             <span class="text-ink-2"> Each one sharpens the matches above.</span>
           </p>
@@ -434,7 +434,7 @@ const nextPrompt = (p: ProjectRow): { label: string; field: string } | null => {
                       <input type="hidden" name="submitted_opportunity" value={s.opportunity_id} />
                       <select
                         name="outcome"
-                        class="min-h-11 rounded-row border border-line px-2 text-micro">
+                        class="min-h-11 rounded-row border border-line-strong px-2 text-micro">
                         {SUBMISSION_OUTCOMES.map((o) => (
                           <option value={o.value} selected={o.value === s.outcome}>
                             {o.label}
@@ -485,7 +485,7 @@ const nextPrompt = (p: ProjectRow): { label: string; field: string } | null => {
 
             <p class="mt-3">
               <a href={`/projects/${project.slug}/edit`} class="text-brand text-dense"
-                >Edit the details →</a
+                >Edit the details</a
               >
             </p>
 

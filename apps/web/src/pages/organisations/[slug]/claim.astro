@@ -68,7 +68,7 @@ const pending = mine.find((c) => c.status === "pending" || c.status === "awaitin
   !org ? (
     <Base title="Not found" noindex user={user}>
       <h1 class="text-title font-semibold">That organisation isn't here</h1>
-      <p class="mt-4"><a href="/opportunities" class="text-brand">Browse what's open →</a></p>
+      <p class="mt-4"><a href="/opportunities" class="text-brand">Browse what's open</a></p>
     </Base>
   ) : (
     <Base title={`Claim ${org.name}`} noindex user={user}>

@@ -78,7 +78,11 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Unit tests (eligibility golden corpus, and byte budgets for on-demand routes)
+      # One command, every suite: the eligibility golden corpus, the byte budgets for on-demand
+      # routes, the axe audit over every public route, the WCAG contrast computation over every
+      # token pair, and the copy review. DESIGN_SYSTEM.md §8 asks for accessibility "verified in
+      # CI", and this is the line that does it.
+      - name: Unit tests (golden corpus, byte budgets, axe, contrast, copy)
         run: npm test
 
       # Invariant 5. There is no override flag.

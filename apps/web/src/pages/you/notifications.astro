@@ -244,7 +244,7 @@ const pad = (h: number) => `${String(h).padStart(2, "0")}:00`;
         You will still see everything in the app, and security messages still come through.
         <form method="post" class="mt-2">
           <input type="hidden" name="action" value="resume_all" />
-          <button type="submit" class="underline">Turn messages back on</button>
+          <button type="submit" class="inline-flex min-h-11 items-center underline">Turn messages back on</button>
         </form>
       </p>
     )
@@ -357,7 +357,7 @@ const pad = (h: number) => `${String(h).padStart(2, "0")}:00`;
       <span class="block text-micro font-semibold text-ink-2">Digest</span>
       <select
         name="digest_frequency"
-        class="mt-1 h-11 w-full rounded-row border border-line bg-surface px-3 text-dense"
+        class="mt-1 h-11 w-full rounded-row border border-line-strong bg-surface px-3 text-dense"
       >
         <option value="weekly" selected={(settings.digest_frequency ?? "weekly") === "weekly"}>
           Weekly — the default, and the one most worth reading
@@ -378,7 +378,7 @@ const pad = (h: number) => `${String(h).padStart(2, "0")}:00`;
         <select
           name="quiet_hours_start"
           aria-label="Quiet hours start"
-          class="h-11 rounded-row border border-line bg-surface px-3 text-dense"
+          class="h-11 rounded-row border border-line-strong bg-surface px-3 text-dense"
         >
           {HOURS.map((h) => (
             <option value={h} selected={(settings.quiet_hours_start ?? 21) === h}>
@@ -390,7 +390,7 @@ const pad = (h: number) => `${String(h).padStart(2, "0")}:00`;
         <select
           name="quiet_hours_end"
           aria-label="Quiet hours end"
-          class="h-11 rounded-row border border-line bg-surface px-3 text-dense"
+          class="h-11 rounded-row border border-line-strong bg-surface px-3 text-dense"
         >
           {HOURS.map((h) => (
             <option value={h} selected={(settings.quiet_hours_end ?? 7) === h}>
@@ -427,6 +427,6 @@ const pad = (h: number) => `${String(h).padStart(2, "0")}:00`;
   }
 
   <p class="mt-8 text-micro text-ink-2">
-    <a href="/you/account" class="underline">Your account, export and deletion →</a>
+    <a href="/you/account" class="underline">Your account, export and deletion</a>
   </p>
 </Base>

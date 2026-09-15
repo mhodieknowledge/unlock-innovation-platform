@@ -307,7 +307,7 @@ const NEXT_STATES: Record<string, string[]> = {
                     <select
                       id={`state-${entry.id}`}
                       name="state"
-                      class="h-11 rounded-row border border-line bg-surface px-2 text-dense"
+                      class="h-11 rounded-row border border-line-strong bg-surface px-2 text-dense"
                     >
                       {(NEXT_STATES[entry.state] ?? []).map((s) => (
                         <option value={s}>{STATE_LABELS[s] ?? s}</option>
@@ -358,7 +358,7 @@ const NEXT_STATES: Record<string, string[]> = {
                       <select
                         id={`s2-${entry.id}`}
                         name="state"
-                        class="h-11 rounded-row border border-line bg-surface px-2 text-dense"
+                        class="h-11 rounded-row border border-line-strong bg-surface px-2 text-dense"
                       >
                         {(NEXT_STATES[entry.state] ?? []).map((s) => (
                           <option value={s}>{STATE_LABELS[s] ?? s}</option>

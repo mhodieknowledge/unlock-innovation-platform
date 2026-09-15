@@ -281,7 +281,7 @@ const lowData = resolveLowData({
           value={me.handle ?? ""}
           maxlength="30"
           placeholder="tadiwa-m"
-          class="h-11 w-full rounded-row border border-line px-3"
+          class="h-11 w-full rounded-row border border-line-strong px-3"
         />
       </span>
       <span class="mt-1 block text-meta text-ink-2">
@@ -296,7 +296,7 @@ const lowData = resolveLowData({
         name="display_name"
         value={me.display_name ?? ""}
         maxlength="80"
-        class="mt-1 h-11 w-full rounded-row border border-line px-3"
+        class="mt-1 h-11 w-full rounded-row border border-line-strong px-3"
       />
     </label>
 
@@ -307,7 +307,7 @@ const lowData = resolveLowData({
         value={String(profile["headline"] ?? "")}
         maxlength="120"
         placeholder="Backend developer, mostly Go. Two hackathons this year."
-        class="mt-1 h-11 w-full rounded-row border border-line px-3"
+        class="mt-1 h-11 w-full rounded-row border border-line-strong px-3"
       />
     </label>
 
@@ -317,14 +317,14 @@ const lowData = resolveLowData({
         name="bio"
         rows="5"
         maxlength="1000"
-        class="mt-1 w-full rounded-row border border-line p-3">{String(profile["bio"] ?? "")}</textarea
+        class="mt-1 w-full rounded-row border border-line-strong p-3">{String(profile["bio"] ?? "")}</textarea
       >
     </label>
 
     <div class="flex flex-wrap gap-3">
       <label class="block flex-1">
         <span class="block text-micro font-semibold text-ink-2">Country</span>
-        <select name="country_iso2" class="mt-1 h-11 w-full rounded-row border border-line bg-surface px-2">
+        <select name="country_iso2" class="mt-1 h-11 w-full rounded-row border border-line-strong bg-surface px-2">
           <option value="">Prefer not to say</option>
           {
             countries.map((c) => (
@@ -342,7 +342,7 @@ const lowData = resolveLowData({
           name="city"
           value={String(profile["city"] ?? "")}
           maxlength="80"
-          class="mt-1 h-11 w-full rounded-row border border-line px-3"
+          class="mt-1 h-11 w-full rounded-row border border-line-strong px-3"
         />
         <span class="mt-1 block text-meta text-ink-2">
           A city and nothing finer. We never store or look up a precise location.
@@ -375,7 +375,7 @@ const lowData = resolveLowData({
           value={profile["availability_hours_per_week"] as number | undefined}
           min="1"
           max="80"
-          class="mt-1 h-11 w-24 rounded-row border border-line px-3"
+          class="mt-1 h-11 w-24 rounded-row border border-line-strong px-3"
         />
       </label>
     </fieldset>
@@ -398,7 +398,7 @@ const lowData = resolveLowData({
               value={String(profile[name] ?? "")}
               maxlength="500"
               placeholder="https://"
-              class="mt-1 h-11 w-full rounded-row border border-line px-3"
+              class="mt-1 h-11 w-full rounded-row border border-line-strong px-3"
             />
           </label>
         ))

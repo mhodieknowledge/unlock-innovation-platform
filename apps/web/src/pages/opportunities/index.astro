@@ -71,7 +71,15 @@ const hybrid = filters.q && !needsSqlFilters
     )
   : null;
 
-const listed = hybrid
+/**
+ * `hybrid?.ok`, not `hybrid`. A failed hybrid search still returns a result object with an empty
+ * `rows` array (lib/search.ts), so the old `hybrid ?` here produced an EMPTY array rather than
+ * null — and `listed ?? fallback` then kept the empty array, because `[]` is not nullish. The
+ * FTS fallback below was computed and thrown away, and a degraded search rendered "no results"
+ * instead of the results it had. DESIGN_SYSTEM.md §6.5 makes degraded search the one state that
+ * must stay silent and keep working; this was the opposite.
+ */
+const listed = hybrid?.ok
   ? await getOpportunitiesByIds(
       hybrid.rows.map((row) => row.id),
       env,
@@ -187,7 +195,7 @@ const SORT_LABELS: [string, string][] = [
         name="q"
         value={filters.q ?? ""}
         placeholder="remote AI hackathons open to Zimbabwe"
-        class="h-11 w-full rounded-row border border-line bg-surface px-3"
+        class="h-11 w-full rounded-row border border-line-strong bg-surface px-3"
       />
     </label>
 
@@ -201,12 +209,12 @@ const SORT_LABELS: [string, string][] = [
           value={filters.country ?? ""}
           maxlength="2"
           placeholder="Country"
-          class="h-11 w-24 rounded-row border border-line px-2 uppercase"
+          class="h-11 w-24 rounded-row border border-line-strong px-2 uppercase"
         />
       </label>
       <label class="text-meta">
         <span class="sr-only">Format</span>
-        <select name="mode" class="h-11 rounded-row border border-line bg-surface px-2">
+        <select name="mode" class="h-11 rounded-row border border-line-strong bg-surface px-2">
           <option value="">Any format</option>
           <option value="online" selected={filters.mode === "online"}>Remote</option>
           <option value="in_person" selected={filters.mode === "in_person"}>In person</option>
@@ -215,14 +223,14 @@ const SORT_LABELS: [string, string][] = [
       </label>
       <label class="text-meta">
         <span class="sr-only">Cost</span>
-        <select name="cost" class="h-11 rounded-row border border-line bg-surface px-2">
+        <select name="cost" class="h-11 rounded-row border border-line-strong bg-surface px-2">
           <option value="">Any cost</option>
           <option value="free" selected={filters.cost === "free"}>Free to enter</option>
         </select>
       </label>
       <label class="text-meta">
         <span class="sr-only">Sort by</span>
-        <select name="sort" class="h-11 rounded-row border border-line bg-surface px-2">
+        <select name="sort" class="h-11 rounded-row border border-line-strong bg-surface px-2">
           {
             SORT_LABELS.map(([value, label]) => (
               <option {value} selected={filters.sort === value}>
@@ -297,6 +305,10 @@ const SORT_LABELS: [string, string][] = [
   {
     rows.length > 0 ? (
       <>
+        {/* DESIGN_SYSTEM.md §8: heading levels never skip. Each row's title is an h3, so the list
+            needs its own h2 — the count line above is the visible label, and repeating it as a
+            heading would be noise for a sighted reader and a missing level for everyone else. */}
+        <h2 class="sr-only">Results</h2>
         <div class="mt-3 border-t border-line">
           {rows.map((o) => (
             <OpportunityRow opportunity={o} lowData={lowData} />

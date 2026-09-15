@@ -14,9 +14,24 @@
   --color-sunken: #f1f1ee;
   --color-ink: #101214;
   --color-ink-2: #4a4f55;
-  --color-ink-3: #787f87;
+  /* Darkened in Phase 11 from #787f87, which measured 4.05:1 on --color-surface and 3.58:1 on
+   * --color-sunken — under WCAG 2.1 AA's 4.5:1 for text at every size this product uses it at
+   * (a struck-through closed countdown, an `unknown` verdict label). The hue is unchanged; only
+   * the lightness moved, to 5.16 / 4.98 / 4.56 on surface / paper / sunken. */
+  --color-ink-3: #686e74;
+
+  /* --color-line is the HAIRLINE: row separators, fact-grid cells, section rules. It is
+   * deliberately below 3:1 and deliberately decorative — WCAG 2.1 SC 1.4.11 exempts pure
+   * decoration, and a list of forty rows separated by a 3:1 line is a cage rather than a list.
+   * Nothing a reader has to find or operate is identified by this line alone. */
   --color-line: #e2e2dd;
-  --color-line-strong: #c7c8c2;
+
+  /* --color-line-strong IS load-bearing: it draws the boundary of every input, select, textarea
+   * and bordered button. SC 1.4.11 requires 3:1 for "visual information required to identify user
+   * interface components", and the boundary of a text field is exactly that. Darkened in Phase 11
+   * from #c7c8c2, which measured 1.68:1 on white — a field a sighted reader could see and a
+   * low-vision reader could not. Now 3.44 / 3.32 / 3.04 on surface / paper / sunken. */
+  --color-line-strong: #858b91;
 
   /* Used in exactly one place in the whole product: countdown numerals.
    * Pure black is the strongest mark available on a low-quality panel in

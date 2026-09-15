@@ -589,7 +589,71 @@ card.
 
 ---
 
-## 15. What has NOT been exercised
+## 15. The accessibility, contrast and copy audits
+
+Three suites run on every push, and between them they are Phase 11's automatable half. What each
+one proves, and what it does not, matters when somebody asks whether this product is accessible.
+
+### `apps/web/test/a11y.test.ts` — axe on every public route
+
+Renders all 24 public routes through Astro's container API and runs axe-core over each in jsdom,
+with the WCAG 2.0/2.1 A and AA tags plus best-practice. It catches the machine-checkable half of
+DESIGN_SYSTEM.md §8: an unlabelled control, an image with no alt text, a heading level skipped, an
+aria attribute that does not apply, a duplicate id, a link with no accessible name.
+
+It also asserts the things that defeat reflow at 200% zoom — a viewport that blocks pinch, a fixed
+pixel width wider than a phone, a horizontal scroller on anything that is not a code block — and
+that every `<time>` carries a `datetime`.
+
+A route added and not listed fails the suite: the last test walks `src/pages` and compares.
+
+**It does not check colour contrast.** axe samples rendered pixels through a canvas jsdom has no
+implementation of. That is what the next suite is for.
+
+### `apps/web/test/contrast.test.ts` — every token pair, computed
+
+Parses `tokens.css` and computes the WCAG ratio for every pair the design system permits — 4.5:1
+for text, 3:1 for a focus ring and for the boundary of a form control (SC 1.4.11). Stronger than
+axe's check, because it covers pairs no page has used yet, which are the ones a future page will
+get wrong.
+
+Two token values changed in Phase 11 because this suite said so:
+
+- `--color-ink-3` was `#787f87`, which measured **4.05:1** on white — under AA for text at every
+  size this product uses it at. Now `#686e74` (5.16 / 4.98 / 4.56 on surface / paper / sunken).
+- `--color-line-strong` was `#c7c8c2`, which measured **1.68:1** — and it draws the boundary of
+  every input, select, textarea and bordered button. A field a sighted reader could see and a
+  low-vision reader could not. Now `#858b91` (3.44 / 3.32 / 3.04).
+
+`--color-line` stays below 3:1 deliberately: it is the hairline between rows, SC 1.4.11 exempts
+pure decoration, and a list of forty rows separated by a 3:1 line is a cage rather than a list. A
+test asserts no form control is ever drawn with it, which is what keeps that exemption honest.
+
+If you add a colour token, add it to `TEXT_TOKENS` or to the non-text block in that file. A token
+nothing asserts is a token nobody has checked.
+
+### `apps/web/test/copy.test.ts` — the voice rules
+
+Reads every page source with the code and comments stripped, and fails on: "Oops", an apology, a
+blame, "Nothing here yet", an exclamation mark, a pictographic emoji, "click here", "simply",
+"easy", "please wait", and the marketing adjectives CONTENT_AND_LAUNCH.md §4 names. It also
+asserts every listing surface has an empty-state branch with something to do in it, that no page
+animates a spinner (§6.3), and that every `<button>` is at least 44px tall (§8).
+
+It checks WORDS, not tone. Tone is a human's job and always will be.
+
+The typographic glyphs are deliberately allowed: `● ◐ ○ ✓ ✕ ？ ⚠` are the vocabulary §6.2 and §8
+require, because "every colour-coded state has a glyph and a label". A letterform doing a job is
+not an emoji doing a mood.
+
+### What none of them replace
+
+A keyboard pass, a screen-reader pass, and a real phone on a real network. Those are named in §16
+as not done, and no amount of this is a substitute for them.
+
+---
+
+## 16. What has NOT been exercised
 
 Stated because a runbook that implies more coverage than it has is worse than a short
 one.
@@ -609,6 +673,10 @@ one.
 | The admin queues with real volume | Every function and page is tested, and the whole review path was exercised against fixture rows (claim, review card, rule editor, publish, reject, merge, report resolution, user action, source activation, flag change, audit read). What has never happened is a reviewer clearing a real queue on a real phone, which is the only way to find out whether one-handed operation actually works. |
 | A Telegram operator alert | The alert fires, records and re-sends correctly against a real breached queue item; the send itself has never left the machine because no bot token is configured. The first live run will either work or return a Telegram error naming the problem. |
 | A Turnstile token | Never seen one. `verifyTurnstile()` is written and called; no key is configured and no widget is in any page (ADR 0002). |
+| A keyboard-only pass | **Never.** Focus order, focus visibility, focus restoration after a form submit and whether a bottom sheet traps focus are all §8 requirements that need a keyboard and a person. axe checks that controls have names and roles; it cannot check the order they come in. |
+| A screen reader | **Never.** §8 specifies what a verdict and a countdown should SAY ("Likely eligible. Three of four requirements met. One needs your birth year."), and the strings exist and are announced through an `aria-live` region — but nobody has heard them. The first NVDA or TalkBack pass will find phrasing that reads badly out of context. |
+| Field performance on a real device | **Never.** Every byte budget is measured from real rendered HTML and the real built CSS, gzipped, on every push. What has not happened is a mid-tier Android on a throttled 3G connection, which is what IMPLEMENTATION_PLAN.md §13 actually asks for and the only thing that produces a true LCP number. |
+| Zoom to 200% in a browser | Never, as a human check. The things that defeat reflow — a locked viewport, a fixed width wider than a phone, a stray horizontal scroller — are asserted on every public route; the visual result at 200% has not been looked at. |
 | Google or Bing actually crawling any of this | **Never.** No domain has been registered and nothing has been deployed, so no crawler has seen a sitemap, a `noindex`, a 301 from a thin matrix cell or a JSON-LD graph. The markup is asserted field by field against SEO.md §3 in `apps/web/test/seo.test.ts`, and the redirect from both sides of the floor in `seo-route.test.ts`, but the Rich Results Test has never been run against a live URL. The first deploy is where a schema property Google requires and we omit will show up as a warning. |
 | An RSS reader or a Telegram channel bot consuming a feed | Never. The XML is asserted to be well-formed RSS 2.0 with absolute links and a stable guid; no reader has subscribed. |
 | The country × category matrix at real scale | The floor, the counts and the redirect are tested against fixtures. What has never happened is 54 × 21 cells over a real catalogue, which is the only thing that will show whether five is the right floor. |

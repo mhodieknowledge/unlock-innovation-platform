@@ -158,7 +158,7 @@ const GROUPS: [string, string, keyof ProjectRow][] = [
       <h1 class="text-title font-semibold">
         {failed ? "We can't load this right now" : "That project isn't yours to edit"}
       </h1>
-      <p class="mt-4"><a href="/you/projects" class="text-brand">Your projects →</a></p>
+      <p class="mt-4"><a href="/you/projects" class="text-brand">Your projects</a></p>
     </Base>
   ) : (
     <Base title={`Edit ${project.title}`} noindex user={user}>

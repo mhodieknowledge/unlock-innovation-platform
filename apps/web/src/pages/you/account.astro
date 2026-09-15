@@ -207,7 +207,7 @@ const longDate = (d: Date) => d.toLocaleDateString("en-GB", { dateStyle: "long" 
       <span class="block text-micro font-semibold text-ink-2">Timezone</span>
       <select
         name="timezone"
-        class="mt-1 h-11 w-full rounded-row border border-line bg-surface px-3 text-dense"
+        class="mt-1 h-11 w-full rounded-row border border-line-strong bg-surface px-3 text-dense"
       >
         {
           TIMEZONES.map((tz) => (
@@ -329,7 +329,7 @@ const longDate = (d: Date) => d.toLocaleDateString("en-GB", { dateStyle: "long" 
               type="text"
               name="confirm"
               autocomplete="off"
-              class="mt-1 w-40 h-11 rounded-row border border-line bg-surface px-3 text-dense"
+              class="mt-1 w-40 h-11 rounded-row border border-line-strong bg-surface px-3 text-dense"
             />
           </label>
 
@@ -342,6 +342,6 @@ const longDate = (d: Date) => d.toLocaleDateString("en-GB", { dateStyle: "long" 
   }
 
   <p class="mt-8 text-micro text-ink-2">
-    <a href="/you/notifications" class="underline">Notification settings →</a>
+    <a href="/you/notifications" class="underline">Notification settings</a>
   </p>
 </Base>

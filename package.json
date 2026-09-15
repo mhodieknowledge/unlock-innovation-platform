@@ -2,7 +2,7 @@
   "name": "mbele",
   "private": true,
   "version": "0.0.0",
-  "description": "Africa-first builder opportunity platform. Brand name is a config token (PRODUCT_SPEC.md \u00a71).",
+  "description": "Africa-first builder opportunity platform. Brand name is a config token (PRODUCT_SPEC.md §1).",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -43,6 +43,8 @@
   "devDependencies": {
     "@huggingface/transformers": "^4.2.0",
     "@types/pg": "^8.23.1",
+    "axe-core": "^4.13.0",
+    "jsdom": "^30.0.1",
     "pg": "8.23.0",
     "typescript": "6.0.3",
     "vitest": "5.0.0"

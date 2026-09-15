@@ -146,7 +146,7 @@ const allowanceLine = (a: RequestAllowance | null): string | null => {
         Either this opportunity doesn't exist, or team rooms aren't switched on. Nothing is
         missing from your account.
       </p>
-      <p class="mt-4"><a href="/opportunities" class="text-brand">Browse what's open →</a></p>
+      <p class="mt-4"><a href="/opportunities" class="text-brand">Browse what's open</a></p>
     </Base>
   ) : (
     <Base title={`Team room — ${opp.title}`} noindex user={user}>
@@ -246,7 +246,6 @@ const allowanceLine = (a: RequestAllowance | null): string | null => {
                       {status!.requests_in > 0
                         ? `${status!.requests_in} request${status!.requests_in === 1 ? "" : "s"} waiting for your answer`
                         : `${status!.requests_out} request${status!.requests_out === 1 ? "" : "s"} you're waiting on`}
-                      {" →"}
                     </a>
                   </p>
                 )
@@ -335,7 +334,7 @@ const allowanceLine = (a: RequestAllowance | null): string | null => {
                   {!archived && (
                     <p class="mt-3">
                       {team.i_own_it ? (
-                        <a href="/requests" class="text-brand text-dense">Your team — see requests →</a>
+                        <a href="/requests" class="text-brand text-dense">Your team — see requests</a>
                       ) : team.i_am_member ? (
                         <span class="text-dense text-ink-2">You're in this team.</span>
                       ) : team.my_request_state === "pending" ? (
@@ -400,7 +399,7 @@ const allowanceLine = (a: RequestAllowance | null): string | null => {
                       {b.request_state === "pending" ? (
                         <span class="text-dense text-ink-2">You've written to them. Waiting.</span>
                       ) : b.request_state === "accepted" ? (
-                        <a href="/threads" class="text-brand text-dense">You're connected →</a>
+                        <a href="/threads" class="text-brand text-dense">You're connected</a>
                       ) : b.request_state === "declined" ? (
                         <span class="text-dense text-ink-2">You asked once; the answer was no.</span>
                       ) : allowance?.blocked_reason ? (

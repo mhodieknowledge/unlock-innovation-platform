@@ -104,7 +104,7 @@ const alreadyHasTeam = status?.my_team_id != null;
   !opp ? (
     <Base title="Not found" noindex user={user}>
       <h1 class="text-display font-bold">That opportunity isn't here</h1>
-      <p class="mt-4"><a href="/opportunities" class="text-brand">Browse what's open →</a></p>
+      <p class="mt-4"><a href="/opportunities" class="text-brand">Browse what's open</a></p>
     </Base>
   ) : (
     <Base title={`Start a team — ${opp.title}`} noindex user={user}>
@@ -152,7 +152,7 @@ const alreadyHasTeam = status?.my_team_id != null;
               One team per person per opportunity — {status!.my_team_name} is yours.
             </p>
             <p class="mt-3">
-              <a href={`/opportunities/${opp.slug}/room`} class="text-brand">Open the room →</a>
+              <a href={`/opportunities/${opp.slug}/room`} class="text-brand">Open the room</a>
             </p>
           </div>
         ) : (

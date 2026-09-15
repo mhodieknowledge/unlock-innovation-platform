@@ -148,7 +148,7 @@ const CLOSED_REASON: Record<string, string> = {
           ? "Something on our side is unavailable. Nothing has been lost."
           : "It may have been closed, or it was never yours. Conversations are only ever between two people."}
       </p>
-      <p class="mt-4"><a href="/threads" class="text-brand">Your conversations →</a></p>
+      <p class="mt-4"><a href="/threads" class="text-brand">Your conversations</a></p>
     </Base>
   ) : (
     <Base title={`${builderName(header.counterpart_display_name)}`} noindex user={user}>
