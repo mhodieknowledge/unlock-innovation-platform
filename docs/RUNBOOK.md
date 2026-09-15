@@ -727,11 +727,20 @@ say the one route that could not fail when everything else had. A liveness check
 when the site is broken is not a check. For the itemised version, `npm run verify:deployment -- <url>`
 runs 39 of them from outside.
 
-**After the first successful deploy**, two things need doing by hand:
+**After the first successful deploy**, three things need doing by hand:
 
 1. **Supabase → Authentication → URL Configuration.** Add the deployed origin to the redirect
    allowlist, or sign-in completes and bounces to nowhere.
-2. **Nothing else.** The catalogue is empty and every density flag is off, so what publishes is an
+2. **Set the `BRAND_DOMAIN` variable.** With it unset, `packages/config/src/brand.mjs` falls back
+   to `example.invalid` — a TLD that cannot resolve, by RFC 2606 — and seven live pages publish an
+   address that will bounce: the privacy contact PRIVACY_AND_COMPLIANCE.md §7 item 4 requires to be
+   "published and monitored", the takedown address OPPORTUNITY_INGESTION.md §2.1 rule 8 gives a
+   48-hour SLA, `security.txt`, and the crawler's own `+https://…/bot` URL, which rule 3 requires to
+   point at a page that explains it. One variable fixes all seven and the crawler's User-Agent with
+   them; `npm run verify:deployment` fails each one by name until it is set. The value is a
+   decision, not a default — README.md §6 item 1 has the domain outstanding along with trademark
+   clearance.
+3. **Nothing else.** The catalogue is empty and every density flag is off, so what publishes is an
    honest empty product: the board says nothing is published yet, the country pages say what they
    have, and no social surface exists. §9–§12 are how each one comes on.
 
@@ -747,6 +756,7 @@ one.
 | R2 upload | **Never run.** The signing code is written and the request shape is per the S3 spec, but no R2 bucket or token has existed to send it to. First run will either work or produce a 403 from R2 naming the problem. |
 | Restore from an R2 object | Never run end to end. Restoring from a local dump file is tested on every push; the missing step is the download. |
 | Production deploy | **Done and verified from outside.** `npm run verify:deployment -- https://mbele-web.mbele.workers.dev` passes all 43 checks: the board 200 with server-rendered copy and all six security headers, 55 countries and 22 categories in the sitemaps from the live database, every public route, the auth gate, the PWA assets, and an honest 404. Before that: Migrations and the reference seed have run against the production Supabase on every deploy since the Cloudflare credentials were added. The publish step failed on the first 22 of them — no `workers.dev` subdomain and no route, and `wrangler`'s answer to that is an interactive prompt, which in CI is an exit code — and has succeeded since the address became configuration with a default (§16). The first Worker to go up served 500 on every database-backed page, because the deploy bound no Supabase configuration to it and nothing in the pipeline asked a real page whether it worked; both are fixed, and §16 says how. |
+| A published address that can receive | **None can.** Seven live pages carry an `@example.invalid` address and the crawler's User-Agent points at `https://example.invalid/bot`, because no `BRAND_DOMAIN` is configured. Nothing has been sent to any of them and no crawl has left the machine, so nothing has bounced yet — but the privacy policy currently states a contact route that does not exist, which is a compliance claim that is not true. §16 step 2. |
 | A real browser on the live site | **Never.** Everything asserted about the deployment is asserted over HTTP by `scripts/verify-deployment.mjs` — status codes, headers, copy, XML. Nobody has opened it in a browser, so nothing visual, nothing about focus order and nothing about the install prompt has been seen on the real origin. |
 | Secrets bound to the Worker | **Never.** `GROQ_API_KEY`, `IP_HASH_SALT`, `TURNSTILE_SECRET_KEY`, the Telegram tokens and `SENTRY_DSN` are in GitHub Actions for the batch tier and are not bound to the Worker, so in production: the query compiler is heuristic-only, rate-limit keys use the coarse fallback, Turnstile verification is skipped exactly as ADR 0002 describes, no Telegram message can be sent from a request, and errors are logged rather than reported. Each is a state the code supports; none has been exercised with a real value in the request tier. |
 | Workers AI and the KV query cache in production | **Never bound.** `wrangler.jsonc` declares no `ai` binding and no `QUERY_CACHE` namespace, so hybrid search runs its FTS half and the embedding half returns null. The degraded path is asserted in `apps/web/test/search.test.ts`; what has not happened is the undegraded one on the live origin. |

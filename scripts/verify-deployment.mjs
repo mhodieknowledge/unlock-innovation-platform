@@ -272,6 +272,29 @@ console.log("\nPublic routes");
   else fail("/countries/atlantis", `got ${nowhere.status}, which is a soft 404`);
 }
 
+/* ── Published addresses that can actually receive ─────────────────────────── */
+
+console.log("\nPublished contact addresses");
+{
+  // PRIVACY_AND_COMPLIANCE.md §7 item 4 requires "a named contact address for privacy requests,
+  // published and monitored". OPPORTUNITY_INGESTION.md §2.1 rule 8 requires a published takedown
+  // address with a 48-hour SLA, and rule 3 requires the crawler's User-Agent to point at a page
+  // explaining it.
+  //
+  // With no BRAND_DOMAIN configured, `packages/config/src/brand.mjs` falls back to
+  // `example.invalid` — a reserved TLD that cannot resolve, by RFC 2606. So the live privacy
+  // policy asks people to write to an address that will bounce, and the crawler identifies
+  // itself with a URL that does not exist. This is one repository VARIABLE away from correct
+  // (BRAND_DOMAIN), and it fails rather than notes because a policy page naming an unreachable
+  // address is a compliance statement that is not true.
+  const placeholder = /example\.invalid/;
+  for (const path of ["/privacy", "/terms", "/anti-scam", "/bot", "/verification", "/content-policy", "/.well-known/security.txt"]) {
+    const body = await (await get(path)).text();
+    if (!placeholder.test(body)) pass(`${path} names a reachable domain`);
+    else fail(`${path}`, "publishes an @example.invalid address — set the BRAND_DOMAIN variable");
+  }
+}
+
 console.log(
   `\n${failures === 0 ? "All" : `${checks - failures} of`} ${checks} checks passed${failures ? ` — ${failures} FAILED` : ""}.\n`,
 );
