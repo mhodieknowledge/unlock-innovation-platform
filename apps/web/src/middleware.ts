@@ -1,6 +1,8 @@
 import type { MiddlewareHandler } from "astro";
 
-import { SECURITY_HEADERS } from "@mbele/config";
+import { SECURITY_HEADERS, signInFormAction } from "@mbele/config";
+
+import { runtimeEnv } from "~/lib/runtime";
 
 /**
  * Security headers on every server-rendered response. SECURITY.md §5.
@@ -17,11 +19,25 @@ import { SECURITY_HEADERS } from "@mbele/config";
  * Existing headers are not overwritten: a route that deliberately sets its own Cache-Control or
  * Vary keeps it, and a route that has a reason to relax one of these can, visibly, in its own
  * file rather than by editing the global set.
+ *
+ * ONE ROUTE GETS A DIFFERENT POLICY, and only in one directive. Signing in is a form POST that
+ * the server answers with a redirect to Supabase, which redirects to GitHub or Google —
+ * and `form-action` governs the whole chain, so `'self'` makes the browser refuse the
+ * submission without navigating, without an error, and without anything for the person to see.
+ * `signInFormAction` widens that one directive to those three origins for `/signin` alone; the
+ * reasoning, the cost and the experiment behind it are in @mbele/config.
  */
-export const onRequest: MiddlewareHandler = async (_context, next) => {
+export const onRequest: MiddlewareHandler = async (context, next) => {
   const response = await next();
 
-  for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
+  // Exactly `/signin`, matched on the path rather than a prefix: `/signin-something` is not this
+  // page, and a relaxed policy should never be handed out by a near-miss.
+  const headers =
+    context.url.pathname === "/signin"
+      ? signInFormAction(runtimeEnv().SUPABASE_URL)
+      : SECURITY_HEADERS;
+
+  for (const [name, value] of Object.entries(headers)) {
     if (!response.headers.has(name)) response.headers.set(name, value);
   }
 

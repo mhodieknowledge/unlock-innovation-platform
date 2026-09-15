@@ -18,7 +18,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { SECURITY_HEADERS } from "@mbele/config";
+import { SECURITY_HEADERS, SIGNIN_FORM_TARGETS, signInFormAction } from "@mbele/config";
 import { describe, expect, it } from "vitest";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -78,7 +78,10 @@ describe("the middleware applies them to server-rendered responses", () => {
     const { onRequest } = await import("../src/middleware");
 
     const response = await (onRequest as (c: unknown, n: () => Promise<Response>) => Promise<Response>)(
-      { request: new Request("https://example.invalid/opportunities") },
+      {
+        url: new URL("https://example.invalid/opportunities"),
+        request: new Request("https://example.invalid/opportunities"),
+      },
       async () => new Response("<html></html>", { headers: { "content-type": "text/html" } }),
     );
 
@@ -93,7 +96,10 @@ describe("the middleware applies them to server-rendered responses", () => {
     // The opportunity page sets its own Cache-Control and Vary. Middleware that overwrote those
     // would silently un-cache the most-visited page in the product.
     const response = await (onRequest as (c: unknown, n: () => Promise<Response>) => Promise<Response>)(
-      { request: new Request("https://example.invalid/") },
+      {
+        url: new URL("https://example.invalid/"),
+        request: new Request("https://example.invalid/"),
+      },
       async () =>
         new Response("<html></html>", {
           headers: {
@@ -107,5 +113,99 @@ describe("the middleware applies them to server-rendered responses", () => {
     expect(response.headers.get("content-security-policy")).toBe("default-src 'none'");
     // The others are still applied.
     expect(response.headers.get("Referrer-Policy")).toBe(SECURITY_HEADERS["Referrer-Policy"]);
+  });
+});
+
+/**
+ * The sign-in exception.
+ *
+ * `form-action` governs the whole redirect chain of a form submission, not just its action URL.
+ * Signing in posts to `/signin`, which redirects to Supabase, which redirects to GitHub or
+ * Google — so under `form-action 'self'` Chrome refuses the submission, silently: no navigation,
+ * no error page, nothing for the person to see. The button simply does nothing, which is exactly
+ * how this reached production and exactly how it was reported.
+ *
+ * Driven in a real Chromium against three local origins standing in for the site, Supabase and
+ * the provider, the result was unambiguous and is the reason the list has three entries rather
+ * than one:
+ *
+ *   form-action 'self'                    -> refused, never left the page
+ *   form-action 'self' <supabase>         -> refused, never left the page
+ *   form-action 'self' <supabase> <gh>    -> reached the provider
+ */
+describe("the sign-in page's form-action", () => {
+  const SUPABASE = "https://qipbiwosljldvvaloolf.supabase.co";
+  const csp = (headers: Record<string, string>) => headers["Content-Security-Policy"]!;
+  const directive = (headers: Record<string, string>) =>
+    csp(headers)
+      .split(";")
+      .map((part) => part.trim())
+      .find((part) => part.startsWith("form-action"))!;
+
+  it("allows every origin in the chain, because one is not enough", () => {
+    const relaxed = signInFormAction(`${SUPABASE}/`);
+    expect(directive(relaxed)).toBe(
+      `form-action 'self' ${SUPABASE} https://github.com https://accounts.google.com`,
+    );
+  });
+
+  it("changes nothing else about the policy", () => {
+    const relaxed = signInFormAction(SUPABASE);
+    const strictParts = csp(SECURITY_HEADERS).split(";").map((p) => p.trim());
+    const relaxedParts = csp(relaxed).split(";").map((p) => p.trim());
+    expect(relaxedParts.length).toBe(strictParts.length);
+    for (let i = 0; i < strictParts.length; i += 1) {
+      if (strictParts[i]!.startsWith("form-action")) continue;
+      expect(relaxedParts[i]).toBe(strictParts[i]);
+    }
+    // And every other header — HSTS, nosniff, Referrer-Policy, Permissions-Policy, COOP — is the
+    // same object it always was.
+    for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
+      if (name === "Content-Security-Policy") continue;
+      expect(relaxed[name]).toBe(value);
+    }
+  });
+
+  it("widens the policy for the auth origins only, never for an arbitrary one", () => {
+    const relaxed = signInFormAction(SUPABASE);
+    expect(SIGNIN_FORM_TARGETS).toEqual(["https://github.com", "https://accounts.google.com"]);
+    // The wildcard that would make the directive pointless, and the scheme-only source that is
+    // the same thing spelled differently. Both have to be matched as whole SOURCES: `https:` as a
+    // substring also matches every legitimate origin in the list, which would make this pass while
+    // checking nothing.
+    const sources = directive(relaxed).split(/\s+/).slice(1);
+    expect(sources).not.toContain("*");
+    expect(sources).not.toContain("https:");
+    expect(sources).not.toContain("http:");
+    expect(sources.some((source) => source.startsWith("*."))).toBe(false);
+    expect(sources).toContain(SUPABASE);
+  });
+
+  it("returns the strict set unchanged when there is no project URL to trust", () => {
+    // Nothing configured means sign-in cannot work anyway, and a policy should not be widened on
+    // the strength of a value that is absent.
+    expect(signInFormAction(undefined)).toEqual(SECURITY_HEADERS);
+    expect(signInFormAction("")).toEqual(SECURITY_HEADERS);
+    expect(signInFormAction("not a url")).toEqual(SECURITY_HEADERS);
+  });
+
+  it("is the sign-in page's alone — every other route keeps form-action 'self'", async () => {
+    const { onRequest } = await import("../src/middleware");
+
+    const run = async (path: string) => {
+      const response = await (onRequest as (c: unknown, n: () => Promise<Response>) => Promise<Response>)(
+        { url: new URL(`https://example.invalid${path}`) },
+        async () => new Response("ok"),
+      );
+      return response.headers.get("content-security-policy") ?? "";
+    };
+
+    // `/signin` itself resolves its origin from the runtime env, which is empty in a test, so the
+    // assertion that matters here is the one about every OTHER route.
+    expect(await run("/")).toContain("form-action 'self';");
+    expect(await run("/opportunities")).toContain("form-action 'self';");
+    expect(await run("/you/account")).toContain("form-action 'self';");
+    // A near-miss must not inherit the exception.
+    expect(await run("/signin-else")).toContain("form-action 'self';");
   });
 });
