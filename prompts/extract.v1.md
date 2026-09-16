@@ -49,7 +49,7 @@ Rules that matter more than the rest:
   "title": "string, required",
   "organisation_name": "string or null — the body running it, not the site publishing it",
   "summary": "string <= 400 chars, your own words, or null",
-  "category_code": "one of: grant, scholarship, competition, hackathon, fellowship, accelerator, incubator, residency, conference, bootcamp, internship, award, challenge, call_for_proposals, exchange, mentorship, funding, training, volunteering, job, other",
+  "category_code": "EXACTLY one of: {{CATEGORY_CODES}} — never a word outside that list",
   "deadline": {
     "value": "ISO 8601 or null",
     "precision": "exact_time | date_only | month_only | rolling | unknown",

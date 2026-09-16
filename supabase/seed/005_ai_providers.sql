@@ -69,6 +69,18 @@ VALUES
    'The ONE LLM call permitted in a request handler, and only because it is KV-cached for 7 days.'),
 
   -- ── Dedupe adjudication: one short question ───────────────────────────────
+  -- Summarise: the smallest call in the system — a title and a few hundred words in, under
+  -- 400 characters out. It exists because an API source costs no model calls and schema.org
+  -- has no field for "what is this", so those records arrived with no description at all.
+  ('groq', 'summarise', 'openai/gpt-oss-20b', 10, 950, 30, false,
+   'https://api.groq.com/openai/v1/chat/completions', 'GROQ_API_KEY',
+   'Tiny input, tiny output. First because it is the cheapest capable model in the chain and latency does not matter in a batch job.'),
+  ('cerebras', 'summarise', 'gpt-oss-120b', 20, 14000, 30, false,
+   'https://api.cerebras.ai/v1/chat/completions', 'CEREBRAS_API_KEY',
+   'The deep quota. A backfill of a few hundred records fits inside a single day here.'),
+  ('gemini', 'summarise', 'gemini-3.6-flash', 30, 1400, 15, true,
+   'https://generativelanguage.googleapis.com/v1beta/models', 'GEMINI_API_KEY',
+   'Last. TRAINS ON INPUT: public web content only, never user data (§2 guardrail 5).'),
   ('groq', 'dedupe', 'openai/gpt-oss-20b', 10, 950, 30, false,
    'https://api.groq.com/openai/v1/chat/completions', 'GROQ_API_KEY',
    'Only ever asked about a pair a deterministic check already flagged (§9 step 4).'),

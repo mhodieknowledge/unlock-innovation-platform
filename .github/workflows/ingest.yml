@@ -26,7 +26,7 @@ on:
         required: true
         default: ingest
         type: choice
-        options: [ingest, links, reverify, sweep, health, check-sources, embed, recommend, match-projects, project-sweep]
+        options: [ingest, fill-summaries, recategorise, links, reverify, sweep, health, check-sources, embed, recommend, match-projects, project-sweep]
       dry_run:
         description: Print what would be stored; write nothing to the database
         required: false
@@ -132,6 +132,12 @@ jobs:
         run: |
           npm run reverify -- sweep
           npm run reverify -- health
+          # An API source costs no model calls, so its records arrive with no description.
+          # This is the smallest call in the system and it runs once a day against a budget
+          # with sixty times the headroom it needs.
+          npm run ingest -- --fill-summaries
+          # Free: no fetch and no model, just the titles we already hold.
+          npm run ingest -- --recategorise
 
       # AI_SYSTEM.md §3.3: the embedding model runs locally, with no API and no quota.
       # It is the decision that keeps the whole AI budget viable, and the model is cached

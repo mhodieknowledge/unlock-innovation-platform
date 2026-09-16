@@ -45,12 +45,35 @@ if (!CONN) {
   process.exit(1);
 }
 
+/**
+ * Substitute `{{NAME}}` placeholders, and REFUSE to leave one behind.
+ *
+ * The extract prompt used to carry its own list of category codes, and that list had drifted
+ * from the `categories` table until the two shared only nine of twenty-one entries: twelve
+ * codes the model was told to produce did not exist and fell silently to `other`, and twelve
+ * real categories could never be chosen at all. That is why eighteen of twenty-one category
+ * pages were empty while the catalogue was not.
+ *
+ * So the vocabulary is read from the database and injected here. An unfilled placeholder
+ * throws rather than being sent: a model asked for "one of: {{CATEGORY_CODES}}" would answer
+ * something, and that something would be worse than the drift it replaced.
+ *
+ * @param {string} text
+ * @param {Record<string, string>} vars
+ */
+function fill(text, vars) {
+  const filled = text.replace(/\{\{([A-Z_]+)\}\}/g, (match, key) => vars[key] ?? match);
+  const left = /\{\{([A-Z_]+)\}\}/.exec(filled);
+  if (left) throw new Error(`prompt placeholder ${left[0]} was never given a value`);
+  return filled;
+}
+
 /** @param {string} name */
-function promptSystem(name) {
+function promptSystem(name, vars = {}) {
   const text = readFileSync(join(ROOT, "prompts", `${name}.md`), "utf8");
   const match = /##\s*System\s*\n([\s\S]*?)(?=\n##\s|\s*$)/.exec(text);
   if (!match || !match[1]) throw new Error(`prompts/${name}.md has no "## System" section`);
-  return match[1].trim();
+  return fill(match[1].trim(), vars);
 }
 
 const fixtures = JSON.parse(readFileSync(FIXTURES, "utf8"));

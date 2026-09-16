@@ -54,11 +54,35 @@ import {
   Breakers,
 } from "../packages/ingest/src/index.mjs";
 import { itemsFromApi } from "../packages/ingest/src/apis.mjs";
+import { categoriseFromText } from "../packages/ingest/src/categorise.mjs";
 import { politeFetch, renderStats } from "./lib/fetcher.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const args = process.argv.slice(2);
+/**
+ * Substitute `{{NAME}}` placeholders, and REFUSE to leave one behind.
+ *
+ * The extract prompt used to carry its own list of category codes, and that list had drifted
+ * from the `categories` table until the two shared only nine of twenty-one entries: twelve
+ * codes the model was told to produce did not exist and fell silently to `other`, and twelve
+ * real categories could never be chosen at all. That is why eighteen of twenty-one category
+ * pages were empty while the catalogue was not.
+ *
+ * So the vocabulary is read from the database and injected here. An unfilled placeholder
+ * throws rather than being sent: a model asked for "one of: {{CATEGORY_CODES}}" would answer
+ * something, and that something would be worse than the drift it replaced.
+ *
+ * @param {string} text
+ * @param {Record<string, string>} vars
+ */
+function fill(text, vars) {
+  const filled = text.replace(/\{\{([A-Z_]+)\}\}/g, (match, key) => vars[key] ?? match);
+  const left = /\{\{([A-Z_]+)\}\}/.exec(filled);
+  if (left) throw new Error(`prompt placeholder ${left[0]} was never given a value`);
+  return filled;
+}
+
 /** @param {string} name */
 const flag = (name) => args.includes(name);
 /** @param {string} name */
@@ -69,6 +93,10 @@ const option = (name) => {
 
 const DRY_RUN = flag("--dry-run");
 const NO_AI = flag("--no-ai");
+/** Fill in summaries for records that arrived without one (API sources make no model calls). */
+const FILL_SUMMARIES = flag("--fill-summaries");
+/** Re-read the category of everything in `other`. No fetch, no model — free and re-runnable. */
+const RECATEGORISE = flag("--recategorise");
 const ONE_SOURCE = option("--source");
 /**
  * Ignore cadence. Naming a source is itself that instruction — the console has always
@@ -117,13 +145,13 @@ const env = process.env;
 
 /** Prompts are versioned FILES in the repo (AI_SYSTEM.md §12). */
 /** @param {string} name */
-function prompt(name) {
+function prompt(name, vars = {}) {
   const text = readFileSync(join(ROOT, "prompts", `${name}.md`), "utf8");
   // The System section is the contract; everything else in the file is documentation
   // for the humans maintaining it.
   const match = /##\s*System\s*\n([\s\S]*?)(?=\n##\s|\s*$)/.exec(text);
   if (!match || !match[1]) throw new Error(`prompts/${name}.md has no "## System" section`);
-  return { version: name, system: match[1].trim() };
+  return { version: name, system: fill(match[1].trim(), vars) };
 }
 
 // ── Reference data, read once from OUR tables ────────────────────────────────
@@ -391,7 +419,8 @@ async function extract(doc) {
   let modelDetail = null;
 
   if (!NO_AI) {
-    const p = prompt("extract.v1");
+    // The vocabulary comes from the `categories` table, never from a copy in the file.
+    const p = prompt("extract.v1", { CATEGORY_CODES: [...CATEGORY_BY_CODE.keys()].sort().join(", ") });
     // §2 guardrail 5: a page fetched from the public web carries no user data, so
     // training-tier providers are permitted for THIS task and no other.
     const chain = await chainFor("extract", true);
@@ -768,6 +797,33 @@ async function storeRawDocument(source, doc) {
 
 // ── SCORE, ROUTE, WRITE (§4.7, §4.9) ─────────────────────────────────────────
 
+/**
+ * The category id for a candidate, and a record of when we had to guess.
+ *
+ * `CATEGORY_BY_CODE.get(code) ?? other` was one expression doing two jobs, and the second one
+ * silently: a code the taxonomy does not hold became `other` with nothing written down. Since
+ * the prompt was asking for twelve codes that did not exist, that quiet fallthrough WAS the
+ * category system for most of the catalogue.
+ *
+ * Now, in order: the model's code if the taxonomy holds it; otherwise what the listing calls
+ * itself (packages/ingest — free, deterministic, and right about the word "Scholarship" in a
+ * title that says Scholarship); otherwise `other`, and it says so in the log.
+ *
+ * @param {{ category_code?: string, title?: string, summary?: string | null }} candidate
+ */
+function categoryIdFor(candidate) {
+  const stated = candidate.category_code;
+  if (stated && CATEGORY_BY_CODE.has(stated)) return CATEGORY_BY_CODE.get(stated);
+
+  if (stated) console.warn(`    category "${stated}" is not in the taxonomy; reading the title instead`);
+
+  const read = categoriseFromText({ title: candidate.title, summary: candidate.summary ?? null });
+  if (read && CATEGORY_BY_CODE.has(read)) return CATEGORY_BY_CODE.get(read);
+
+  if (!stated && !read) console.warn(`    no category for "${String(candidate.title).slice(0, 60)}" — filed as other`);
+  return CATEGORY_BY_CODE.get("other") ?? null;
+}
+
 async function writeCandidate({ source, doc, candidate, confidence, rules, rejected, fee, issues }) {
   const { rows: routed } = await client.query(
     `SELECT * FROM route_for_publication($1,$2,$3,$4,$5::cost_kind,$6,$7,$8::eligibility_scope,$9,$10,$11,$12)`,
@@ -923,7 +979,7 @@ async function writeCandidate({ source, doc, candidate, confidence, rules, rejec
       slug,
       String(candidate.title).slice(0, 200),
       candidate.summary ?? null,
-      CATEGORY_BY_CODE.get(candidate.category_code) ?? CATEGORY_BY_CODE.get("other") ?? null,
+      categoryIdFor(candidate),
       candidate.organisation_id,
       source?.id ?? null,
       candidate.raw_document_id,
@@ -1053,12 +1109,175 @@ async function uniqueSlug(title) {
 
 // ── Run ──────────────────────────────────────────────────────────────────────
 
+/**
+ * Give a description to records that never had one.
+ *
+ * WHY THEY HAVE NONE. An API source costs no model calls at all — Devpost's items arrive as
+ * schema.org nodes that `recordFromJsonLd` turns into records directly, which is what keeps
+ * §9's budget viable. schema.org has no field for "what is this, in your words", so those
+ * records reached the site with `summary` NULL. Eleven of twelve listings on the live board
+ * had no description at all, and the one that did had come through the HTML path.
+ *
+ * This is the smallest call in the system: a title and a few hundred words in, under 400
+ * characters out. §9 budgets ~245 model calls a day and Cerebras alone allows 14,000, so a
+ * backfill of the whole catalogue fits inside one day's headroom several times over.
+ *
+ * The 8-consecutive-word check applies here exactly as it does in extraction (§2.1 rule 6).
+ * A summary that copies is discarded rather than stored — the record keeps its honest NULL,
+ * which the page already renders as nothing rather than as filler.
+ */
+async function runSummaryBackfill() {
+  if (NO_AI) {
+    console.log("NO_AI mode: a summary cannot be written without a provider. Nothing to do.");
+    return;
+  }
+
+  const { rows } = await client.query(
+    `SELECT o.id, o.slug, o.title, d.text_raw
+       FROM opportunities o
+       LEFT JOIN raw_documents d ON d.id = o.raw_document_id
+      WHERE o.summary IS NULL
+        AND o.deleted_at IS NULL
+        AND o.status IN ('published', 'in_review')
+      ORDER BY o.deadline_at NULLS LAST
+      LIMIT $1`,
+    [Number(option("--limit") ?? 200)],
+  );
+
+  if (rows.length === 0) {
+    console.log("Every record already has a summary.");
+    return;
+  }
+  console.log(`${rows.length} record(s) without a summary.\n`);
+
+  const p = prompt("summarise.v1");
+  const chain = await chainFor("summarise", true);
+  let written = 0;
+  let copied = 0;
+  let declined = 0;
+
+  for (const row of rows) {
+    // The source text, or the title alone when the record came from an API and no page was
+    // ever stored. A title is thin, and the prompt is told to return null rather than pad it.
+    const source = typeof row.text_raw === "string" && row.text_raw.trim().length > 0
+      ? row.text_raw.slice(0, 6000)
+      : "";
+    const result = await runTask({
+      chain,
+      system: p.system,
+      user: [`TITLE: ${row.title}`, "", "SOURCE:", source || "(no page text was stored)"].join("\n"),
+      env,
+      fetch: globalThis.fetch,
+      breakers,
+      accept: (data) => typeof data === "object" && data !== null && "summary" in data,
+      shapeHint: 'an object with a "summary" field, string or null',
+    });
+    await logCalls(result.calls, "summarise", p.version);
+
+    // `data` only exists on the ok branch of AiResult, so the narrowing has to come first —
+    // the same shape deriveRules uses two hundred lines up.
+    const offered = result.ok
+      ? /** @type {{ summary?: unknown }} */ (result.data).summary
+      : null;
+    const summary = typeof offered === "string" ? offered.trim().slice(0, 400) : null;
+
+    if (!summary) {
+      declined += 1;
+      console.log(`  · ${row.slug}: no summary offered`);
+      continue;
+    }
+
+    // §2.1 rule 6, applied to the page when we have one. With no stored page there is
+    // nothing to have copied FROM, so the check has nothing to say and does not pretend to.
+    const check = source ? checkNoCopiedPhrase(summary, source) : { ok: true };
+    if (!check.ok) {
+      copied += 1;
+      console.log(`  ✗ ${row.slug}: copied from the source, discarded`);
+      continue;
+    }
+
+    if (!DRY_RUN) {
+      await client.query("UPDATE opportunities SET summary = $2 WHERE id = $1", [row.id, summary]);
+    }
+    written += 1;
+    console.log(`  ✓ ${row.slug}: ${summary.slice(0, 72)}${summary.length > 72 ? "…" : ""}`);
+  }
+
+  console.log(`\n${written} written, ${copied} discarded for copying, ${declined} declined.`);
+}
+
+/**
+ * Re-read the category of everything sitting in `other`.
+ *
+ * Costs nothing: no fetch, no model, just `categoriseFromText` over titles we already hold.
+ * That is why it is safe to run daily — a record filed as `other` by a model that had been
+ * offered a code the taxonomy does not hold gets a second look from something deterministic.
+ *
+ * It only ever moves a record OUT of `other`, never between two real categories. A reviewer
+ * who filed something deliberately is not overruled by a regex.
+ */
+async function runRecategorise() {
+  const otherId = CATEGORY_BY_CODE.get("other");
+  if (!otherId) {
+    console.log("No `other` category in the taxonomy; nothing to re-read.");
+    return;
+  }
+
+  const { rows } = await client.query(
+    `SELECT id, slug, title, summary FROM opportunities
+      WHERE category_id = $1 AND deleted_at IS NULL
+      ORDER BY deadline_at NULLS LAST`,
+    [otherId],
+  );
+  console.log(`${rows.length} record(s) filed as other.\n`);
+
+  let moved = 0;
+  const stillOther = [];
+  for (const row of rows) {
+    const code = categoriseFromText({ title: row.title, summary: row.summary });
+    const id = code ? CATEGORY_BY_CODE.get(code) : null;
+    if (!id) {
+      stillOther.push(row.title);
+      continue;
+    }
+    if (!DRY_RUN) {
+      await client.query("UPDATE opportunities SET category_id = $2 WHERE id = $1", [row.id, id]);
+    }
+    moved += 1;
+    console.log(`  ${String(code).padEnd(26)} ${String(row.title).slice(0, 64)}`);
+  }
+
+  console.log(`\n${moved} moved out of other, ${stillOther.length} left.`);
+  if (stillOther.length > 0) {
+    // Named rather than counted: these are the ones worth a person's eye, and most of them
+    // are things the taxonomy has no word for rather than things the reader got wrong.
+    console.log("Still other — the taxonomy may have no word for these:");
+    for (const title of stillOther.slice(0, 20)) console.log(`  · ${String(title).slice(0, 72)}`);
+  }
+}
+
 await client.connect();
 /** @type {Error | null} */
 let failure = null;
 
 try {
   await loadReferenceData();
+
+  // A backfill, not a crawl: nothing is fetched, no source is touched, and the only writes
+  // are to `summary` on records that have none.
+  if (RECATEGORISE) {
+    await runRecategorise();
+    if (DRY_RUN) console.log("\n(dry run — nothing was written)");
+    await client.end();
+    process.exit(0);
+  }
+
+  if (FILL_SUMMARIES) {
+    await runSummaryBackfill();
+    if (DRY_RUN) console.log("\n(dry run — nothing was written)");
+    await client.end();
+    process.exit(0);
+  }
 
   if (NO_AI) {
     console.log("NO_AI mode: no provider will be called. JSON-LD only, no rules derived.");
