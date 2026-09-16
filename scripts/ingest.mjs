@@ -1375,6 +1375,11 @@ async function classifyRemaining(records) {
 
     const id = code && code !== "other" ? CATEGORY_BY_CODE.get(code) : null;
     if (!id) {
+      // Said out loud, because "the model read the page and found nothing that fits" and "no
+      // answer came back" are different facts and the summary count conflates them. Run 45
+      // answered `other` sixteen times out of seventeen, which is the number that says the
+      // taxonomy is missing words rather than that the pass is broken.
+      console.log(`  · ${row.slug}: ${code === "other" ? "model says other" : "no usable answer"}`);
       stillOther.push(row.title);
       continue;
     }

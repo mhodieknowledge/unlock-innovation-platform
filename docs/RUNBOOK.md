@@ -952,3 +952,73 @@ exactly how each behaves right now. None of them stands between the site and its
 opportunity.
 
 ---
+
+## 19. Repairing the catalogue: four jobs that read what is already there
+
+Every one of these was written to fix something visible on the live board, and every one is
+re-runnable, does no fetching, and can be dry-run. `Actions → Ingestion → Run workflow` with
+**dry_run** ticked prints what it would do and writes nothing — do that first, always: run 43
+printed four wrong category moves and that is the only reason they never happened.
+
+They also all run on the daily schedule, so a record ingested today is categorised, described
+and de-duplicated tomorrow without anyone remembering to ask.
+
+| Job | What it reads | What it changes | Cost |
+|---|---|---|---|
+| `recategorise` | titles of everything in `other`, then pages | `category_id`, out of `other` only | free, then ~1 tiny call per leftover |
+| `fill-summaries` | pages of records with no `summary` | `summary`, where it was NULL | 1 tiny call per record |
+| `recheck-relevance` | titles of published records | `status` → `in_review` only | free |
+| `dedupe` | URLs, titles, embeddings | merges duplicates | 1 tiny call per candidate pair |
+
+```
+DATABASE_URL=... npm run ingest -- --recategorise --dry-run
+DATABASE_URL=... npm run ingest -- --fill-summaries --dry-run
+DATABASE_URL=... npm run ingest -- --recheck-relevance --dry-run
+DATABASE_URL=... npm run dedupe -- --dry-run
+```
+
+**`recategorise`** is two passes and the order matters. `packages/ingest/src/categorise.mjs`
+reads titles, deterministically and free — it placed 41 of 58 on its first live run with no
+mistakes. What is left goes to `prompts/classify.v1.md`, which must QUOTE the phrase in the
+page that names the kind; the quote is checked against the page and then read by the same
+title reader, and an answer failing either check leaves the record in `other` and says why.
+That double check exists because the first version, which just returned a code, filed the
+Japan Exchange and Teaching Programme as a `scholarship`.
+
+Nothing here ever moves a record BETWEEN two real categories, so a category you set by hand
+is never overruled. If a listing is in the wrong category, fix it in the admin queue; if a
+whole KIND of listing has nowhere to go, the taxonomy is missing a word — the job's output
+names every record it could not place, which is the list to read before adding one
+(`PRODUCT_SPEC.md` §11.1: "Adding a category must require no code change").
+
+**`fill-summaries`** exists because an API source costs no model calls by design, and
+schema.org has no field for "what is this, in our words" — eleven of twelve listings on the
+live board had no description. A summary that copies eight consecutive words from the source
+is discarded rather than stored (§2.1 rule 6), and the record keeps its NULL, which the page
+renders as nothing rather than as filler. Run it BEFORE `recategorise` if you are running both
+by hand: the daily job does.
+
+**`recheck-relevance`** demotes published records whose titles are articles rather than
+opportunities — an MCAT study guide, a page of visa requirements, a listicle of countries.
+The aggregator feeds publish advice posts through the same RSS as their listings. It only ever
+moves records OUT of `published` into `in_review`, so publishing one back from the queue
+overrides it permanently, and it never deletes anything.
+
+**`dedupe`** is `AI_SYSTEM.md` §9. Records sharing a URL are merged outright; pairs found by
+title similarity or by embedding go to a model that answers same / different / unsure, and only
+`same` above 0.85 merges. Everything else waits in the duplicates queue for a person. It needs
+embeddings, so it runs after `npm run embed` — a record written today is comparable tomorrow.
+
+```sql
+-- After a run: what is still unplaced, and what is waiting on a person.
+SELECT c.code, count(*) FROM opportunities o JOIN categories c ON c.id = o.category_id
+ WHERE o.status = 'published' AND o.deleted_at IS NULL GROUP BY c.code ORDER BY 2 DESC;
+
+SELECT count(*) FILTER (WHERE summary IS NULL) AS no_summary, count(*) AS published
+  FROM opportunities WHERE status = 'published' AND deleted_at IS NULL;
+
+SELECT method, state, model_verdict, count(*) FROM dedupe_candidates
+ GROUP BY 1,2,3 ORDER BY 4 DESC;
+```
+
+---
