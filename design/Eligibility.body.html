@@ -1,0 +1,113 @@
+<div style="width:390px;min-height:1700px;background:var(--paper);">
+
+  <div class="appbar">
+    <span class="icon-btn" style="margin-left:-10px;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></span>
+    <span class="wordmark" style="font-size:18px;">Mbele</span>
+  </div>
+
+  <!-- THE TOOL -->
+  <div style="background:var(--surface);padding:22px 16px 20px;border-bottom:1px solid var(--line);">
+    <p class="eyebrow">Eligibility</p>
+    <h1 class="title" style="margin-top:6px;">Can I apply?</h1>
+    <p class="body q2" style="margin-top:8px;">Three questions. We check your answers against the
+      requirements each organiser actually published — and tell you when their wording is too vague
+      to be sure.</p>
+
+    <div class="stack" style="gap:18px;margin-top:22px;">
+      <div>
+        <span class="field-label">Where you live</span>
+        <div class="input" style="display:flex;align-items:center;">
+          <span style="flex:1;">Zimbabwe</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-2)" stroke-width="1.8" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+        <p class="help">Most rules turn on residence, not nationality.</p>
+      </div>
+
+      <div>
+        <span class="field-label">Are you studying?</span>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <span class="tag" style="height:40px;border-color:var(--brand);background:var(--brand-wash);color:var(--brand-ink);font-weight:600;">Undergraduate</span>
+          <span class="tag" style="height:40px;">Postgraduate</span>
+          <span class="tag" style="height:40px;">Not a student</span>
+        </div>
+      </div>
+
+      <div>
+        <span class="field-label">Year you were born</span>
+        <div class="input" style="display:flex;align-items:center;max-width:150px;"><span>1998</span></div>
+        <p class="help">Used only to compare against age limits.</p>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" style="width:100%;margin-top:22px;min-height:48px;">Check these three</button>
+
+    <div style="display:flex;gap:10px;margin-top:14px;padding:12px;background:var(--sunken);border-radius:var(--r-row);">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--ink-2)" stroke-width="1.7" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px;"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+      <p class="meta q2">Your answers stay on this device. No account needed, and they are never sent
+        to any AI service.</p>
+    </div>
+  </div>
+
+  <!-- RESULT STATES -->
+  <div style="padding:26px 16px 12px;">
+    <p class="eyebrow">Result states</p>
+    <h2 class="subtitle" style="margin-top:4px;">Four answers, and none of them pretends</h2>
+  </div>
+
+  <div class="stack" style="gap:14px;padding:0 16px 28px;">
+
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div class="verdict v-eligible" style="border-radius:0;">
+        <p class="subtitle" style="color:var(--eligible);">You meet every rule we found</p>
+        <p class="dense q2" style="margin-top:4px;">Four of four requirements met. The organiser still
+          makes the final decision.</p>
+      </div>
+      <div style="padding:12px 16px;">
+        <p class="meta q2"><span style="color:var(--eligible);font-weight:700;">&#10003;</span> Residence ·
+          <span style="color:var(--eligible);font-weight:700;">&#10003;</span> Age ·
+          <span style="color:var(--eligible);font-weight:700;">&#10003;</span> Student status ·
+          <span style="color:var(--eligible);font-weight:700;">&#10003;</span> Field of study</p>
+      </div>
+    </div>
+
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div class="verdict v-likely" style="border-radius:0;">
+        <p class="subtitle" style="color:var(--likely);">Likely eligible</p>
+        <p class="dense q2" style="margin-top:4px;">Three of four met. One requirement is written too
+          loosely for us to check it for you.</p>
+      </div>
+      <div style="padding:12px 16px;">
+        <p class="meta q2">Unchecked: <span style="font-weight:600;color:var(--ink);">&ldquo;demonstrable
+          interest in agricultural technology&rdquo;</span> — read it on the organiser's page.</p>
+      </div>
+    </div>
+
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div class="verdict v-unclear" style="border-radius:0;">
+        <p class="subtitle" style="color:var(--unclear);">We need one more thing</p>
+        <p class="dense q2" style="margin-top:4px;">This one has an age limit and we do not have your
+          birth year yet.</p>
+      </div>
+      <div style="padding:12px 16px;">
+        <button class="btn btn-secondary" style="min-height:40px;">Add your birth year</button>
+      </div>
+    </div>
+
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div class="verdict v-not" style="border-radius:0;">
+        <p class="subtitle" style="color:var(--noteligible);">One rule rules you out</p>
+        <p class="dense q2" style="margin-top:4px;">Open to residents of Kenya, Rwanda and Uganda only.
+          You told us Zimbabwe.</p>
+      </div>
+      <div style="padding:12px 16px;">
+        <a href="#" class="dense" style="font-weight:600;">Show me what is open to Zimbabwe &rarr;</a>
+      </div>
+    </div>
+
+    <div class="card" style="padding:14px 16px;">
+      <p class="dense" style="font-weight:600;">Eligibility could not be checked</p>
+      <p class="meta q2" style="margin-top:4px;">This organiser has not published requirements we can
+        read. Everything else on the page is still accurate.</p>
+    </div>
+  </div>
+</div>

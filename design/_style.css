@@ -1,0 +1,93 @@
+/* Mbele design system — every value lifted from apps/web/src/styles/tokens.css.
+   Nothing here invents a colour, a type step or a radius. */
+:root{
+  --paper:#fbfbf9; --surface:#ffffff; --sunken:#f1f1ee;
+  --ink:#101214; --ink-2:#4a4f55; --ink-3:#686e74;
+  --line:#e2e2dd; --line-strong:#858b91; --absolute:#000;
+  --brand:#1c3f94; --brand-ink:#14306f; --brand-wash:#eaeff9;
+  --eligible:#0b6b33; --eligible-wash:#e7f2ea;
+  --likely:#5a6e13; --likely-wash:#f0f2e3;
+  --unclear:#8a5a0b; --unclear-wash:#f7f0e2;
+  --noteligible:#8e2b2b; --noteligible-wash:#f7eaea;
+  --r-row:4px; --r-sheet:8px;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font-family:Archivo,"Helvetica Neue",Roboto,"Segoe UI",system-ui,-apple-system,sans-serif;
+  font-size:16px;line-height:26px;font-variant-numeric:tabular-nums;
+  -webkit-font-smoothing:antialiased;}
+a{color:var(--brand);text-decoration:none;}
+a:hover{color:var(--brand-ink);text-decoration:underline;}
+p{margin:0;} h1,h2,h3,h4{margin:0;font-weight:700;}
+dl,dd,dt,ul,li{margin:0;padding:0;list-style:none;}
+
+/* ── Type ramp ─────────────────────────────────────────────────────────── */
+.display{font-size:34px;line-height:38px;font-weight:700;letter-spacing:-0.02em;}
+.title{font-size:24px;line-height:30px;font-weight:700;letter-spacing:-0.015em;}
+.subtitle{font-size:19px;line-height:26px;font-weight:600;letter-spacing:-0.01em;}
+.body{font-size:16px;line-height:26px;}
+.dense{font-size:14px;line-height:20px;}
+.meta{font-size:13px;line-height:18px;}
+.micro{font-size:11px;line-height:14px;}
+/* The one addition: an editorial eyebrow. Existing micro token, new discipline. */
+.eyebrow{font-size:11px;line-height:14px;font-weight:600;letter-spacing:0.08em;
+  text-transform:uppercase;color:var(--ink-3);}
+.cd-lg{font-size:30px;line-height:32px;color:var(--absolute);}
+.cd-sm{font-size:17px;line-height:20px;color:var(--absolute);}
+.q2{color:var(--ink-2);} .q3{color:var(--ink-3);}
+
+/* ── Surfaces & structure ──────────────────────────────────────────────── */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sheet);}
+.hair{border-top:1px solid var(--line);}
+.rule{height:1px;background:var(--line);border:0;}
+.sec{padding:0 16px;}
+.stack{display:flex;flex-direction:column;}
+
+/* ── Controls ──────────────────────────────────────────────────────────── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  min-height:44px;padding:0 16px;border-radius:var(--r-row);font-size:14px;
+  line-height:20px;font-weight:600;border:1px solid transparent;cursor:pointer;}
+.btn-primary{background:var(--brand);color:#fff;}
+.btn-secondary{background:var(--surface);color:var(--ink);border-color:var(--line-strong);}
+.btn-quiet{background:transparent;color:var(--brand);padding:0;min-height:44px;}
+.input{width:100%;min-height:48px;padding:0 14px;border:1px solid var(--line-strong);
+  border-radius:var(--r-row);background:var(--surface);font:inherit;font-size:15px;color:var(--ink);}
+.input::placeholder{color:var(--ink-3);}
+.field-label{font-size:11px;line-height:14px;font-weight:600;letter-spacing:0.08em;
+  text-transform:uppercase;color:var(--ink-2);display:block;margin-bottom:6px;}
+.help{font-size:13px;line-height:18px;color:var(--ink-3);margin-top:6px;}
+
+/* ── Opportunity row ───────────────────────────────────────────────────── */
+.row{display:flex;gap:0;background:var(--surface);border-bottom:1px solid var(--line);}
+.rail{width:3px;flex-shrink:0;background:var(--line);}
+.row-body{flex:1;padding:14px 16px;min-width:0;}
+.row-title{font-size:16px;line-height:22px;font-weight:600;letter-spacing:-0.01em;
+  color:var(--ink);text-wrap:pretty;}
+/* Labelled facts WITHOUT the cage of bordered cells. The spec wants labels so a
+   value is never ambiguous; the cells are what made it read as a database. */
+.facts{display:flex;flex-wrap:wrap;gap:0 20px;margin-top:10px;}
+.facts div{min-width:0;}
+.facts dt{font-size:11px;line-height:14px;font-weight:600;letter-spacing:0.06em;
+  text-transform:uppercase;color:var(--ink-3);}
+.facts dd{font-size:14px;line-height:20px;color:var(--ink);}
+.save{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  min-height:44px;min-width:44px;padding:0 12px;border:1px solid var(--line-strong);
+  border-radius:var(--r-row);background:var(--surface);font-size:13px;font-weight:600;color:var(--ink);}
+
+/* ── Verdict ───────────────────────────────────────────────────────────── */
+.verdict{border-left:3px solid;padding:14px 16px;border-radius:0 var(--r-row) var(--r-row) 0;}
+.v-eligible{border-color:var(--eligible);background:var(--eligible-wash);}
+.v-likely{border-color:var(--likely);background:var(--likely-wash);}
+.v-unclear{border-color:var(--unclear);background:var(--unclear-wash);}
+.v-not{border-color:var(--noteligible);background:var(--noteligible-wash);}
+
+/* ── Chrome ────────────────────────────────────────────────────────────── */
+.appbar{display:flex;align-items:center;gap:12px;padding:10px 16px;
+  background:var(--surface);border-bottom:1px solid var(--line);}
+.wordmark{font-size:20px;line-height:24px;font-weight:700;letter-spacing:-0.02em;color:var(--brand);}
+.icon-btn{display:inline-flex;align-items:center;justify-content:center;
+  width:44px;height:44px;border-radius:var(--r-row);color:var(--ink);flex-shrink:0;}
+.tag{display:inline-flex;align-items:center;height:30px;padding:0 12px;
+  border:1px solid var(--line-strong);border-radius:999px;font-size:13px;
+  font-weight:500;color:var(--ink);background:var(--surface);white-space:nowrap;}
+.skel{background:var(--sunken);border-radius:var(--r-row);}

@@ -1,0 +1,28 @@
+{
+  "artboards": [
+    { "file": "Foundations.dc.html", "x": 0, "y": 0, "w": 1120, "h": 1560, "title": "Foundations — the system" },
+
+    { "file": "Main.dc.html",        "x": 0,    "y": 1720, "w": 390, "h": 1720, "title": "Home — mobile" },
+    { "file": "Shell.dc.html",       "x": 470,  "y": 1720, "w": 390, "h": 1120, "title": "Navigation — mobile" },
+    { "file": "Search.dc.html",      "x": 940,  "y": 1720, "w": 390, "h": 1300, "title": "Search + filters" },
+    { "file": "Discovery.dc.html",   "x": 1410, "y": 1720, "w": 390, "h": 1340, "title": "Categories + countries" },
+    { "file": "Opportunity.dc.html", "x": 1880, "y": 1720, "w": 390, "h": 1980, "title": "Opportunity — mobile" },
+    { "file": "Eligibility.dc.html", "x": 2350, "y": 1720, "w": 390, "h": 1700, "title": "Can I apply?" },
+    { "file": "Tracker.dc.html",     "x": 2820, "y": 1720, "w": 390, "h": 1120, "title": "Saved — tracker" },
+
+    { "file": "HomeDesktop.dc.html",        "x": 0,    "y": 3860, "w": 1440, "h": 1400, "title": "Home — desktop" },
+    { "file": "OpportunityDesktop.dc.html", "x": 1560, "y": 3860, "w": 1440, "h": 1120, "title": "Opportunity — desktop" },
+    { "file": "States.dc.html",             "x": 3120, "y": 3860, "w": 1080, "h": 900,  "title": "Loading, empty, error, offline" }
+  ],
+  "annotations": [
+    { "id": "read-me", "x": 0, "y": -150, "w": 560,
+      "text": "Mbele redesign — one system, eleven artboards.\n\nTop row: the foundations. Middle row: the mobile journey, left to right — discover, navigate, search, browse, understand, check, save. Bottom row: desktop and the states every screen needs.\n\nEvery colour, type step, radius and breakpoint comes from the real tokens.css. Sample opportunity names are placeholders." },
+    { "id": "hero-note", "x": 0, "y": 3500, "w": 420,
+      "text": "The masthead is 270px, not a full-screen hero. UX_FLOWS §2 requires the board to start high and forbids a marketing hero — this gives a first-time visitor one sentence and a search box without pushing the live list below the fold." },
+    { "id": "nav-note", "x": 470, "y": 2900, "w": 400,
+      "text": "There is no bottom navigation in the current code — the real problem is a six-link row in the header that wraps onto three lines on a phone. This replaces it: four targets in the bar, everything else in a sheet." },
+    { "id": "card-note", "x": 1880, "y": 3760, "w": 400,
+      "text": "The facts keep their labels but lose the bordered cells. That grid is what made a row read as a database. Four borders per row removed, on a page of thirty rows." }
+  ],
+  "launch": { "view": "canvas" }
+}

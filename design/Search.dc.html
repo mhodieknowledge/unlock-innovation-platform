@@ -1,0 +1,227 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap">
+  <style>
+/* Mbele design system — every value lifted from apps/web/src/styles/tokens.css.
+   Nothing here invents a colour, a type step or a radius. */
+:root{
+  --paper:#fbfbf9; --surface:#ffffff; --sunken:#f1f1ee;
+  --ink:#101214; --ink-2:#4a4f55; --ink-3:#686e74;
+  --line:#e2e2dd; --line-strong:#858b91; --absolute:#000;
+  --brand:#1c3f94; --brand-ink:#14306f; --brand-wash:#eaeff9;
+  --eligible:#0b6b33; --eligible-wash:#e7f2ea;
+  --likely:#5a6e13; --likely-wash:#f0f2e3;
+  --unclear:#8a5a0b; --unclear-wash:#f7f0e2;
+  --noteligible:#8e2b2b; --noteligible-wash:#f7eaea;
+  --r-row:4px; --r-sheet:8px;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font-family:Archivo,"Helvetica Neue",Roboto,"Segoe UI",system-ui,-apple-system,sans-serif;
+  font-size:16px;line-height:26px;font-variant-numeric:tabular-nums;
+  -webkit-font-smoothing:antialiased;}
+a{color:var(--brand);text-decoration:none;}
+a:hover{color:var(--brand-ink);text-decoration:underline;}
+p{margin:0;} h1,h2,h3,h4{margin:0;font-weight:700;}
+dl,dd,dt,ul,li{margin:0;padding:0;list-style:none;}
+
+/* ── Type ramp ─────────────────────────────────────────────────────────── */
+.display{font-size:34px;line-height:38px;font-weight:700;letter-spacing:-0.02em;}
+.title{font-size:24px;line-height:30px;font-weight:700;letter-spacing:-0.015em;}
+.subtitle{font-size:19px;line-height:26px;font-weight:600;letter-spacing:-0.01em;}
+.body{font-size:16px;line-height:26px;}
+.dense{font-size:14px;line-height:20px;}
+.meta{font-size:13px;line-height:18px;}
+.micro{font-size:11px;line-height:14px;}
+/* The one addition: an editorial eyebrow. Existing micro token, new discipline. */
+.eyebrow{font-size:11px;line-height:14px;font-weight:600;letter-spacing:0.08em;
+  text-transform:uppercase;color:var(--ink-3);}
+.cd-lg{font-size:30px;line-height:32px;color:var(--absolute);}
+.cd-sm{font-size:17px;line-height:20px;color:var(--absolute);}
+.q2{color:var(--ink-2);} .q3{color:var(--ink-3);}
+
+/* ── Surfaces & structure ──────────────────────────────────────────────── */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sheet);}
+.hair{border-top:1px solid var(--line);}
+.rule{height:1px;background:var(--line);border:0;}
+.sec{padding:0 16px;}
+.stack{display:flex;flex-direction:column;}
+
+/* ── Controls ──────────────────────────────────────────────────────────── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  min-height:44px;padding:0 16px;border-radius:var(--r-row);font-size:14px;
+  line-height:20px;font-weight:600;border:1px solid transparent;cursor:pointer;}
+.btn-primary{background:var(--brand);color:#fff;}
+.btn-secondary{background:var(--surface);color:var(--ink);border-color:var(--line-strong);}
+.btn-quiet{background:transparent;color:var(--brand);padding:0;min-height:44px;}
+.input{width:100%;min-height:48px;padding:0 14px;border:1px solid var(--line-strong);
+  border-radius:var(--r-row);background:var(--surface);font:inherit;font-size:15px;color:var(--ink);}
+.input::placeholder{color:var(--ink-3);}
+.field-label{font-size:11px;line-height:14px;font-weight:600;letter-spacing:0.08em;
+  text-transform:uppercase;color:var(--ink-2);display:block;margin-bottom:6px;}
+.help{font-size:13px;line-height:18px;color:var(--ink-3);margin-top:6px;}
+
+/* ── Opportunity row ───────────────────────────────────────────────────── */
+.row{display:flex;gap:0;background:var(--surface);border-bottom:1px solid var(--line);}
+.rail{width:3px;flex-shrink:0;background:var(--line);}
+.row-body{flex:1;padding:14px 16px;min-width:0;}
+.row-title{font-size:16px;line-height:22px;font-weight:600;letter-spacing:-0.01em;
+  color:var(--ink);text-wrap:pretty;}
+/* Labelled facts WITHOUT the cage of bordered cells. The spec wants labels so a
+   value is never ambiguous; the cells are what made it read as a database. */
+.facts{display:flex;flex-wrap:wrap;gap:0 20px;margin-top:10px;}
+.facts div{min-width:0;}
+.facts dt{font-size:11px;line-height:14px;font-weight:600;letter-spacing:0.06em;
+  text-transform:uppercase;color:var(--ink-3);}
+.facts dd{font-size:14px;line-height:20px;color:var(--ink);}
+.save{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  min-height:44px;min-width:44px;padding:0 12px;border:1px solid var(--line-strong);
+  border-radius:var(--r-row);background:var(--surface);font-size:13px;font-weight:600;color:var(--ink);}
+
+/* ── Verdict ───────────────────────────────────────────────────────────── */
+.verdict{border-left:3px solid;padding:14px 16px;border-radius:0 var(--r-row) var(--r-row) 0;}
+.v-eligible{border-color:var(--eligible);background:var(--eligible-wash);}
+.v-likely{border-color:var(--likely);background:var(--likely-wash);}
+.v-unclear{border-color:var(--unclear);background:var(--unclear-wash);}
+.v-not{border-color:var(--noteligible);background:var(--noteligible-wash);}
+
+/* ── Chrome ────────────────────────────────────────────────────────────── */
+.appbar{display:flex;align-items:center;gap:12px;padding:10px 16px;
+  background:var(--surface);border-bottom:1px solid var(--line);}
+.wordmark{font-size:20px;line-height:24px;font-weight:700;letter-spacing:-0.02em;color:var(--brand);}
+.icon-btn{display:inline-flex;align-items:center;justify-content:center;
+  width:44px;height:44px;border-radius:var(--r-row);color:var(--ink);flex-shrink:0;}
+.tag{display:inline-flex;align-items:center;height:30px;padding:0 12px;
+  border:1px solid var(--line-strong);border-radius:999px;font-size:13px;
+  font-weight:500;color:var(--ink);background:var(--surface);white-space:nowrap;}
+.skel{background:var(--sunken);border-radius:var(--r-row);}
+  </style>
+</helmet>
+<div style="width:390px;min-height:1300px;background:var(--paper);">
+
+  <div class="appbar" style="gap:8px;">
+    <span class="icon-btn" style="margin-left:-10px;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></span>
+    <div class="input" style="display:flex;align-items:center;gap:10px;flex:1;min-height:44px;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink-3)" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <span style="font-size:15px;flex:1;">AI hackathons open to Zimbabwe</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-2)" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </div>
+  </div>
+
+  <!-- What we understood: the compiler's chips, editable, never an answer -->
+  <div style="background:var(--surface);border-bottom:1px solid var(--line);padding:12px 16px 14px;">
+    <p class="micro q3" style="font-weight:600;letter-spacing:0.06em;text-transform:uppercase;">We read that as</p>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+      <span class="tag" style="height:28px;font-size:12px;border-color:var(--brand);background:var(--brand-wash);color:var(--brand-ink);font-weight:600;">Hackathon
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" style="margin-left:6px;"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
+      <span class="tag" style="height:28px;font-size:12px;border-color:var(--brand);background:var(--brand-wash);color:var(--brand-ink);font-weight:600;">Open to Zimbabwe
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" style="margin-left:6px;"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
+      <span class="tag" style="height:28px;font-size:12px;">AI &amp; data
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" style="margin-left:6px;"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
+    </div>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;">
+    <p class="dense" style="flex:1;"><strong style="font-weight:600;">9 open</strong>
+      <span class="q3">· soonest first</span></p>
+    <span class="tag" style="height:36px;gap:6px;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+      Filters <strong style="font-weight:700;">2</strong></span>
+  </div>
+
+  <div style="background:var(--surface);border-top:1px solid var(--line);">
+    <article class="row">
+      <span class="rail" style="background:var(--eligible);"></span>
+      <div class="row-body">
+        <p class="eyebrow">Hackathon</p>
+        <h3 class="row-title" style="margin-top:3px;">Harare Climate Data Challenge</h3>
+        <p class="meta q2" style="margin-top:3px;">Impact Hub Harare · Official source</p>
+        <div style="display:flex;align-items:baseline;gap:8px;margin-top:9px;">
+          <span class="cd-sm" style="font-weight:700;">5 days left</span>
+          <span class="meta" style="color:var(--eligible);font-weight:600;">You meet every rule</span>
+        </div>
+        <dl class="facts"><div><dt>Prize</dt><dd>USD 4,000</dd></div><div><dt>Format</dt><dd>In person</dd></div><div><dt>Cost</dt><dd>Free</dd></div></dl>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;">
+          <span class="meta q3">Checked today</span>
+          <span class="save"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M6 4h12v16l-6-4.2L6 20z"/></svg>Save</span></div>
+      </div>
+    </article>
+
+    <article class="row">
+      <span class="rail" style="background:var(--likely);"></span>
+      <div class="row-body">
+        <p class="eyebrow">Hackathon</p>
+        <h3 class="row-title" style="margin-top:3px;">Pan-African AI for Health Sprint</h3>
+        <p class="meta q2" style="margin-top:3px;">AI4D Africa · Official source</p>
+        <div style="display:flex;align-items:baseline;gap:8px;margin-top:9px;">
+          <span class="cd-sm" style="font-weight:600;">12 days left</span>
+          <span class="meta" style="color:var(--likely);font-weight:600;">Likely eligible</span>
+        </div>
+        <dl class="facts"><div><dt>Prize</dt><dd>USD 15,000</dd></div><div><dt>Team</dt><dd>2–5</dd></div><div><dt>Cost</dt><dd>Free</dd></div></dl>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;">
+          <span class="meta q3">Checked yesterday</span>
+          <span class="save" style="border-color:var(--brand);background:var(--brand-wash);color:var(--brand-ink);"><svg width="15" height="15" viewBox="0 0 24 24" fill="var(--brand-ink)" stroke="none"><path d="M6 4h12v16l-6-4.2L6 20z"/></svg>Saved</span></div>
+      </div>
+    </article>
+
+    <article class="row" style="border-bottom:0;">
+      <span class="rail" style="background:var(--unclear);"></span>
+      <div class="row-body">
+        <p class="eyebrow">Hackathon</p>
+        <h3 class="row-title" style="margin-top:3px;">SADC Open Innovation Weekend</h3>
+        <p class="meta q2" style="margin-top:3px;">Organisation not identified · Community source</p>
+        <div style="display:flex;align-items:baseline;gap:8px;margin-top:9px;">
+          <span class="cd-sm" style="font-weight:500;">26 days left</span>
+          <span class="meta" style="color:var(--unclear);font-weight:600;">Rules unclear</span>
+        </div>
+        <dl class="facts"><div><dt>Prize</dt><dd>Not stated</dd></div><div><dt>Format</dt><dd>Hybrid</dd></div><div><dt>Cost</dt><dd>Free</dd></div></dl>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;">
+          <span class="meta q3">Checked 6 days ago</span>
+          <span class="save"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M6 4h12v16l-6-4.2L6 20z"/></svg>Save</span></div>
+      </div>
+    </article>
+  </div>
+
+  <!-- FILTER SHEET -->
+  <div style="padding:26px 16px 8px;"><p class="eyebrow">Filters, as a sheet</p>
+    <p class="meta q2" style="margin-top:4px;">Never a horizontal bar of controls across the top of a phone.</p></div>
+  <div style="position:relative;height:560px;background:var(--surface);overflow:hidden;border-top:1px solid var(--line);">
+    <div style="position:absolute;inset:0;background:rgba(16,18,20,0.38);"></div>
+    <div style="position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:var(--r-sheet) var(--r-sheet) 0 0;box-shadow:0 8px 24px rgba(16,18,20,0.14);">
+      <div style="display:flex;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line);">
+        <h3 class="subtitle" style="flex:1;">Filters</h3>
+        <a href="#" class="meta" style="font-weight:600;">Clear all</a>
+      </div>
+      <div style="padding:16px;display:flex;flex-direction:column;gap:18px;">
+        <div><span class="field-label">Kind</span>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <span class="tag" style="border-color:var(--brand);background:var(--brand-wash);color:var(--brand-ink);font-weight:600;">Hackathon</span>
+            <span class="tag">Scholarship</span><span class="tag">Grant</span><span class="tag">Fellowship</span></div></div>
+        <div><span class="field-label">Open to</span>
+          <div class="input" style="display:flex;align-items:center;"><span style="flex:1;">Zimbabwe</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-2)" stroke-width="1.8" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></div></div>
+        <div><span class="field-label">Deadline</span>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <span class="tag">This week</span><span class="tag">This month</span>
+            <span class="tag" style="border-color:var(--brand);background:var(--brand-wash);color:var(--brand-ink);font-weight:600;">Open now</span></div></div>
+        <div><span class="field-label">Cost</span>
+          <div style="display:flex;gap:6px;"><span class="tag">Free to enter</span><span class="tag">Any</span></div></div>
+      </div>
+      <div style="padding:12px 16px 16px;border-top:1px solid var(--line);display:flex;gap:8px;">
+        <button class="btn btn-secondary" style="flex:1;">Cancel</button>
+        <button class="btn btn-primary" style="flex:2;">Show 9 results</button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

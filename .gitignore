@@ -45,3 +45,8 @@ Thumbs.db
 
 # Byte-budget reports (generated)
 .budget-report.json
+
+# The seeded design canvas: the artboards in design/ plus ~2.5 MB of the canvas
+# editor baked in. A build output, regenerable in one command from the sources
+# beside it — see design/README.md.
+design/mbele-redesign.html
