@@ -47,6 +47,10 @@ const PATHS = {
   chevron: "M9 5l7 7-7 7",
   check: "M4 12.5 9 18 20 6",
   clock: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM12 7v5.5l3.5 2",
+  // The menu and its close. Both ship on every page below lg and CSS swaps them on
+  // open, so the control shows what it will do without a script deciding.
+  menu: "M4 7h16M4 12h16M4 17h16",
+  close: "M6 6l12 12M18 6L6 18",
 } as const;
 
 const { name, size = 24, class: className = "", title } = Astro.props;

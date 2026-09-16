@@ -386,20 +386,65 @@ const scopeLine = country
     )
   }
 
+  {/* ── WHAT WE CAN CHECK FOR YOU ─────────────────────────────────────────────
+      The eligibility profile is what turns a list of deadlines into an answer about the
+      reader, and it had become the hardest thing on the site to find: when the bottom
+      bar replaced the old header links, /you/eligibility was left reachable only from
+      /you. The menu now carries it first, and this is the other half — naming it on the
+      page where the question actually occurs to somebody.
+
+      It sits where fifty-four country links used to. That list ran to about 1,200px of
+      a phone screen — more than a viewport of blue text to scroll past — for an entry
+      point almost nobody uses twice. */}
+  <section class="mx-auto mt-7 max-w-[1160px] px-4" aria-labelledby="can-i-apply">
+    <div class="rounded-sheet border border-line bg-surface p-4">
+      <p class="eyebrow">Can you apply?</p>
+      <h2 id="can-i-apply" class="mt-[6px] text-subtitle font-semibold">
+        Tell us where you live, and we check every listing against it.
+      </h2>
+      <p class="mt-2 text-dense text-ink-2">
+        Most rules turn on residence and what you are studying. With those saved, each
+        opportunity says whether you qualify — and where the wording is unclear, it says
+        unclear rather than guessing.
+      </p>
+      <p class="mt-3">
+        <a
+          href="/you/eligibility"
+          class="inline-flex min-h-11 items-center rounded-row bg-brand px-4 text-dense font-semibold text-surface no-underline"
+        >
+          {user ? "Your eligibility details" : "Add your details"}
+        </a>
+      </p>
+    </div>
+  </section>
+
+  {/* ── BY COUNTRY, folded away ────────────────────────────────────────────────
+      §2 item 5 wants country entry points on this page and §28 makes every African
+      country a first-class page rather than a promoted subset — so all of them are
+      still here, and still plain links in the HTML for a crawler and for a reader with
+      no JavaScript. They are just no longer unrolled by default.
+
+      A `<details>` rather than a "show more" button for the same reason the menu is one:
+      it needs no script, and the CSP carries no 'unsafe-inline'. */}
   {
     entryPoints.countries.length > 0 && (
-      <section aria-labelledby="by-country">
-        <div class="mx-auto max-w-[1160px] px-4 pt-[26px] pb-2">
-          <p class="eyebrow">Explore</p>
-          <h2 id="by-country" class="mt-1 text-title font-bold tracking-[-0.015em]">
-            By where you live
-          </h2>
-        </div>
-        {/* A column grid rather than a wrapped paragraph: fifty-four names in a flex-wrap
-            are a wall you have to read linearly to search. None is hidden behind a "show
-            more" — the list is long because §28's promise is that all of them are here. */}
-        <div class="mx-auto max-w-[1160px] px-4">
-          <ul class="grid list-none grid-cols-2 gap-x-4 p-0 md:grid-cols-3 lg:grid-cols-4">
+      <section class="mx-auto mt-7 max-w-[1160px] px-4" aria-labelledby="by-country">
+        <details class="group rounded-sheet border border-line bg-surface">
+          <summary class="flex min-h-11 cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+            <span class="flex-1">
+              <span class="eyebrow">Explore</span>
+              <span id="by-country" class="block text-dense font-semibold">
+                By where you live
+              </span>
+            </span>
+            <span class="text-meta text-ink-3">{entryPoints.countries.length} countries</span>
+            <Icon
+              name="chevron"
+              size={20}
+              class="h-4 w-4 shrink-0 rotate-90 text-ink-3 group-open:-rotate-90"
+            />
+          </summary>
+          <ul class="grid list-none grid-cols-2 gap-x-4 border-t border-line px-4 pt-2 pb-3 p-0 md:grid-cols-3 lg:grid-cols-4">
             {entryPoints.countries.map((c) => (
               <li>
                 <a
@@ -411,12 +456,12 @@ const scopeLine = country
               </li>
             ))}
           </ul>
-          <p class="pt-3">
+          <p class="px-4 pb-3">
             <a href="/countries" class="text-dense font-semibold">
               All countries →
             </a>
           </p>
-        </div>
+        </details>
       </section>
     )
   }

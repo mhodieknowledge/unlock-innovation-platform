@@ -1,0 +1,134 @@
+---
+// The menu, below lg. DESIGN_SYSTEM.md §5.7 as amended 2026-09-16.
+//
+// WHY `<details>` AND NOT A SCRIPTED SHEET. The CSP carries no 'unsafe-inline' (ADR
+// 0002), so an opener would have to be a bundled module fetched on every page — and a
+// navigation that needs JavaScript to open is one that fails on exactly the connections
+// §10 exists for. `<details>` opens with no script at all, is keyboard operable, and
+// announces its own expanded state to a screen reader.
+//
+// What that costs, stated rather than glossed: no Esc handler, no backdrop, no focus
+// trap. §5.8 requires those of a MODAL. This is a disclosure — the page behind it is not
+// inert and nothing is trapped, so there is nothing to escape from.
+//
+// It lives at the END of the header's right-hand cluster, and that position is load
+// bearing: the panel is `absolute right-0` against this element, so anywhere else in the
+// bar it opens off the left of the screen. It did, the first time.
+//
+// §5.7's surviving worry is first-time discovery — a destination behind a tap is one a
+// once-only visitor may never find. Two things answer it and neither is in here: the
+// four category chips sit on the board itself, and search keeps its own icon target.
+
+import Icon from "./Icon.astro";
+import { PRIMARY_NAV, isCurrent } from "../lib/nav";
+
+interface Props {
+  pathname: string;
+  /** The account links only exist for somebody who has an account. */
+  signedIn?: boolean;
+}
+
+const { pathname, signedIn = false } = Astro.props;
+
+/**
+ * The account surfaces, which the bottom bar never carried.
+ *
+ * `/you/eligibility` is first because it is the one that changes what the rest of the
+ * product says: it is where a reader states where they live and what they are studying,
+ * and every verdict on every listing is computed from it. After the bar replaced the old
+ * header links it was reachable only from `/you`, which is how it got lost.
+ */
+const ACCOUNT_LINKS: { label: string; href: string }[] = [
+  { label: "Your eligibility details", href: "/you/eligibility" },
+  { label: "Saved opportunities", href: "/tracker" },
+  { label: "Messages", href: "/you/inbox" },
+  { label: "Your projects", href: "/you/projects" },
+  { label: "Profile", href: "/you/profile" },
+  { label: "Account", href: "/you/account" },
+];
+---
+
+<details class="group relative lg:hidden" name="site-menu">
+  <summary
+    class="inline-flex size-11 cursor-pointer list-none items-center justify-center rounded-row text-ink marker:hidden hover:bg-sunken [&::-webkit-details-marker]:hidden"
+  >
+    {/* Both glyphs ship; CSS swaps them on open, so the control says whether it will
+        open or close without a script deciding. */}
+    <Icon name="menu" size={24} class="group-open:hidden" />
+    <Icon name="close" size={24} class="hidden group-open:block" />
+    <span class="sr-only">Menu</span>
+  </summary>
+
+  {/*
+    Anchored to the header rather than covering the page: the reader keeps their place,
+    and on a short screen the list scrolls inside its own box instead of the document.
+    max-h uses svh so an address bar sliding away does not change the height under them.
+  */}
+  <div
+    class="absolute right-0 z-50 mt-2 max-h-[min(70svh,32rem)] w-[min(18rem,calc(100vw-2rem))] overflow-y-auto rounded-sheet border border-line bg-surface shadow-overlay"
+  >
+    <nav aria-label="All pages">
+      <ul class="list-none p-0">
+      {
+        PRIMARY_NAV.map((item) => {
+          const current = isCurrent(item.href, pathname);
+          return (
+            <li>
+              <a
+                href={item.href}
+                aria-current={current ? "page" : undefined}
+                class={`flex min-h-11 items-center gap-3 border-b border-line px-4 py-3 text-dense no-underline ${
+                  current ? "bg-brand-wash font-semibold text-brand" : "text-ink hover:bg-sunken"
+                }`}
+              >
+                <Icon name={item.icon} size={20} class="shrink-0 text-ink-3" />
+                {item.label}
+              </a>
+            </li>
+          );
+          })
+        }
+      </ul>
+    </nav>
+
+    {
+      signedIn ? (
+        <ul class="list-none border-t border-line p-0">
+          <li class="px-4 pt-3 pb-1">
+            <p class="eyebrow">Your account</p>
+          </li>
+          {ACCOUNT_LINKS.map((link) => (
+            <li>
+              <a
+                href={link.href}
+                aria-current={isCurrent(link.href, pathname) ? "page" : undefined}
+                class={`flex min-h-11 items-center px-4 py-3 text-dense no-underline ${
+                  isCurrent(link.href, pathname)
+                    ? "font-semibold text-brand"
+                    : "text-ink hover:bg-sunken"
+                }`}
+              >
+                {link.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        /* Signed out, the eligibility profile is still the thing worth naming: it is
+           what turns a list of deadlines into an answer about you. */
+        <div class="border-t border-line px-4 py-3">
+          <a
+            href="/signin"
+            class="flex min-h-11 items-center text-dense font-semibold no-underline"
+          >
+            Sign in
+          </a>
+          <p class="pb-1 text-meta text-ink-2">
+            Signing in lets you save opportunities and store your eligibility details, so
+            every listing says whether you can apply.
+          </p>
+        </div>
+      )
+    }
+  </div>
+</details>

@@ -206,11 +206,36 @@ NL-compiled chips render identically to manually chosen ones, with one differenc
 The general pattern for structured facts (opportunity facts, team details, organisation details). Labels `micro` `--ink-2`, values `dense` `--ink`, hairline separators, 2 columns at `xs`, 4 at `md`+. Never a definition list of prose.
 
 ### 5.7 Navigation
-**Mobile** — bottom bar, 5 items, 56px, icon + label (labels always visible; icon-only bars fail for first-time users): Board · Search · Tracker · Rooms · You. Active state is a 2px top rule in `--brand` plus weight 600. The bar hides on scroll down, returns on scroll up.
+**Mobile** — top bar, 56px: wordmark left, and search / account / menu as icon targets right. The five destinations live in a disclosure menu opened from the menu target: Board · Search · Categories · Countries · Saved, with the account surfaces — including **Your eligibility details** — beneath them.
 
 **Desktop** — top bar, 56px, logotype left, primary nav centre-left, search centre, account right. No mega-menu.
 
-**Never**: hamburger menu hiding primary navigation; sticky promotional banners; cookie walls (see `PRIVACY_AND_COMPLIANCE.md` — no non-essential cookies are set, so no banner is needed).
+**Never**: sticky promotional banners; cookie walls (see `PRIVACY_AND_COMPLIANCE.md` — no non-essential cookies are set, so no banner is needed).
+
+#### Amended 2026-09-16 — the bottom bar, and the hamburger that was banned
+
+This section previously specified a five-item bottom bar on mobile and ended "**Never**:
+hamburger menu hiding primary navigation". The bar was built to that specification, and
+the operator then asked twice for it to go. `design/NavChoice.dc.html` drew both options
+with their costs and said the choice was theirs; they chose the menu. The ban is lifted
+here rather than contradicted in code, because a specification the implementation
+quietly ignores is worse than one that records why it changed.
+
+What the ban was protecting, and what is done about it:
+
+- **First-time discovery.** §5.7's reason for banning the hamburger was that this
+  product's readers mostly arrive once, from a link, and a destination behind a tap is a
+  destination they never find. Mitigated, not solved: the four paths that matter most —
+  the category chips — are on the board itself, and search has its own icon target
+  rather than living in the menu.
+- **Vertical space**, which is what the bar cost and why it went. 56px of a 844px phone
+  on every screen, permanently.
+
+The menu is a `<details>` disclosure, not a scripted sheet: the CSP carries no
+`'unsafe-inline'` (ADR 0002), and a navigation that needs JavaScript to open is a
+navigation that fails on the connections §10 exists for. It therefore has no `Esc`
+handler, no backdrop and no focus trap, which §5.8 would require of a modal — it is a
+disclosure and not a modal, and it works with JavaScript switched off entirely.
 
 ### 5.8 Sheets, modals, toasts
 - **Bottom sheet** (mobile default for filters, actions, forms): rounded 8px top, drag handle, `Esc` and backdrop dismiss, focus trapped, scroll locked behind.

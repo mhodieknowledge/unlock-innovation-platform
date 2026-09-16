@@ -1,26 +1,23 @@
 ---
 // The app bar, from design/Main.body.html and design/Foundations.dc.html.
 //
-// The canvas draws this with three icon buttons — search, account, menu — because its
-// Main artboard assumes Option B from design/NavChoice.dc.html, where the bottom bar is
-// replaced by a drawer. This build takes OPTION A, which that artboard describes as
-// "what ships today" and "costs nothing to choose": the bar stays, the rest of the
-// redesign lands around it.
+// Three icon targets on a phone — search, account, menu — which is Option B from
+// design/NavChoice.dc.html and what the canvas's Main artboard always drew. The operator
+// chose it, and §5.7 is amended rather than contradicted: see the note under "Amended
+// 2026-09-16" in DESIGN_SYSTEM.md for what the ban was protecting and what replaces it.
 //
-// The reason is written on the artboard itself. DESIGN_SYSTEM.md §5.7 specifies the
-// five-item bottom bar AND ends "Never: hamburger menu hiding primary navigation", so
-// Option B is an amendment to the specification rather than a change of styling — and
-// not one to make on somebody's behalf inside a redesign they asked to be shipped.
-//
-// So there is no menu button here: with the bar carrying the five destinations, a
-// hamburger beside it would be a second navigation holding the same links. What remains
-// is the appbar's shape — 44px targets, sticky, one hairline — and its two controls.
+// ICONS, NOT WORDS, below lg. The labels were `sm:not-sr-only`, and §4.2 puts sm at
+// 381px — BELOW a 390px phone — so "Messages" and the account name rendered as text on
+// the device the header is tightest on, and the wordmark had to share the bar with them.
+// Every label here is now real text that is visually hidden until lg, which keeps §8's
+// "no content conveyed by icon alone" true for a screen reader at every width.
 //
 // §11: wordmark only, Archivo 700, letter-spacing -0.02em, --brand. No symbol.
 
 import { BRAND } from "@mbele/config";
 
 import Icon from "./Icon.astro";
+import MenuButton from "./MenuButton.astro";
 import PrimaryNav from "./PrimaryNav.astro";
 
 interface Props {
@@ -61,7 +58,7 @@ const { user = null, unread = 0, pathname } = Astro.props;
       </label>
     </form>
 
-    <div class="ml-auto flex items-center gap-[2px] lg:ml-0">
+    <div class="relative ml-auto flex items-center gap-[2px] lg:ml-0">
       <a
         href="/opportunities"
         class="inline-flex size-11 items-center justify-center rounded-row text-ink no-underline hover:bg-sunken lg:hidden"
@@ -75,36 +72,35 @@ const { user = null, unread = 0, pathname } = Astro.props;
 
       {
         user ? (
-          <>
-            <a
-              href="/you/inbox"
-              class="relative inline-flex size-11 items-center justify-center rounded-row text-ink no-underline hover:bg-sunken sm:w-auto sm:gap-2 sm:px-3"
-            >
-              <Icon name="mail" size={20} />
-              <span class="sr-only text-dense sm:not-sr-only">Messages</span>
-              {unread > 0 && (
-                <span class="sr-only text-dense font-semibold text-brand sm:not-sr-only">
-                  ({unread})
-                </span>
-              )}
-            </a>
-            <a
-              href="/you"
-              class="inline-flex size-11 items-center justify-center rounded-row text-ink no-underline hover:bg-sunken sm:w-auto sm:gap-2 sm:px-3"
-            >
-              <Icon name="you" size={20} />
-              <span class="sr-only text-dense sm:not-sr-only">{user.display_name ?? "Your account"}</span>
-            </a>
-          </>
+          <a
+            href="/you"
+            class="inline-flex size-11 items-center justify-center rounded-row text-ink no-underline hover:bg-sunken lg:w-auto lg:gap-2 lg:px-3"
+          >
+            <Icon name="you" size={20} />
+            {/* Real text, visually hidden below lg. An SVG <title> is not credited as an
+                accessible name by axe or by several screen readers. The unread count is
+                part of the SAME name rather than a bare number beside it, so it is read
+                as "Messages, 3 unread" and not as a stray "(3)". */}
+            <span class="sr-only text-dense lg:not-sr-only">
+              {user.display_name ?? "Your account"}
+              {unread > 0 ? `, ${unread} unread` : ""}
+            </span>
+            {unread > 0 && (
+              <span aria-hidden="true" class="absolute mt-[-18px] ml-[18px] size-[7px] rounded-monogram bg-brand" />
+            )}
+          </a>
         ) : (
           <a
             href={`/signin?returnTo=${encodeURIComponent(pathname)}`}
-            class="inline-flex min-h-11 items-center rounded-row border border-line-strong bg-surface px-4 text-dense font-semibold text-ink no-underline hover:bg-sunken"
+            class="inline-flex size-11 items-center justify-center rounded-row text-ink no-underline hover:bg-sunken lg:size-auto lg:min-h-11 lg:border lg:border-line-strong lg:bg-surface lg:px-4 lg:text-dense lg:font-semibold"
           >
-            Sign in
+            <Icon name="you" size={20} class="lg:hidden" />
+            <span class="sr-only lg:not-sr-only">Sign in</span>
           </a>
         )
       }
+
+      <MenuButton pathname={pathname} signedIn={user !== null} />
     </div>
   </div>
 </header>
