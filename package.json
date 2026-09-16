@@ -34,6 +34,7 @@
     "notify": "node scripts/notify.mjs",
     "ingest": "node scripts/ingest.mjs",
     "reverify": "node scripts/reverify.mjs",
+    "dedupe": "node scripts/dedupe.mjs",
     "sources:check": "node scripts/check-source.mjs",
     "backup": "node scripts/backup.mjs",
     "golden:record": "node scripts/record-golden.mjs",

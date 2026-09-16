@@ -604,4 +604,115 @@ SELECT assert_eq(
       AND column_name IN ('prompt','response','input','output','body','text')),
   0);
 
+-- ── §9 step 3: the duplicate the aggregators produce ────────────────────────
+--
+-- Three copies of the AfricaLics PhD Visiting Fellowship were live at once, and none of the
+-- checks that existed could see them: the URLs differ (so step 1 cannot), the titles differ by
+-- more than a trigram tolerates (0.55, below step 2's 0.62), and the organisation is NULL on
+-- all three since migration 0034 removed the organisations ingestion had invented — which
+-- step 2 also requires.
+--
+-- Migration 0036 adds §9's step 3. The thresholds are asserted here against vectors whose
+-- cosine is known exactly; that the REAL titles clear them was measured separately with the
+-- actual local model (Xenova/bge-small-en-v1.5, the one scripts/embed.mjs loads):
+--
+--   0.990  AfricaLics Visiting PhD Fellowship ... | AfricaLics PhD Visiting Fellowship ...
+--   0.966  AfricaLics PhD Visiting Fellowship (VFP) | AfricaLics PhD Visiting Fellowship
+--   0.959  Gates Cambridge Scholarships 2027-2028 | Gates Cambridge Scholarship Programme
+--   0.784  AI Builders Hackathon | Nebius x NVIDIA Global AI Hackathon   ← correctly NOT a pair
+--
+-- That 0.784 is the reassuring number. Two unrelated AI hackathons are the hardest negative
+-- this step will meet, and 0.90 sits well clear of it.
+
+-- A unit vector in the first two dimensions, so a pair's cosine is whatever we say it is.
+-- halfvec is float16, so the assertions leave room rather than testing on the boundary.
+CREATE OR REPLACE FUNCTION test_unit_vector(a numeric, b numeric)
+RETURNS halfvec(384) LANGUAGE sql IMMUTABLE AS $$
+  SELECT ('[' || string_agg(
+    CASE i WHEN 1 THEN a::text WHEN 2 THEN b::text ELSE '0' END, ',' ORDER BY i) || ']')::halfvec(384)
+    FROM generate_series(1, 384) AS i;
+$$;
+
+INSERT INTO opportunities
+  (id, slug, title, category_id, source_id, status, verification, last_verified_at, cost,
+   source_url, deadline_at, published_at, eligibility_scope, link_ok, embedding)
+VALUES
+  -- The pair an aggregator produces: same event, different write-up, no organisation.
+  ('eeee0000-0000-0000-0000-00000000000a', 'dupe-left', 'Visiting PhD Fellowship Programme 2027',
+   (SELECT id FROM categories WHERE code='fellowship'), 'bbbb0000-0000-0000-0000-00000000000a',
+   'published', 'auto', now(), 'free', 'https://blog-one.example/a', now() + interval '40 days',
+   now(), 'africa_wide', true, test_unit_vector(1, 0)),
+  ('eeee0000-0000-0000-0000-00000000000b', 'dupe-right', 'PhD Visiting Fellowship Programme (VFP) 2027',
+   (SELECT id FROM categories WHERE code='fellowship'), 'bbbb0000-0000-0000-0000-00000000000a',
+   'published', 'auto', now(), 'free', 'https://blog-two.example/b', now() + interval '42 days',
+   now(), 'africa_wide', true, test_unit_vector(0.95, 0.3122)),
+  -- Next year's round of the same programme. The whole reason for the deadline window.
+  ('eeee0000-0000-0000-0000-00000000000c', 'dupe-next-year', 'Visiting PhD Fellowship Programme 2028',
+   (SELECT id FROM categories WHERE code='fellowship'), 'bbbb0000-0000-0000-0000-00000000000a',
+   'published', 'auto', now(), 'free', 'https://blog-one.example/c', now() + interval '405 days',
+   now(), 'africa_wide', true, test_unit_vector(1, 0)),
+  -- Two different hackathons: similar, not the same. Stands for the real 0.784.
+  ('eeee0000-0000-0000-0000-00000000000d', 'dupe-unrelated', 'A different hackathon entirely',
+   (SELECT id FROM categories WHERE code='hackathon'), 'bbbb0000-0000-0000-0000-00000000000a',
+   'published', 'auto', now(), 'free', 'https://blog-two.example/d', now() + interval '41 days',
+   now(), 'africa_wide', true, test_unit_vector(0.80, 0.6)),
+  -- A pair with no deadline at either end, which is most of what an API source delivers.
+  ('eeee0000-0000-0000-0000-00000000000e', 'dupe-undated-left', 'An undated programme',
+   (SELECT id FROM categories WHERE code='fellowship'), 'bbbb0000-0000-0000-0000-00000000000a',
+   'published', 'auto', now(), 'free', 'https://blog-one.example/e', NULL,
+   now(), 'africa_wide', true, test_unit_vector(1, 0)),
+  ('eeee0000-0000-0000-0000-00000000000f', 'dupe-undated-right', 'An undated programme, rewritten',
+   (SELECT id FROM categories WHERE code='fellowship'), 'bbbb0000-0000-0000-0000-00000000000a',
+   'published', 'auto', now(), 'free', 'https://blog-two.example/f', NULL,
+   now(), 'africa_wide', true, test_unit_vector(0.95, 0.3122));
+
+SELECT assert_true(
+  'two write-ups of one event are a candidate on embedding alone, with no organisation and no title overlap',
+  EXISTS (SELECT 1 FROM dedupe_candidates_for('eeee0000-0000-0000-0000-00000000000a')
+           WHERE candidate_id = 'eeee0000-0000-0000-0000-00000000000b' AND method = 'embedding'));
+
+SELECT assert_eq(
+  'next year''s round of the same programme is NOT a candidate, however identical the text',
+  (SELECT count(*)::int FROM dedupe_candidates_for('eeee0000-0000-0000-0000-00000000000a')
+    WHERE candidate_id = 'eeee0000-0000-0000-0000-00000000000c'), 0);
+
+SELECT assert_eq(
+  'a similar but different listing inside the window is not a candidate',
+  (SELECT count(*)::int FROM dedupe_candidates_for('eeee0000-0000-0000-0000-00000000000a')
+    WHERE candidate_id = 'eeee0000-0000-0000-0000-00000000000d'), 0);
+
+SELECT assert_true(
+  'a pair with no deadline at either end is still a candidate, which is most of an API feed',
+  EXISTS (SELECT 1 FROM dedupe_candidates_for('eeee0000-0000-0000-0000-00000000000e')
+           WHERE candidate_id = 'eeee0000-0000-0000-0000-00000000000f' AND method = 'embedding'));
+
+SELECT assert_eq(
+  'but a dated record and an undated one are not paired: that is the shape of an annual edition',
+  (SELECT count(*)::int FROM dedupe_candidates_for('eeee0000-0000-0000-0000-00000000000a')
+    WHERE candidate_id = 'eeee0000-0000-0000-0000-00000000000e'), 0);
+
+-- Step 1 must survive the rewrite: 0036 replaces the whole function body, so the two steps it
+-- did not change are asserted here rather than assumed.
+UPDATE opportunities SET source_url = 'https://blog-one.example/a'
+ WHERE id = 'eeee0000-0000-0000-0000-00000000000d';
+SELECT assert_true(
+  'a shared URL is still a certain duplicate after 0036 rewrote the function',
+  EXISTS (SELECT 1 FROM dedupe_candidates_for('eeee0000-0000-0000-0000-00000000000a')
+           WHERE candidate_id = 'eeee0000-0000-0000-0000-00000000000d'
+             AND method = 'canonical_url'));
+
+-- And a merge is what step 1 is for. merge_opportunities is order-independent by verification
+-- rank, so the pair is passed lowest-first to prove the caller does not decide the winner.
+UPDATE opportunities SET verification = 'verified' WHERE id = 'eeee0000-0000-0000-0000-00000000000a';
+SELECT assert_eq(
+  'the higher-verification record survives the merge whichever way round it is given',
+  (SELECT merge_opportunities('eeee0000-0000-0000-0000-00000000000d',
+                              'eeee0000-0000-0000-0000-00000000000a')),
+  'eeee0000-0000-0000-0000-00000000000a'::uuid);
+SELECT assert_eq(
+  'and the loser is marked merged, so its URL can answer 410 with merged_into',
+  (SELECT status::text || ' ' || (duplicate_of = 'eeee0000-0000-0000-0000-00000000000a')::text
+     FROM opportunities WHERE id = 'eeee0000-0000-0000-0000-00000000000d'),
+  'merged true');
+
 ROLLBACK;

@@ -1074,6 +1074,19 @@ async function writeCandidate({ source, doc, candidate, confidence, rules, rejec
       dupe.method,
       dupe.similarity,
     ]);
+
+    // §9 step 1: "canonical URL match -> certain duplicate, AUTO-MERGE". Recording it and
+    // walking away is what put the same hackathon on the board twice — a queue nobody has
+    // opened yet is a duplicate in public for as long as that takes. There is nothing left to
+    // interpret about two records that share a page, and merge_opportunities picks the
+    // survivor by verification rank, so this is not a decision about which one wins.
+    if (dupe.method === "canonical_url" && !DRY_RUN) {
+      const { rows: kept } = await client.query("SELECT merge_opportunities($1,$2) AS kept", [
+        opportunityId,
+        dupe.candidate_id,
+      ]);
+      if (kept[0]?.kept) console.log(`    merged with an existing record for the same URL`);
+    }
   }
 
   return {

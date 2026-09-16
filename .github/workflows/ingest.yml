@@ -26,7 +26,7 @@ on:
         required: true
         default: ingest
         type: choice
-        options: [ingest, fill-summaries, recategorise, links, reverify, sweep, health, check-sources, embed, recommend, match-projects, project-sweep]
+        options: [ingest, fill-summaries, recategorise, dedupe, links, reverify, sweep, health, check-sources, embed, recommend, match-projects, project-sweep]
       dry_run:
         description: Print what would be stored; write nothing to the database
         required: false
@@ -153,6 +153,10 @@ jobs:
         if: github.event.schedule == '30 3 * * *'
         run: |
           npm run embed
+          # AFTER embed, and that ordering is the point: §9 step 3 compares embeddings, and a
+          # record written today has none until the line above runs. Before it, the only
+          # duplicates findable are the ones sharing a URL.
+          npm run dedupe
           npm run recommend
           npm run match:projects
           npm run projects:sweep
@@ -184,6 +188,7 @@ jobs:
               ;;
             fill-summaries) npm run ingest -- --fill-summaries $DRY ;;
             recategorise)   npm run ingest -- --recategorise $DRY ;;
+            dedupe)         npm run dedupe -- $DRY $NOAI ;;
             check-sources) npm run sources:check ;;
             embed)         npm run embed -- $DRY ;;
             recommend)     npm run recommend -- $DRY ;;
