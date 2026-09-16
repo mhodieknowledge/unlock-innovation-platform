@@ -15,6 +15,7 @@
  * broken deployment.
  */
 
+import { readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 
 import { SECURITY_HEADERS } from "../packages/config/src/security-headers.mjs";
@@ -69,6 +70,26 @@ async function get(path, options = {}) {
   }
 }
 
+/**
+ * The board's headline, as the app actually renders it.
+ *
+ * Read from the page source so the assertion below follows the copy instead of drifting
+ * behind it. Null when the shape of that file changes, which the check reports rather than
+ * passing over.
+ */
+const headline = (() => {
+  try {
+    const source = readFileSync(
+      new URL("../apps/web/src/pages/index.astro", import.meta.url),
+      "utf8",
+    );
+    const match = /<h1[^>]*>\s*([^<]+?)\s*<\/h1>/.exec(source);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
+})();
+
 console.log(`\nVerifying ${base}\n`);
 
 {
@@ -99,8 +120,15 @@ console.log("The board");
   else fail("renders a heading server-side", "no <h1> in the HTML");
 
   // The whole premise: content arrives in the HTML, not after a bundle runs.
-  if (html.includes("Everything here is open")) pass("carries its own copy, with no JavaScript");
-  else fail("carries its own copy", "the headline is missing from the server HTML");
+  //
+  // The headline is READ FROM THE SOURCE rather than written here. This check used to hold a
+  // copy of it — "Everything here is open" — and when the board was rewritten the check went
+  // on asserting the old words and failed a deployment that was working correctly. A check
+  // with its own copy of the thing it checks is a second source of truth, and the one that
+  // rots is always the copy.
+  if (headline && html.includes(headline)) pass("carries its own copy, with no JavaScript");
+  else if (!headline) fail("carries its own copy", "could not read the headline out of index.astro");
+  else fail("carries its own copy", `the server HTML does not contain "${headline}"`);
 
   if (html.includes("Nothing is published yet")) {
     note("the catalogue is empty", "the board says so plainly, which is the honest state");
