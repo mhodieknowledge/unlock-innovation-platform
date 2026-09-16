@@ -46,6 +46,7 @@ import {
   itemsSince,
   parseFeed,
   parseSitemap,
+  quoteIsVerbatim,
   recordFromJsonLd,
   runTask,
   truncateForStorage,
@@ -54,7 +55,8 @@ import {
   Breakers,
 } from "../packages/ingest/src/index.mjs";
 import { itemsFromApi } from "../packages/ingest/src/apis.mjs";
-import { categoriseFromText } from "../packages/ingest/src/categorise.mjs";
+import { acceptModelCategory, categoriseFromText } from "../packages/ingest/src/categorise.mjs";
+import { articleShape } from "../packages/ingest/src/relevance.mjs";
 import { politeFetch, renderStats } from "./lib/fetcher.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -97,6 +99,8 @@ const NO_AI = flag("--no-ai");
 const FILL_SUMMARIES = flag("--fill-summaries");
 /** Re-read the category of everything in `other`. No fetch, no model — free and re-runnable. */
 const RECATEGORISE = flag("--recategorise");
+/** Re-read published titles for article shapes the pipeline used to let through. */
+const RECHECK_RELEVANCE = flag("--recheck-relevance");
 const ONE_SOURCE = option("--source");
 /**
  * Ignore cadence. Naming a source is itself that instruction — the console has always
@@ -879,6 +883,24 @@ async function writeCandidate({ source, doc, candidate, confidence, rules, rejec
    */
   const vetted = source?.auto_publish === true;
 
+  /**
+   * Is this an opportunity at all, or an article about opportunities?
+   *
+   * Four records on the live board were not opportunities: an MCAT study guide, a page of
+   * French visa requirements, a listicle of countries that let students work, and a Coursera
+   * course. extract.v1.md opens by TELLING the model "the page is about an opportunity", and
+   * the aggregator feeds mix advice posts in with listings — CONTENT_AND_LAUNCH.md §40 said so
+   * in advance: "Expect heavy filtering ... category and relevance filters do the work."
+   *
+   * AI_SYSTEM.md §10's action for a pre-screen signal is to hold for review, not to reject, and
+   * that is what this does: the record is written, a person sees it, and the board stops
+   * carrying visa explainers in the meantime. Nothing is discarded on the strength of a regex.
+   */
+  const articleReason = articleShape({ title: candidate.title });
+  if (articleReason) {
+    console.log(`    reads as ${articleReason}, not an opportunity — sending to review`);
+  }
+
   const publish =
     decision === "publish" &&
     (vetted || floorsOk) &&
@@ -886,6 +908,7 @@ async function writeCandidate({ source, doc, candidate, confidence, rules, rejec
     // verdict MORE permissive, so the reader is told they are eligible for something
     // whose real requirements may exclude them — see the note above.
     !rejectedRule &&
+    articleReason === null &&
     issues.every((i) => i.effect !== "review");
 
   /**
@@ -1335,14 +1358,13 @@ async function classifyRemaining(records) {
       fetch: globalThis.fetch,
       breakers,
       accept: (data) => typeof data === "object" && data !== null && "category_code" in data,
-      shapeHint: 'an object with a "category_code" field',
+      shapeHint: 'an object with "category_code" and "evidence" fields',
     });
     await logCalls(result.calls, "classify", p.version);
 
-    const offered = result.ok
-      ? /** @type {{ category_code?: unknown }} */ (result.data).category_code
-      : null;
-    const code = typeof offered === "string" ? offered.trim() : "";
+    const answer = result.ok ? /** @type {{ category_code?: unknown, evidence?: unknown }} */ (result.data) : null;
+    const code = typeof answer?.category_code === "string" ? answer.category_code.trim() : "";
+    const evidence = typeof answer?.evidence === "string" ? answer.evidence.trim() : "";
 
     // `other` is a correct answer here and the prompt says so, so it is not a warning. A code
     // the taxonomy does not hold IS a warning: it means the filled vocabulary and the model's
@@ -1356,6 +1378,16 @@ async function classifyRemaining(records) {
       stillOther.push(row.title);
       continue;
     }
+
+    // The model's answer is checked against its own quote, in the package so it can be tested
+    // against the real answers that made it necessary — see acceptModelCategory.
+    const verdict = acceptModelCategory({ code, evidence, source, quoteIsVerbatim });
+    if (!verdict.ok) {
+      console.log(`  ✗ ${row.slug}: ${verdict.reason}`);
+      stillOther.push(row.title);
+      continue;
+    }
+
     if (!DRY_RUN) {
       await client.query("UPDATE opportunities SET category_id = $2 WHERE id = $1", [row.id, id]);
     }
@@ -1372,6 +1404,48 @@ async function classifyRemaining(records) {
     for (const title of stillOther.slice(0, 20)) console.log(`  · ${String(title).slice(0, 72)}`);
   }
   return moved;
+}
+
+/**
+ * Demote published records whose titles are articles, not opportunities.
+ *
+ * The gate in writeCandidate stops the next one; these four were already on the board:
+ *
+ *   MCAT 2026: Complete Guide for Students Who Want To Study Medicine In US
+ *   France Student Visa Financial Requirements 2026/2027
+ *   6 Countries That Allow International Students to Work While Studying
+ *
+ * `in_review`, not deleted and not rejected — AI_SYSTEM.md §10's action for a pre-screen signal
+ * is to hold for review, and every pattern in relevance.mjs is one a person could argue with. A
+ * reviewer who disagrees publishes it back; nothing has been lost. It only ever moves records
+ * OUT of `published`, so a reviewer's decision is never reversed by a regex.
+ */
+async function runRelevanceRecheck() {
+  const { rows } = await client.query(
+    `SELECT id, slug, title FROM opportunities
+      WHERE status = 'published' AND deleted_at IS NULL AND duplicate_of IS NULL
+      ORDER BY created_at DESC`,
+  );
+  console.log(`Re-reading ${rows.length} published title(s).\n`);
+
+  let demoted = 0;
+  for (const row of rows) {
+    const reason = articleShape({ title: row.title });
+    if (!reason) continue;
+    if (!DRY_RUN) {
+      await client.query(
+        "UPDATE opportunities SET status = 'in_review', updated_at = now() WHERE id = $1",
+        [row.id],
+      );
+    }
+    demoted += 1;
+    console.log(`  ${reason.padEnd(34)} ${String(row.title).slice(0, 60)}`);
+  }
+
+  console.log(`\n${demoted} sent to review. ${rows.length - demoted} left published.`);
+  if (demoted > 0) {
+    console.log("Each is in the admin review queue; publishing one back overrides this.");
+  }
 }
 
 await client.connect();
@@ -1392,6 +1466,13 @@ try {
 
   if (FILL_SUMMARIES) {
     await runSummaryBackfill();
+    if (DRY_RUN) console.log("\n(dry run — nothing was written)");
+    await client.end();
+    process.exit(0);
+  }
+
+  if (RECHECK_RELEVANCE) {
+    await runRelevanceRecheck();
     if (DRY_RUN) console.log("\n(dry run — nothing was written)");
     await client.end();
     process.exit(0);

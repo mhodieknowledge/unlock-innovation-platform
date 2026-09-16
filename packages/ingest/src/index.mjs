@@ -10,7 +10,8 @@
  * build step, while still being typechecked — see the note in tsconfig.json.
  */
 
-export { CATEGORISER_CODES, categoriseFromText } from "./categorise.mjs";
+export { acceptModelCategory, CATEGORISER_CODES, categoriseFromText } from "./categorise.mjs";
+export { ARTICLE_REASONS, articleShape } from "./relevance.mjs";
 
 export { canonicaliseUrl, hostOf, sameHost } from "./urls.mjs";
 

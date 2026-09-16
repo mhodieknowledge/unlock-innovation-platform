@@ -26,7 +26,7 @@ on:
         required: true
         default: ingest
         type: choice
-        options: [ingest, fill-summaries, recategorise, dedupe, links, reverify, sweep, health, check-sources, embed, recommend, match-projects, project-sweep]
+        options: [ingest, fill-summaries, recategorise, recheck-relevance, dedupe, links, reverify, sweep, health, check-sources, embed, recommend, match-projects, project-sweep]
       dry_run:
         description: Print what would be stored; write nothing to the database
         required: false
@@ -138,6 +138,9 @@ jobs:
           npm run ingest -- --fill-summaries
           # Free: no fetch and no model, just the titles we already hold.
           npm run ingest -- --recategorise
+          # Also free, and also only ever reading titles: an aggregator's advice posts arrive
+          # through the same feed as its listings, and this is what keeps them off the board.
+          npm run ingest -- --recheck-relevance
 
       # AI_SYSTEM.md §3.3: the embedding model runs locally, with no API and no quota.
       # It is the decision that keeps the whole AI budget viable, and the model is cached
@@ -188,6 +191,7 @@ jobs:
               ;;
             fill-summaries) npm run ingest -- --fill-summaries $DRY ;;
             recategorise)   npm run ingest -- --recategorise $DRY ;;
+            recheck-relevance) npm run ingest -- --recheck-relevance $DRY ;;
             dedupe)         npm run dedupe -- $DRY $NOAI ;;
             check-sources) npm run sources:check ;;
             embed)         npm run embed -- $DRY ;;

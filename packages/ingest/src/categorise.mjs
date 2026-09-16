@@ -94,3 +94,65 @@ export function categoriseFromText(record) {
   for (const [pattern, code] of SIGNALS) if (pattern.test(title)) return code;
   return null;
 }
+
+/**
+ * Should a model's category be accepted? AI_SYSTEM.md §5's arrangement, applied to §4.
+ *
+ * VERSION ONE OF classify.v1 ASKED FOR A CODE AND NOTHING ELSE. Its first run against the live
+ * catalogue moved three records and two were wrong:
+ *
+ *   scholarship       ← The Government of Japan Exchange and Teaching Programme  (a teaching job)
+ *   data_competition  ← R.O.A.D. Barbados Historic Handwriting Challenge  (a transcription project)
+ *
+ * The prompt said to answer `other` when nothing fits. Neither of those has a word in this
+ * taxonomy, and the model reached for the nearest one anyway — which is the failure a permitted
+ * `other` was supposed to prevent and does not.
+ *
+ * So the model does not state a category any more. It quotes the phrase in the page that names
+ * the kind of thing, and this function checks two things about that quote:
+ *
+ *   1. it is IN the page — rules.v1 has always worked this way, where "output is
+ *      verbatim-quote validated regardless of model";
+ *   2. and the quote itself names the category the model chose, read by the same
+ *      `categoriseFromText` that reads titles.
+ *
+ * The second is the strict one, and it is where the division of labour sits. Deciding WHICH
+ * sentence on a page is the declaration rather than a mention is a judgement about language: a
+ * model makes it well and a pattern cannot make it at all. Reading a declarative phrase is a
+ * pattern's job, and a pattern does not embellish. So the model chooses the sentence and the
+ * regex names the thing, and neither is asked to do the other's work.
+ *
+ * Note what is NOT consulted: the model's own confidence. A confident wrong answer and a
+ * hesitant wrong answer are the same wrong answer, and the quote is checkable where the
+ * confidence is not.
+ *
+ * @param {{ code?: unknown, evidence?: unknown, source?: string, quoteIsVerbatim: (quote: string, source: string) => boolean }} input
+ * @returns {{ ok: true, code: string } | { ok: false, reason: string }}
+ */
+export function acceptModelCategory(input) {
+  const code = typeof input.code === "string" ? input.code.trim() : "";
+  const evidence = typeof input.evidence === "string" ? input.evidence.trim() : "";
+  const source = typeof input.source === "string" ? input.source : "";
+
+  if (!code) return { ok: false, reason: "no category offered" };
+  // `other` is an answer, not a failure: it means the model looked and found nothing that fits.
+  if (code === "other") return { ok: false, reason: "answered other" };
+  if (!evidence) return { ok: false, reason: `answered ${code} with no quote` };
+
+  // With no stored page there is nothing to check the quote against, so the check has nothing
+  // to say — and a claim that cannot be checked is not accepted on trust. An API record with no
+  // page text keeps `other` until a fetch gives it one.
+  if (!source) return { ok: false, reason: "no page text to check the quote against" };
+  if (!input.quoteIsVerbatim(evidence, source)) {
+    return { ok: false, reason: `quote is not in the page: "${evidence.slice(0, 48)}"` };
+  }
+
+  const readBack = categoriseFromText({ title: evidence });
+  if (readBack !== code) {
+    return {
+      ok: false,
+      reason: `quote "${evidence.slice(0, 40)}" reads as ${readBack ?? "no category"}, not ${code}`,
+    };
+  }
+  return { ok: true, code };
+}

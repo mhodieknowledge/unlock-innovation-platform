@@ -19,7 +19,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { CATEGORISER_CODES, categoriseFromText } from "../src/categorise.mjs";
+import { acceptModelCategory, CATEGORISER_CODES, categoriseFromText } from "../src/categorise.mjs";
 
 /** The taxonomy as the database actually seeds it. */
 const TAXONOMY = readFileSync(
@@ -171,10 +171,25 @@ describe("the summary, which this used to read and no longer does", () => {
 });
 
 describe("the classify prompt, which reads what a title cannot say", () => {
-  const promptText = readFileSync(
+  const promptFile = readFileSync(
     new URL("../../../prompts/classify.v1.md", import.meta.url).pathname,
     "utf8",
   );
+
+  /**
+   * The `## System` section, and ONLY that, because that is the whole of what the runner sends
+   * — `prompt()` in scripts/ingest.mjs extracts this section and discards the rest.
+   *
+   * That distinction is the difference between a drift risk and a comment. The documentation
+   * above it names the two categories a previous version of this prompt got wrong in
+   * production, which is exactly the kind of note the next person needs; asserting over the
+   * whole file would fail on that note and teach them to delete it.
+   */
+  const promptText = ((): string => {
+    const section = /##\s*System\s*\n([\s\S]*?)(?=\n##\s|\s*$)/.exec(promptFile)?.[1];
+    if (section === undefined) throw new Error("classify.v1.md has no System section");
+    return section;
+  })();
 
   it("holds no copy of the taxonomy", () => {
     // The same rule as extract.v1.md, and the same trap: "grant", "scholarship" and
@@ -193,22 +208,144 @@ describe("the classify prompt, which reads what a title cannot say", () => {
       expect(promptText, `${code} can only be here as a copy of the database`).not.toContain(code);
     }
 
-    for (const line of promptText.split("\n")) {
-      const codesOnThisLine = TAXONOMY.filter(
-        (code) => code !== "other" && new RegExp(`\\b${code}\\b`).test(line),
-      );
-      expect(codesOnThisLine.length, `this line is a list of codes: ${line.slice(0, 60)}`)
-        .toBeLessThan(2);
-    }
+    // The single-word codes need a different test, because "grant", "scholarship" and
+    // "fellowship" are ordinary English and the prompt's own examples use three of them in one
+    // sentence — "a competition whose prize is a scholarship is a competition, not a
+    // scholarship". Counting codes per line called that a list. What actually marks a LIST is
+    // adjacency: codes separated by nothing but punctuation, with no sentence between them.
+    const single = TAXONOMY.filter((code) => !code.includes("_")).join("|");
+    const adjacent = new RegExp(`\\b(?:${single})\\b\\s*[,|/]\\s*\\b(?:${single})\\b`, "i");
+    const found = adjacent.exec(promptText);
+    expect(found?.[0], "two codes side by side is a vocabulary, not a sentence").toBeUndefined();
   });
 
   it("allows `other` as an answer", () => {
     // Without this the model is forced to pick a near-miss, which is the outcome the whole
-    // change exists to avoid.
-    expect(promptText).toMatch(/Return `other` when/);
+    // change exists to avoid — though run 44 showed that permitting `other` is not enough on
+    // its own, which is what acceptModelCategory is for.
+    expect(promptText).toMatch(/`other`[^.]*is a correct answer/);
+  });
+
+  it("asks for a verbatim quote, because a bare code was not checkable", () => {
+    expect(promptText).toMatch(/COPIED CHARACTER FOR CHARACTER/);
+    expect(promptText).toMatch(/\bevidence\b/);
   });
 
   it("asks what the thing IS, not what it awards", () => {
     expect(promptText).toMatch(/prize is a scholarship is a competition/);
+  });
+});
+
+describe("a model's category, checked against its own quote", () => {
+  /**
+   * Run 44 of the Ingestion workflow, dry, against the live `other` bucket. The first version
+   * of classify.v1 asked for a code and nothing else; it moved three records and two were
+   * wrong. Those two are the first two cases here, with page text of the kind their real pages
+   * carry.
+   */
+  const verbatim = (quote: string, source: string) =>
+    source.replace(/\s+/g, " ").includes(quote.replace(/\s+/g, " "));
+
+  it("refuses `scholarship` for a teaching exchange, which is what it answered", () => {
+    const source =
+      "The Japan Exchange and Teaching Programme invites young graduates to work in Japanese " +
+      "schools as assistant language teachers. Participants receive a salary and a return flight.";
+    const verdict = acceptModelCategory({
+      code: "scholarship",
+      // There is no sentence in that page calling it a scholarship, so a model reaching for the
+      // nearest code has nothing to quote and has to invent one.
+      evidence: "a scholarship for young graduates",
+      source,
+      quoteIsVerbatim: verbatim,
+    });
+    expect(verdict.ok).toBe(false);
+    expect(verdict.ok === false && verdict.reason).toMatch(/not in the page/);
+  });
+
+  it("refuses `data_competition` for a transcription project even when the quote is real", () => {
+    // The harder half. Here the quote IS in the page — so verbatim checking alone would pass it
+    // — and the quote does not name a data competition, which is what the read-back catches.
+    const source =
+      "The R.O.A.D. Barbados Historic Handwriting Challenge asks volunteers to transcribe " +
+      "eighteenth-century parish records so that the archive becomes searchable.";
+    const verdict = acceptModelCategory({
+      code: "data_competition",
+      evidence: "asks volunteers to transcribe eighteenth-century parish records",
+      source,
+      quoteIsVerbatim: verbatim,
+    });
+    expect(verdict.ok).toBe(false);
+    expect(verdict.ok === false && verdict.reason).toMatch(/reads as no category, not data_competition/);
+  });
+
+  it("accepts a code the page states in a phrase that names it", () => {
+    const source =
+      "Anglo American runs a twelve-month internship for graduates in mineral processing, " +
+      "based at the Rustenburg operations.";
+    const verdict = acceptModelCategory({
+      code: "internship",
+      evidence: "a twelve-month internship for graduates in mineral processing",
+      source,
+      quoteIsVerbatim: verbatim,
+    });
+    expect(verdict).toEqual({ ok: true, code: "internship" });
+  });
+
+  it("refuses a quote that names a DIFFERENT category than the code chosen", () => {
+    // The near-miss inside the taxonomy rather than outside it: the page declares a fellowship,
+    // the model files it as a research opportunity. Both are real codes; only one is quoted.
+    const source = "The programme is a two-year fellowship for early-career African economists.";
+    const verdict = acceptModelCategory({
+      code: "research_opportunity",
+      evidence: "a two-year fellowship for early-career African economists",
+      source,
+      quoteIsVerbatim: verbatim,
+    });
+    expect(verdict.ok).toBe(false);
+    expect(verdict.ok === false && verdict.reason).toMatch(/reads as fellowship/);
+  });
+
+  it("treats `other` as an answer rather than a failure", () => {
+    const verdict = acceptModelCategory({
+      code: "other",
+      evidence: null,
+      source: "anything",
+      quoteIsVerbatim: verbatim,
+    });
+    expect(verdict).toEqual({ ok: false, reason: "answered other" });
+  });
+
+  it("does not accept a claim it cannot check", () => {
+    // An API record with no stored page. The quote may be perfectly true; nothing here can tell.
+    const verdict = acceptModelCategory({
+      code: "hackathon",
+      evidence: "a 48-hour hackathon",
+      source: "",
+      quoteIsVerbatim: verbatim,
+    });
+    expect(verdict.ok).toBe(false);
+    expect(verdict.ok === false && verdict.reason).toMatch(/no page text/);
+  });
+
+  it("never asks for the model's confidence", () => {
+    // A confident wrong answer and a hesitant wrong answer are the same wrong answer, and the
+    // quote is checkable where the confidence is not. This asserts the source, because the
+    // temptation to add a threshold is exactly what the quote replaces.
+    const source = readFileSync(new URL("../src/categorise.mjs", import.meta.url).pathname, "utf8");
+    const acceptBody = source.slice(source.indexOf("export function acceptModelCategory"));
+    expect(acceptBody).not.toMatch(/confidence\s*[><=]/);
+  });
+});
+
+describe("the categoriser covers the taxonomy the model is offered", () => {
+  it("can read back every code except other", () => {
+    // acceptModelCategory rejects a code its own reader cannot produce, so a code in the
+    // database that no pattern here recognises would be a code the model may never be given
+    // credit for — permanently unreachable through the model path, silently.
+    const unreachable = TAXONOMY.filter(
+      (code) => code !== "other" && !CATEGORISER_CODES.includes(code),
+    );
+    expect(unreachable, "no pattern can produce these, so the model can never be believed about them")
+      .toEqual([]);
   });
 });
