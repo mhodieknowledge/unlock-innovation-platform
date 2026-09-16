@@ -182,10 +182,19 @@ jobs:
                 npm run ingest -- $DRY $NOAI $FORCE
               fi
               ;;
+            fill-summaries) npm run ingest -- --fill-summaries $DRY ;;
+            recategorise)   npm run ingest -- --recategorise $DRY ;;
             check-sources) npm run sources:check ;;
             embed)         npm run embed -- $DRY ;;
             recommend)     npm run recommend -- $DRY ;;
             match-projects) npm run match:projects -- $DRY ;;
             project-sweep) npm run projects:sweep -- $DRY ;;
-            *)             npm run reverify -- "$JOB" $DRY ;;
+            # Named rather than wildcarded, because a wildcard sent `recategorise`
+            # to reverify on run 42 and the dropdown looked correct the whole time.
+            # A new option above that nobody wires up now says so.
+            links|reverify|sweep|health) npm run reverify -- "$JOB" $DRY ;;
+            *)
+              echo "::error::No step is wired up for job '$JOB'. Add a branch here."
+              exit 1
+              ;;
           esac
