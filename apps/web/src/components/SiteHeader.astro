@@ -1,14 +1,22 @@
 ---
-// DESIGN_SYSTEM.md §5.7, desktop half: "top bar, 56px, logotype left, primary nav
-// centre-left, search centre, account right. No mega-menu."
+// The app bar, from design/Main.body.html and design/Foundations.dc.html.
 //
-// And its prohibition, which shapes this file more than the description does:
-// "Never: hamburger menu hiding primary navigation." Nothing here collapses behind a
-// button at any width. Below `lg` the five destinations are still on the page — see
-// PrimaryNav.astro, which is a child of this header in the DOM and a fixed bar on the
-// bottom edge on a phone. The navigation moves; it never hides.
+// The canvas draws this with three icon buttons — search, account, menu — because its
+// Main artboard assumes Option B from design/NavChoice.dc.html, where the bottom bar is
+// replaced by a drawer. This build takes OPTION A, which that artboard describes as
+// "what ships today" and "costs nothing to choose": the bar stays, the rest of the
+// redesign lands around it.
 //
-// §11: wordmark only, Archivo 700, letter-spacing -0.015em, --brand. No symbol.
+// The reason is written on the artboard itself. DESIGN_SYSTEM.md §5.7 specifies the
+// five-item bottom bar AND ends "Never: hamburger menu hiding primary navigation", so
+// Option B is an amendment to the specification rather than a change of styling — and
+// not one to make on somebody's behalf inside a redesign they asked to be shipped.
+//
+// So there is no menu button here: with the bar carrying the five destinations, a
+// hamburger beside it would be a second navigation holding the same links. What remains
+// is the appbar's shape — 44px targets, sticky, one hairline — and its two controls.
+//
+// §11: wordmark only, Archivo 700, letter-spacing -0.02em, --brand. No symbol.
 
 import { BRAND } from "@mbele/config";
 
@@ -25,18 +33,17 @@ const { user = null, unread = 0, pathname } = Astro.props;
 ---
 
 <header class="sticky top-0 z-40 border-b border-line bg-surface">
-  <div class="mx-auto flex h-14 max-w-[1160px] items-center gap-6 px-4">
+  <div class="mx-auto flex max-w-[1160px] items-center gap-3 px-4 py-[10px] lg:gap-6">
     <a
       href="/"
-      class="shrink-0 text-title font-bold tracking-[-0.015em] text-brand no-underline"
+      class="shrink-0 text-[20px] font-bold leading-6 tracking-[-0.02em] text-brand no-underline lg:text-title"
       >{BRAND.name}</a
     >
 
     <PrimaryNav pathname={pathname} />
 
-    {/* Search sits in the bar on desktop (§5.7 "search centre"). On mobile it is a
-         tab, not a field: a permanently expanded input would eat the header on a
-         360px screen to save one tap. */}
+    {/* Search is a field at lg and an icon target below it: a permanently expanded
+        input would eat a 360px header to save one tap. */}
     <form
       method="get"
       action="/opportunities"
@@ -54,27 +61,39 @@ const { user = null, unread = 0, pathname } = Astro.props;
       </label>
     </form>
 
-    <div class="ml-auto flex items-center gap-1 lg:ml-0">
+    <div class="ml-auto flex items-center gap-[2px] lg:ml-0">
+      <a
+        href="/opportunities"
+        class="inline-flex size-11 items-center justify-center rounded-row text-ink no-underline hover:bg-sunken lg:hidden"
+      >
+        <Icon name="search" size={20} />
+        {/* axe does not credit an SVG <title> as a link's accessible name, and neither
+            do several screen readers. Real text, visually hidden, is the only form that
+            works everywhere — §8 `[PR]`: "no content conveyed by icon alone". */}
+        <span class="sr-only">Search opportunities</span>
+      </a>
+
       {
         user ? (
           <>
             <a
               href="/you/inbox"
-              class="inline-flex min-h-11 items-center gap-2 rounded-row px-3 text-dense text-ink-2 no-underline hover:bg-sunken"
+              class="relative inline-flex size-11 items-center justify-center rounded-row text-ink no-underline hover:bg-sunken sm:w-auto sm:gap-2 sm:px-3"
             >
               <Icon name="mail" size={20} />
-              <span class="hidden sm:inline">Messages</span>
-              {/* The count is part of the link's accessible name, not a bare number
-                  floating beside it. */}
-              {unread > 0 && <span class="font-semibold text-brand">({unread})</span>}
-              <span class="sr-only">{unread > 0 ? `${unread} unread` : "no unread messages"}</span>
+              <span class="sr-only text-dense sm:not-sr-only">Messages</span>
+              {unread > 0 && (
+                <span class="sr-only text-dense font-semibold text-brand sm:not-sr-only">
+                  ({unread})
+                </span>
+              )}
             </a>
             <a
               href="/you"
-              class="inline-flex min-h-11 items-center gap-2 rounded-row px-3 text-dense text-ink-2 no-underline hover:bg-sunken"
+              class="inline-flex size-11 items-center justify-center rounded-row text-ink no-underline hover:bg-sunken sm:w-auto sm:gap-2 sm:px-3"
             >
               <Icon name="you" size={20} />
-              <span class="hidden sm:inline">{user.display_name ?? "You"}</span>
+              <span class="sr-only text-dense sm:not-sr-only">{user.display_name ?? "Your account"}</span>
             </a>
           </>
         ) : (

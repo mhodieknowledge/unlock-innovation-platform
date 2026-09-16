@@ -66,6 +66,16 @@ interface Props {
    * decided in public/sw-routes.js, which caches the tracker and no other personal surface.
    */
   offlineCapable?: boolean;
+  /**
+   * Let the page own its own gutters.
+   *
+   * The redesigned board is built from full-bleed bands — a masthead on --surface, a
+   * country strip on --sunken, the board itself — each with its own background and a
+   * hairline running edge to edge. `main`'s own padding would inset every one of them
+   * and leave the hairlines floating short of the screen. A page that sets this takes
+   * responsibility for its own 16px.
+   */
+  flush?: boolean;
 }
 
 const {
@@ -80,6 +90,7 @@ const {
   unread = 0,
   lowData = false,
   offlineCapable = false,
+  flush = false,
 } = Astro.props;
 const fullTitle = title === BRAND.name ? title : `${title} | ${BRAND.name}`;
 
@@ -165,7 +176,7 @@ const ogImage = new URL("/og.png", Astro.url).href;
 
     <SiteHeader user={user} unread={unread} pathname={Astro.url.pathname} />
 
-    <main id="main" class="mx-auto max-w-[1160px] px-4 py-6">
+    <main id="main" class={flush ? "" : "mx-auto max-w-[1160px] px-4 py-6"}>
       {
         /* SYSTEM_ARCHITECTURE.md §3.4: "a visible 'pending sync' state". Rendered hidden and
            filled in by the service worker's message; a reader with no service worker never
@@ -175,7 +186,7 @@ const ogImage = new URL("/og.png", Astro.url).href;
             <p
               data-pending-sync
               hidden
-              class="mb-4 border-l-[3px] border-warning bg-unclear-wash p-3 text-dense"
+              class={`mb-4 border-l-[3px] border-warning bg-unclear-wash p-3 text-dense ${flush ? "mx-4 mt-4" : ""}`}
             ></p>
             {/* Phase 9's acceptance criterion asks for ONE confirmation when a queued change
                 syncs. aria-live so it is announced rather than only seen. */}
@@ -184,7 +195,7 @@ const ogImage = new URL("/og.png", Astro.url).href;
               hidden
               role="status"
               aria-live="polite"
-              class="mb-4 border-l-[3px] border-success bg-eligible-wash p-3 text-dense"
+              class={`mb-4 border-l-[3px] border-success bg-eligible-wash p-3 text-dense ${flush ? "mx-4 mt-4" : ""}`}
             ></p>
           </>
         )
@@ -196,6 +207,7 @@ const ogImage = new URL("/og.png", Astro.url).href;
       lowData={lowData}
       pathname={Astro.url.pathname}
       search={Astro.url.search}
+      trustPanelAbove={flush}
     />
 
     {

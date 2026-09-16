@@ -120,6 +120,10 @@ vi.mock("../src/lib/db", () => ({
     categories: [{ code: "ai_challenge", name: "AI challenge", slug: "ai-challenges" }],
   })),
   getPublishedCount: vi.fn(async () => state.published),
+  // design/Main.body.html's Explore list shows "41 open" beside each kind.
+  getCategoryCounts: vi.fn(async () => [
+    { code: "ai_challenge", name: "AI challenge", slug: "ai-challenges", open_count: 17, soonest_deadline: null },
+  ]),
   getLastVerifiedAt: vi.fn(async () => state.lastVerifiedAt),
 }));
 

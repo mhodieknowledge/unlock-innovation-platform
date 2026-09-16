@@ -1,42 +1,42 @@
 ---
-// The footer was a single wrapping row of eight links with nothing to say which was
-// which — "Spotting scams" sat between "Tell us about an opportunity" and "What
-// verification means" with no grouping, so finding any one of them meant reading all
-// eight. Grouped under headings it is the same eight links and a fraction of the work.
+// The footer, from design/Main.body.html: "four short columns, not a second navigation."
 //
-// MODERATION_AND_TRUST.md §2.1 rule 3: the no-fee statement is permanent and prominent.
-// It is first here, and it is the only thing in this footer allowed any emphasis.
+// The wordmark and one line of what this is, then Explore / Trust / About / Legal, then
+// the low-data line. The columns are short on purpose — a footer that repeats the whole
+// site is a second navigation, and the primary one is already two taps away.
+//
+// MODERATION_AND_TRUST.md §2.1 rule 3 keeps the no-fee statement permanent and prominent.
+// The redesign moves it OUT of here and into the trust panel on the board, where it sits
+// beside the two other promises it belongs with — so it is still on the page that
+// matters, and stated once rather than twice.
 
 import { BRAND, NO_FEE_STATEMENT } from "@mbele/config";
-
-import Icon from "./Icon.astro";
 
 interface Props {
   lowData?: boolean;
   pathname: string;
   search: string;
+  /** The board renders the trust panel; every other page keeps rule 3's line down here. */
+  trustPanelAbove?: boolean;
 }
 
-const { lowData = false, pathname, search } = Astro.props;
+const { lowData = false, pathname, search, trustPanelAbove = false } = Astro.props;
 
-/** Sentence case throughout (§2.3). Headings are labels, not shouts — no all-caps. */
 const GROUPS: { heading: string; links: { label: string; href: string }[] }[] = [
   {
-    heading: "Find opportunities",
+    heading: "Explore",
     links: [
-      { label: "The board", href: "/" },
-      { label: "Search", href: "/opportunities" },
-      { label: "By category", href: "/categories" },
-      { label: "By country", href: "/countries" },
-      { label: "Closing this week", href: "/feeds/closing-soon.xml" },
+      { label: "Opportunities", href: "/opportunities" },
+      { label: "Categories", href: "/categories" },
+      { label: "Countries", href: "/countries" },
+      { label: "Saved", href: "/tracker" },
     ],
   },
   {
-    heading: "Trust and safety",
+    heading: "Trust",
     links: [
       { label: "Spotting scams", href: "/anti-scam" },
       { label: "What verification means", href: "/verification" },
-      { label: "About our crawler", href: "/bot" },
       { label: "Report a problem", href: "/report" },
     ],
   },
@@ -44,68 +44,67 @@ const GROUPS: { heading: string; links: { label: string; href: string }[] }[] = 
     heading: "About",
     links: [
       { label: "Tell us about an opportunity", href: "/submit" },
+      { label: "Our crawler", href: "/bot" },
+      { label: "Policy changes", href: "/changelog" },
+    ],
+  },
+  {
+    heading: "Legal",
+    links: [
       { label: "Privacy", href: "/privacy" },
       { label: "Terms", href: "/terms" },
       { label: "Content policy", href: "/content-policy" },
-      { label: "Policy changes", href: "/changelog" },
     ],
   },
 ];
 ---
 
-{/* mb-14 clears the fixed bottom bar so the last row of links is reachable; the bar is
-     gone at lg, and so is the margin. */}
-<footer class="mt-12 mb-14 border-t border-line bg-surface lg:mb-0">
-  <div class="mx-auto max-w-[1160px] px-4 py-8">
-    {/* Rule 3's line. A bordered band rather than a bold paragraph: it is the one
-         promise this product repeats on every page, and it should read as a notice. */}
-    <p
-      class="flex items-start gap-3 border-l-[3px] border-brand bg-brand-wash p-3 text-dense font-semibold text-ink"
-    >
-      <Icon name="shield" size={20} class="mt-[2px] shrink-0 text-brand" />
-      <span>{NO_FEE_STATEMENT}</span>
+{/* mb-14 clears the fixed bottom bar; the bar is gone at lg and so is the margin. */}
+<footer class="mt-7 mb-14 border-t border-line bg-surface lg:mb-0">
+  <div class="mx-auto max-w-[1160px] px-4 pt-6 pb-5">
+    <span class="text-[20px] font-bold leading-6 tracking-[-0.02em] text-brand">{BRAND.name}</span>
+    <p class="mt-[6px] max-w-[300px] text-meta text-ink-2">
+      Open opportunities across Africa, checked against their sources.
     </p>
 
-    <div class="mt-8 grid grid-cols-2 gap-x-6 gap-y-8 md:grid-cols-3">
+    {
+      /* Rule 3, for every page that does not carry the trust panel. */
+      !trustPanelAbove && (
+        <p class="mt-4 border-l-[3px] border-brand bg-brand-wash p-3 text-dense font-semibold text-ink">
+          {NO_FEE_STATEMENT}
+        </p>
+      )
+    }
+
+    <div class="mt-[22px] flex flex-wrap gap-x-10 gap-y-6">
       {
         GROUPS.map((group) => (
-          <nav aria-label={group.heading}>
-            <h2 class="text-micro font-semibold text-ink-2">{group.heading}</h2>
-            <ul class="mt-2 list-none space-y-1 p-0">
-              {group.links.map((link) => (
-                <li>
-                  <a href={link.href} class="text-dense text-brand no-underline hover:underline">
-                    {link.label}
-                  </a>
-                </li>
-              ))}
-            </ul>
+          <nav aria-label={group.heading} class="flex flex-col gap-2">
+            <h2 class="eyebrow">{group.heading}</h2>
+            {group.links.map((link) => (
+              <a href={link.href} class="text-meta text-brand no-underline hover:underline">
+                {link.label}
+              </a>
+            ))}
           </nav>
         ))
       }
     </div>
 
-    <div class="mt-8 border-t border-line pt-4 text-meta text-ink-2">
-      {/* §10: "A persistent meta line in the footer: 'Low-data mode is on.' with a
-           toggle." A form, not a script: the mode exists for people whose connection
-           cannot afford a bundle, and a toggle that needs one would be a joke at their
-           expense. */}
+    <div class="mt-[22px] flex flex-wrap items-center gap-2 border-t border-line pt-[14px]">
+      {/* §10: "A persistent meta line in the footer." A form, not a script — the mode
+          exists for people whose connection cannot afford a bundle, and a toggle that
+          needed one would be a joke at their expense. */}
       <form method="post" action="/low-data" class="flex flex-wrap items-center gap-2">
         <input type="hidden" name="on" value={lowData ? "0" : "1"} />
         <input type="hidden" name="returnTo" value={pathname + search} />
-        <span>
-          {
-            lowData
-              ? "Low-data mode is on: no images, shorter rows, nothing loaded speculatively."
-              : "Paying by the megabyte?"
-          }
+        <span class="text-micro text-ink-3">
+          {lowData ? "Low-data mode is on." : "Paying by the megabyte?"}
         </span>
-        <button type="submit" class="min-h-11 font-semibold text-brand underline">
+        <button type="submit" class="min-h-11 text-micro font-semibold text-brand underline">
           {lowData ? "Turn it off" : "Turn on low-data mode"}
         </button>
       </form>
-
-      <p class="mt-3">{BRAND.name} — opportunities for builders across Africa.</p>
     </div>
   </div>
 </footer>

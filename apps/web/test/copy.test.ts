@@ -205,14 +205,16 @@ describe("the states §6 requires, on the surfaces that have them", () => {
   });
 
   it("keeps every touch target at 44px (§8)", () => {
-    // §8: "Touch targets >= 44x44px". min-h-11 is 44px on this scale; h-11 is the fixed-height
-    // form-control variant. A button with neither is a target nobody can reliably hit on a phone.
+    // §8: "Touch targets >= 44x44px". On this 4px scale h-11 is 44px, h-12 is 48px and
+    // h-14 is 56px, and DESIGN_SYSTEM.md §5.3 asks for "Height 44px (48px on touch)" —
+    // so the taller steps are the spec's preference, not an exception to it. The list is
+    // enumerated rather than matched loosely because `h-\d+` would wave through h-8.
     const offenders: string[] = [];
     for (const file of FILES.filter((f) => /\.(astro|svelte)$/.test(f))) {
       const source = readFileSync(file, "utf8");
       for (const match of source.matchAll(/<button\b[^>]*?>/gs)) {
         const tag = match[0];
-        if (!/(?:min-)?h-11|min-h-\[44px\]|h-full/.test(tag)) {
+        if (!/(?:min-)?h-(?:11|12|14)\b|min-h-\[(?:4[4-9]|[5-9]\d|\d{3,})px\]|h-full/.test(tag)) {
           offenders.push(`${relative(SRC, file)}: ${tag.replace(/\s+/g, " ").slice(0, 90)}`);
         }
       }

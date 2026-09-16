@@ -12,13 +12,21 @@
 // empty, rather than being padded to look like a launch.
 
 import Base from "../layouts/Base.astro";
+import Icon from "../components/Icon.astro";
 import OpportunityRow from "../components/OpportunityRow.astro";
-import { getEntryPoints, getCountry, getLastVerifiedAt, getPublishedCount, listOpportunities } from "../lib/db";
+import {
+  getCategoryCounts,
+  getCountry,
+  getEntryPoints,
+  getLastVerifiedAt,
+  getPublishedCount,
+  listOpportunities,
+} from "../lib/db";
 import { getResidenceCountry, getSessionUser } from "../lib/auth";
 import { freshnessLabel } from "../lib/deadline";
 import { resolveLowData } from "../lib/lowdata";
 import { itemList, website } from "../lib/seo";
-import { BRAND } from "@mbele/config";
+import { BRAND, NO_FEE_STATEMENT } from "@mbele/config";
 import { runtimeEnv } from "~/lib/runtime";
 
 export const prerender = false;
@@ -72,11 +80,15 @@ const country = resolved.iso2 ? await getCountry(resolved.iso2, env) : null;
 // "Open to ZZ" strip, and better than an error for something the reader did not do wrong.
 const countryIso2 = country?.iso2 ?? undefined;
 
-const [board, entryPoints, published, lastVerifiedAt] = await Promise.all([
+const [board, entryPoints, published, lastVerifiedAt, categoryCounts] = await Promise.all([
   listOpportunities({ limit: BOARD_SIZE, countryIso2 }, env),
   getEntryPoints(env),
   getPublishedCount(env),
   getLastVerifiedAt(env),
+  // design/Main.body.html's Explore list shows "41 open" beside each kind. A category
+  // index without counts asks the reader to open four pages to find the one with
+  // anything in it.
+  getCategoryCounts(env),
 ]);
 
 const rows = board.ok ? board.data : [];
@@ -148,200 +160,301 @@ const scopeLine = country
   user={user}
   lowData={lowData}
   offlineCapable
+  flush
   canonical="/"
   jsonLd={jsonLd}
   feed={{ path: "/feeds/closing-soon.xml", title: "Closing this week" }}
 >
-  <!-- §2 item 1: one line stating what this is and the country scope. -->
-  {/* No `leading-*` here. Tailwind v4 pairs `--text-title--line-height` with the
-      `text-title` utility automatically, and the explicit override that used to sit on
-      this heading was written `leading-[--text-display--line-height]` — which compiles
-      to the literal `line-height: --text-display--line-height`, is invalid CSS, and was
-      dropped. The heading inherited the body's 26px and set 34px type on it, so the two
-      lines of this sentence overlapped on every screen wide enough to wrap it twice. */}
-  <h1 class="max-w-[28ch] text-title font-bold md:text-display">
-    Everything here is open, and we tell you whether you can apply.
-  </h1>
-  <p class="prose-measure mt-2 text-body text-ink-2">{scopeLine}</p>
+  {/* ── MASTHEAD ──────────────────────────────────────────────────────────────
+      design/Main.body.html: "one sentence, one search, four paths. Deliberately NOT a
+      marketing hero: 270px total, so the first live row is still above the fold."
 
-  <!-- §2 item 2: a search field with a single example query as placeholder. A plain GET
-       form to the list page: no JS, no autocomplete request, nothing typed leaves the
-       device until the reader presses the button. -->
-  <form method="get" action="/opportunities" class="mt-4 flex flex-wrap gap-2">
-    <label class="min-w-[16rem] flex-1">
-      <span class="sr-only">Search opportunities</span>
-      <input
-        type="search"
-        name="q"
-        placeholder="remote AI hackathons open to Zimbabwe"
-        class="h-11 w-full rounded-row border border-line-strong bg-surface px-3"
-      />
-    </label>
-    <button type="submit" class="h-11 rounded-row bg-brand px-4 font-semibold text-surface">
-      Search
-    </button>
-  </form>
+      UX_FLOWS.md §2 lists a hero image and a marketing hero among the things this page
+      deliberately does not have, because the live closing list IS the hero — and
+      home-route.test.ts asserts the board renders in the HTML rather than after a
+      script. The masthead earns its height by carrying the search and the four ways in,
+      not by carrying a picture. */}
+  <section class="border-b border-line bg-surface">
+    <div class="mx-auto max-w-[1160px] px-4 pt-[22px] pb-5">
+      <h1 class="text-display text-balance font-bold tracking-[-0.02em]">
+        Opportunities worth your time.
+      </h1>
+      <p class="prose-measure mt-2 text-meta text-ink-2">
+        Scholarships, fellowships, hackathons and grants open to Africa — each one checked
+        against its own source, with the deadline up front.
+      </p>
 
-  <section class="mt-8" aria-labelledby="board">
-    <div class="flex flex-wrap items-baseline justify-between gap-2">
-      <h2 id="board" class="text-title font-semibold">Closing soonest</h2>
-      <!-- The "Last updated" line of §2's offline state. -->
-      <p class="text-meta text-ink-2">Board as of {builtAt} UTC</p>
+      {/* A plain GET form to the list page: no JS, no autocomplete request, nothing
+          typed leaves the device until the reader presses the button. */}
+      <form method="get" action="/opportunities" class="mt-4 flex gap-2">
+        <label class="relative flex-1">
+          <span class="sr-only">Search opportunities</span>
+          <Icon
+            name="search"
+            size={20}
+            class="pointer-events-none absolute top-1/2 left-[14px] h-[18px] w-[18px] -translate-y-1/2 text-ink-3"
+          />
+          <input
+            type="search"
+            name="q"
+            placeholder="remote AI hackathons open to Zimbabwe"
+            class="h-12 w-full rounded-row border border-line-strong bg-surface pr-3 pl-[42px] text-[15px]"
+          />
+        </label>
+        <button
+          type="submit"
+          class="h-12 shrink-0 rounded-row bg-brand px-[18px] text-dense font-semibold text-surface"
+        >
+          Search
+        </button>
+      </form>
+
+      {/* The four paths. Chips rather than a second list: §5.4's shape, sized to §8's
+          44px target, and they disappear entirely when no category has anything in it. */}
+      {
+        entryPoints.categories.length > 0 && (
+          <ul class="mt-3 flex list-none flex-wrap gap-2 p-0">
+            {entryPoints.categories.slice(0, 4).map((category) => (
+              <li>
+                <a
+                  href={`/categories/${category.slug}`}
+                  class="inline-flex min-h-11 items-center rounded-monogram border border-line-strong bg-surface px-3 text-meta font-medium text-ink no-underline hover:bg-sunken"
+                >
+                  {category.name}
+                </a>
+              </li>
+            ))}
+          </ul>
+        )
+      }
+    </div>
+  </section>
+
+  {/* ── COUNTRY SCOPE — "quiet, correctable, never a modal." ──────────────── */}
+  {
+    country && (
+      <div class="border-b border-line bg-sunken">
+        {/* Stacked until `md`, not `sm`. §4.2 puts sm at 381px — BELOW a 390px phone —
+            so an `sm:flex-row` here still ran side by side on the device this is designed
+            for, and squeezed the sentence into a four-word column beside a control whose
+            words the specification fixes. md is 600px, which is where there is room. */}
+        <div class="mx-auto flex max-w-[1160px] flex-col gap-1 px-4 py-[10px] md:flex-row md:items-center md:gap-[10px]">
+          <p class="flex-1 text-meta">
+            <strong class="font-semibold">Open to {country.name}</strong>
+            <span class="text-ink-2"> — plus everything open Africa-wide.</span>
+          </p>
+          {/* UX_FLOWS.md §2 item 4 quotes this control's words — 'a visible "not your
+              country?" control' — so they are kept verbatim even though the canvas
+              shortens them to "Change". The strip's shape is the redesign's; the
+              wording is the specification's. */}
+          <a href="/?country=all" class="text-meta font-semibold whitespace-nowrap">
+            Not your country? Show everything
+          </a>
+        </div>
+      </div>
+    )
+  }
+
+  {
+    showAll && (
+      <div class="border-b border-line bg-sunken">
+        <div class="mx-auto flex max-w-[1160px] items-center gap-[10px] px-4 py-[10px]">
+          <p class="flex-1 text-meta text-ink-2">Showing every open opportunity.</p>
+          <a href="/" class="text-meta font-semibold whitespace-nowrap">
+            Use my country again
+          </a>
+        </div>
+      </div>
+    )
+  }
+
+  {/* ── THE BOARD ─────────────────────────────────────────────────────────── */}
+  <section aria-labelledby="board">
+    <div class="mx-auto max-w-[1160px] px-4 pt-[22px] pb-[10px]">
+      <p class="eyebrow">Closing soonest</p>
+      <h2 id="board" class="mt-1 text-title font-bold tracking-[-0.015em]">
+        What needs you this week
+      </h2>
+      {/* The "Last updated" line of §2's offline state, rendered on every response
+          because the service worker serves this HTML back unchanged. */}
+      <p class="mt-1 text-meta text-ink-2">
+        Board as of {builtAt} UTC{rows.length > 0 ? ` · ${rows.length} open${country ? ` to ${country.name}` : ""}` : ""}
+      </p>
     </div>
 
     {
-      /* §2 item 4: the "Open to [country]" strip, with a visible "not your country?"
-         control. It is a form and a link, not a script: changing country is a navigation,
-         which is what makes the result shareable and the back button correct. */
-      country && (
-        <div class="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border border-line bg-sunken px-3 py-2">
-          <p class="text-dense">
-            <strong class="font-semibold">Open to {country.name}</strong>
-            <span class="text-ink-2">
-              {" "}— including everything open across Africa and worldwide.
-            </span>
-          </p>
-          <p class="text-meta">
-            <a href="/?country=all" class="text-brand">Not your country? Show everything</a>
-          </p>
-        </div>
-      )
-    }
-
-    {
-      showAll && (
-        <p class="mt-3 text-meta text-ink-2">
-          Showing every open opportunity.{" "}
-          <a href="/" class="text-brand">Use my country again</a>
-        </p>
-      )
-    }
-
-    {
       rows.length > 0 ? (
-        <div class="mt-3 border-t border-line">
-          {rows.map((o) => (
-            <OpportunityRow opportunity={o} lowData={lowData} />
-          ))}
-        </div>
+        <>
+          {/* The band bleeds; the rows inside it sit on the same 1160px measure as the
+              masthead. Without the inner container a row's text started at the window
+              edge on a desktop while the headline above it started at the gutter. */}
+          <div class="border-t border-line bg-surface">
+            <div class="mx-auto max-w-[1160px]">
+              {rows.map((o) => (
+                <OpportunityRow opportunity={o} lowData={lowData} />
+              ))}
+            </div>
+          </div>
+          <div class="border-b border-line bg-surface">
+            <div class="mx-auto max-w-[1160px] px-4 pt-[14px] pb-[26px]">
+              <a href="/opportunities" class="text-dense font-semibold">
+                See all open opportunities →
+              </a>
+            </div>
+          </div>
+        </>
       ) : (
-        /* One sentence naming the situation, one action (DESIGN_SYSTEM.md §6.4). Never an
-           illustration, never "Nothing here yet!". */
-        <div class="mt-3 border border-line bg-surface p-4">
-          {degraded ? (
-            <>
-              <p class="font-semibold">We can't load the board right now.</p>
-              <p class="mt-1 text-dense text-ink-2">
-                Nothing is wrong with your connection as far as we can tell. Try again
-                shortly, or search directly.
-              </p>
-              <p class="mt-2 text-dense">
-                <a href="/opportunities" class="text-brand">Search opportunities</a>
-              </p>
-            </>
-          ) : country ? (
-            <>
-              <p class="font-semibold">Nothing open to {country.name} is closing yet.</p>
-              <p class="mt-1 text-dense text-ink-2">
-                That is the catalogue being honest, not a filter being clever.
-              </p>
-              <p class="mt-2 text-dense">
-                <a href="/?country=all" class="text-brand">Show everything</a>
-              </p>
-            </>
-          ) : (
-            <>
-              <p class="font-semibold">Nothing is published yet.</p>
-              <p class="mt-1 text-dense text-ink-2">
-                The catalogue is still being built. We would rather show you an empty board
-                than pad it with listings we cannot stand behind.
-              </p>
-            </>
-          )}
+        /* One sentence naming the situation, one action (DESIGN_SYSTEM.md §6.4).
+           Never an illustration, never "Nothing here yet!". */
+        <div class="mx-auto max-w-[1160px] px-4">
+          <div class="rounded-sheet border border-line bg-surface p-4">
+            {degraded ? (
+              <>
+                <p class="font-semibold">We can't load the board right now.</p>
+                <p class="mt-1 text-dense text-ink-2">
+                  Nothing is wrong with your connection as far as we can tell. Try again
+                  shortly, or search directly.
+                </p>
+                <p class="mt-2 text-dense">
+                  <a href="/opportunities">Search opportunities</a>
+                </p>
+              </>
+            ) : country ? (
+              <>
+                <p class="font-semibold">Nothing open to {country.name} is closing yet.</p>
+                <p class="mt-1 text-dense text-ink-2">
+                  That is the catalogue being honest, not a filter being clever.
+                </p>
+                <p class="mt-2 text-dense">
+                  <a href="/?country=all">Show everything</a>
+                </p>
+              </>
+            ) : (
+              <>
+                <p class="font-semibold">Nothing is published yet.</p>
+                <p class="mt-1 text-dense text-ink-2">
+                  The catalogue is still being built. We would rather show you an empty board
+                  than pad it with listings we cannot stand behind.
+                </p>
+              </>
+            )}
+          </div>
         </div>
-      )
-    }
-
-    {
-      rows.length > 0 && (
-        <p class="mt-4">
-          <a
-            href="/opportunities"
-            class="inline-flex min-h-11 items-center rounded-row border border-line-strong bg-surface px-4 font-semibold no-underline"
-            >See all open opportunities</a
-          >
-        </p>
       )
     }
   </section>
 
+  {/* ── EXPLORE — "density changes deliberately here: a list, not more cards." ──
+      §2 item 5 wants country and category entry points as plain links, and §28 makes
+      every African country a first-class page rather than a promoted subset. */}
   {
-    /* §2 item 5: country and category entry points as plain links. Plain <a> elements in a
-       wrapped list — no select, no script, no expander. Every African country is here
-       because §28 makes each one a first-class page, not a promoted subset. */
-    (entryPoints.categories.length > 0 || entryPoints.countries.length > 0) && (
-      <section class="mt-10 border-t border-line pt-6" aria-labelledby="browse">
-        <h2 id="browse" class="text-subtitle font-semibold">Browse</h2>
-
-        {/* Kinds are few, so they get chips — §5.4's shape, 4px radius on --sunken, sized
-            to §8's 44px touch target. A handful of links in a wrapped paragraph reads as
-            an afterthought; the same links as chips read as a control. */}
-        {entryPoints.categories.length > 0 && (
-          <>
-            <h3 class="mt-4 text-meta font-semibold text-ink-2">
-              <a href="/categories" class="text-brand">By kind</a>
-            </h3>
-            <ul class="mt-2 flex list-none flex-wrap gap-2 p-0">
-              {entryPoints.categories.map((category) => (
-                <li>
-                  <a
-                    href={`/categories/${category.slug}`}
-                    class="inline-flex min-h-11 items-center rounded-row bg-sunken px-3 text-dense text-ink no-underline hover:bg-brand-wash hover:text-brand"
-                  >
-                    {category.name}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-
-        {/* Fifty-four countries cannot be chips — that is a solid block of them — and as a
-            wrapped paragraph they were an undifferentiated wall of blue text that you had
-            to read linearly to search. A column grid is alphabetical down each column and
-            scannable in a glance, and every entry is its own 44px row.
-
-            §28 makes each country a first-class page, so none of them is hidden behind a
-            "show more": the list is long because the promise is that all 54 are here. */}
-        {entryPoints.countries.length > 0 && (
-          <>
-            <h3 class="mt-6 text-meta font-semibold text-ink-2">
-              <a href="/countries" class="text-brand">By country</a>
-            </h3>
-            <ul class="mt-2 grid list-none grid-cols-2 gap-x-4 p-0 md:grid-cols-3 lg:grid-cols-4">
-              {entryPoints.countries.map((c) => (
-                <li>
-                  <a
-                    href={`/countries/${c.slug}`}
-                    class="flex min-h-11 items-center border-b border-line text-dense text-brand no-underline hover:underline"
-                  >
-                    {c.name}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
+    entryPoints.categories.length > 0 && (
+      <section aria-labelledby="by-kind">
+        <div class="mx-auto max-w-[1160px] px-4 pt-[26px] pb-2">
+          <p class="eyebrow">Explore</p>
+          <h2 id="by-kind" class="mt-1 text-title font-bold tracking-[-0.015em]">
+            By what it is
+          </h2>
+        </div>
+        <ul class="mx-auto list-none border-y border-line bg-surface p-0 lg:max-w-[1160px]">
+          {entryPoints.categories.map((category) => {
+            const open = categoryCounts.find((c) => c.code === category.code)?.open_count;
+            return (
+              <li>
+                <a
+                  href={`/categories/${category.slug}`}
+                  class="flex min-h-11 items-center gap-3 border-b border-line px-4 py-[13px] text-ink no-underline last:border-b-0 hover:bg-sunken"
+                >
+                  <span class="flex-1 text-dense font-semibold">{category.name}</span>
+                  {/* A count only where there is one. "0 open" on a page the reader is
+                      being invited to open is worse than saying nothing. */}
+                  {open !== undefined && open > 0 && (
+                    <span class="text-meta text-ink-3">{open} open</span>
+                  )}
+                  <Icon name="chevron" size={20} class="h-4 w-4 shrink-0 text-ink-3" />
+                </a>
+              </li>
+            );
+          })}
+        </ul>
+        <div class="mx-auto max-w-[1160px] px-4 pt-3">
+          <a href="/categories" class="text-dense font-semibold">
+            All categories →
+          </a>
+        </div>
       </section>
     )
   }
 
   {
-    /* §2 item 6: counts that are true. Both numbers come from live queries, and each one
-       disappears rather than showing a zero or a guess. The anti-scam statement and the
-       crawler link are in the footer of every page (layouts/Base.astro). */
+    entryPoints.countries.length > 0 && (
+      <section aria-labelledby="by-country">
+        <div class="mx-auto max-w-[1160px] px-4 pt-[26px] pb-2">
+          <p class="eyebrow">Explore</p>
+          <h2 id="by-country" class="mt-1 text-title font-bold tracking-[-0.015em]">
+            By where you live
+          </h2>
+        </div>
+        {/* A column grid rather than a wrapped paragraph: fifty-four names in a flex-wrap
+            are a wall you have to read linearly to search. None is hidden behind a "show
+            more" — the list is long because §28's promise is that all of them are here. */}
+        <div class="mx-auto max-w-[1160px] px-4">
+          <ul class="grid list-none grid-cols-2 gap-x-4 p-0 md:grid-cols-3 lg:grid-cols-4">
+            {entryPoints.countries.map((c) => (
+              <li>
+                <a
+                  href={`/countries/${c.slug}`}
+                  class="flex min-h-11 items-center border-b border-line text-dense no-underline hover:underline"
+                >
+                  {c.name}
+                </a>
+              </li>
+            ))}
+          </ul>
+          <p class="pt-3">
+            <a href="/countries" class="text-dense font-semibold">
+              All countries →
+            </a>
+          </p>
+        </div>
+      </section>
+    )
+  }
+
+  {/* ── TRUST — "earns its place by being specific about what is and is not known."
+      MODERATION_AND_TRUST.md §2.1 rule 3's no-fee line is the third of these, stated
+      here rather than in the footer so it sits with the two promises it belongs with.
+      Base passes `trustPanelAbove` to the footer so it is not repeated below. */}
+  <section class="mx-auto mt-7 max-w-[1160px] px-4" aria-labelledby="how-kept">
+    <div class="rounded-sheet bg-brand-wash p-4">
+      <p class="eyebrow text-brand-ink">How this list is kept</p>
+      <h2 id="how-kept" class="mt-[6px] text-subtitle font-semibold text-brand-ink">
+        Nothing here is copied and forgotten.
+      </h2>
+      <ul class="mt-[14px] flex list-none flex-col gap-[10px] p-0">
+        {
+          [
+            "Every listing links to the organiser's own page, and we re-check that page on a schedule. Each row says when it was last checked.",
+            "Eligibility rules are quoted from the organiser's words. Where the wording is unclear, we say unclear rather than guessing.",
+            NO_FEE_STATEMENT,
+          ].map((line) => (
+            <li class="flex gap-[10px] text-dense text-ink-2">
+              <span aria-hidden="true" class="font-bold text-brand">
+                —
+              </span>
+              <span>{line}</span>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </section>
+
+  {/* §2 item 6: counts that are true. Both come from live queries, and each disappears
+      rather than showing a zero or a guess. */}
+  {
     (published !== null || lastVerifiedAt !== null) && (
-      <p class="mt-8 text-meta text-ink-2">
+      <p class="mx-auto max-w-[1160px] px-4 pt-6 text-meta text-ink-3">
         {published !== null && published > 0 && (
           <span>
             {published} {published === 1 ? "opportunity" : "opportunities"} published.{" "}

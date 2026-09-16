@@ -134,6 +134,27 @@
     outline-offset: 2px;
   }
 
+  /**
+   * The editorial eyebrow — the redesign's one addition to the vocabulary.
+   *
+   * design/Foundations.dc.html: "existing token, new discipline". It is the 11px micro
+   * step, letter-spaced and upper-cased, and it exists so a category label can sit above
+   * a title without the title having to grow to carry the hierarchy. §2.3 bans all-caps
+   * "except two-letter country codes", and this is the amendment that buys: a label that
+   * is never read as a word, so it never competes with the title beneath it.
+   *
+   * Declared here rather than as a utility class per use, because §12 wants one place
+   * where a type decision lives.
+   */
+  .eyebrow {
+    font-size: var(--text-micro);
+    line-height: var(--text-micro--line-height);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-ink-3);
+  }
+
   /* Prose line length ≤68ch (§2.3). */
   .prose-measure {
     max-width: 68ch;
