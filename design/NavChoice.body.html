@@ -1,0 +1,131 @@
+<div style="width:920px;min-height:1240px;background:var(--paper);padding:36px 40px 44px;">
+
+  <p class="eyebrow">A decision, not a redesign</p>
+  <h1 class="title" style="margin-top:6px;">The bottom bar</h1>
+  <p class="body q2" style="margin-top:10px;max-width:74ch;">You asked for it to go. It was built
+    deliberately the day before you asked, because <span style="font-family:ui-monospace,Menlo,monospace;font-size:14px;">DESIGN SYSTEM.md</span>
+    §5.7 has specified it since the document was written — and the same paragraph ends
+    <strong style="font-weight:600;color:var(--ink);">&ldquo;Never: hamburger menu hiding primary
+    navigation.&rdquo;</strong> Replacing the bar with a menu is a change to the specification, not a
+    change of styling. Both options are drawn below; this one is yours.</p>
+
+  <div style="display:grid;grid-template-columns:repeat(2, minmax(0,1fr));gap:40px;margin-top:32px;">
+
+    <!-- OPTION A -->
+    <div>
+      <p class="eyebrow" style="color:var(--brand-ink);">Option A — what ships today</p>
+      <h2 class="subtitle" style="margin-top:4px;">Keep the bar, sharpen it</h2>
+
+      <div style="margin-top:16px;border:1px solid var(--line);border-radius:var(--r-sheet);overflow:hidden;background:var(--surface);">
+        <div style="height:300px;background:var(--paper);position:relative;">
+          <div class="appbar" style="border-bottom:1px solid var(--line);">
+            <span class="wordmark" style="font-size:18px;">Mbele</span>
+            <span class="meta" style="margin-left:auto;color:var(--brand);font-weight:600;">Sign in</span>
+          </div>
+          <div style="padding:14px 16px;">
+            <div class="skel" style="width:62%;height:22px;"></div>
+            <div class="skel" style="width:90%;height:13px;margin-top:10px;"></div>
+            <div class="skel" style="width:100%;height:44px;margin-top:14px;"></div>
+          </div>
+          <div style="border-top:1px solid var(--line);background:var(--surface);padding:12px 16px;">
+            <div class="skel" style="width:70%;height:15px;"></div>
+            <div class="skel" style="width:40%;height:12px;margin-top:7px;"></div>
+            <div class="skel" style="width:88px;height:17px;margin-top:9px;"></div>
+          </div>
+          <!-- the bar -->
+          <div style="position:absolute;left:0;right:0;bottom:0;height:56px;background:var(--surface);border-top:1px solid var(--line);display:flex;">
+            <span style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;position:relative;">
+              <span style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--brand);"></span>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="1.5" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+              <span class="micro" style="color:var(--brand);font-weight:600;">Board</span></span>
+            <span style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--ink-2)" stroke-width="1.5" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+              <span class="micro q2">Search</span></span>
+            <span style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--ink-2)" stroke-width="1.5" stroke-linejoin="round"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>
+              <span class="micro q2">Categories</span></span>
+            <span style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--ink-2)" stroke-width="1.5"><circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4a13 13 0 0 1 0 16a13 13 0 0 1 0-16z"/></svg>
+              <span class="micro q2">Countries</span></span>
+            <span style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--ink-2)" stroke-width="1.5" stroke-linejoin="round"><path d="M6 4h12v16l-6-4.2L6 20z"/></svg>
+              <span class="micro q2">Tracker</span></span>
+          </div>
+        </div>
+      </div>
+
+      <ul class="stack" style="gap:10px;margin-top:16px;">
+        <li class="dense q2" style="display:flex;gap:9px;"><span style="color:var(--eligible);font-weight:700;">+</span>
+          <span>Five destinations always visible. A first-time visitor never has to discover a menu.</span></li>
+        <li class="dense q2" style="display:flex;gap:9px;"><span style="color:var(--eligible);font-weight:700;">+</span>
+          <span>It already hides on scroll down and returns on scroll up, so reading is full-height.</span></li>
+        <li class="dense q2" style="display:flex;gap:9px;"><span style="color:var(--eligible);font-weight:700;">+</span>
+          <span>One <span style="font-family:ui-monospace,Menlo,monospace;font-size:13px;">&lt;nav&gt;</span> landmark, rendered once, laid out two ways. axe-clean.</span></li>
+        <li class="dense q2" style="display:flex;gap:9px;"><span style="color:var(--noteligible);font-weight:700;">&minus;</span>
+          <span>56px is 6.6% of an iPhone 14 viewport whenever it is showing.</span></li>
+        <li class="dense q2" style="display:flex;gap:9px;"><span style="color:var(--noteligible);font-weight:700;">&minus;</span>
+          <span>It does read as an app rather than a web page — your objection, and it is fair.</span></li>
+      </ul>
+      <p class="meta" style="margin-top:14px;padding:11px 13px;background:var(--sunken);border-radius:var(--r-row);">
+        <strong style="font-weight:600;">Costs nothing to choose.</strong> The bar exists. This option is
+        the rest of the redesign landing around it.</p>
+    </div>
+
+    <!-- OPTION B -->
+    <div>
+      <p class="eyebrow" style="color:var(--brand-ink);">Option B — what you asked for</p>
+      <h2 class="subtitle" style="margin-top:4px;">Bar out, sheet in</h2>
+
+      <div style="margin-top:16px;border:1px solid var(--line);border-radius:var(--r-sheet);overflow:hidden;background:var(--surface);">
+        <div style="height:300px;background:var(--paper);position:relative;">
+          <div class="appbar" style="border-bottom:1px solid var(--line);">
+            <span class="wordmark" style="font-size:18px;">Mbele</span>
+            <div style="margin-left:auto;display:flex;gap:2px;">
+              <span class="icon-btn" style="width:36px;height:36px;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></span>
+              <span class="icon-btn" style="width:36px;height:36px;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 20a7.4 7.4 0 0 1 14.4 0"/></svg></span>
+              <span class="icon-btn" style="width:36px;height:36px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></span>
+            </div>
+          </div>
+          <div style="padding:14px 16px;">
+            <div class="skel" style="width:62%;height:22px;"></div>
+            <div class="skel" style="width:90%;height:13px;margin-top:10px;"></div>
+            <div class="skel" style="width:100%;height:44px;margin-top:14px;"></div>
+          </div>
+          <div style="border-top:1px solid var(--line);background:var(--surface);padding:12px 16px;">
+            <div class="skel" style="width:70%;height:15px;"></div>
+            <div class="skel" style="width:40%;height:12px;margin-top:7px;"></div>
+            <div class="skel" style="width:88px;height:17px;margin-top:9px;"></div>
+          </div>
+          <div style="border-top:1px solid var(--line);background:var(--surface);padding:12px 16px;">
+            <div class="skel" style="width:60%;height:15px;"></div>
+            <div class="skel" style="width:36%;height:12px;margin-top:7px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <ul class="stack" style="gap:10px;margin-top:16px;">
+        <li class="dense q2" style="display:flex;gap:9px;"><span style="color:var(--eligible);font-weight:700;">+</span>
+          <span>Full viewport height, always. One more opportunity row on every screen.</span></li>
+        <li class="dense q2" style="display:flex;gap:9px;"><span style="color:var(--eligible);font-weight:700;">+</span>
+          <span>Reads as a web page. The menu holds far more than five things — trust pages, messages, account, low-data.</span></li>
+        <li class="dense q2" style="display:flex;gap:9px;"><span style="color:var(--noteligible);font-weight:700;">&minus;</span>
+          <span>Contradicts §5.7 in writing. The spec needs amending, or the code stops matching it.</span></li>
+        <li class="dense q2" style="display:flex;gap:9px;"><span style="color:var(--noteligible);font-weight:700;">&minus;</span>
+          <span>Primary destinations go behind a tap. §5.7's reason for banning that is first-time discovery, and this product's readers mostly arrive once, from a link.</span></li>
+      </ul>
+      <p class="meta" style="margin-top:14px;padding:11px 13px;background:var(--sunken);border-radius:var(--r-row);">
+        <strong style="font-weight:600;">Costs a spec change.</strong> §5.7's &ldquo;never&rdquo; is edited, the
+        reason recorded, and <span style="font-family:ui-monospace,Menlo,monospace;font-size:13px;">PrimaryNav.astro</span>
+        is rebuilt. The drawer itself is drawn on the Navigation artboard.</p>
+    </div>
+  </div>
+
+  <div style="margin-top:34px;padding:16px 18px;border-left:3px solid var(--brand);background:var(--brand-wash);border-radius:0 var(--r-sheet) var(--r-sheet) 0;">
+    <p class="dense" style="font-weight:600;color:var(--brand-ink);">There is a third reading, and it may be the right one.</p>
+    <p class="dense q2" style="margin-top:5px;max-width:82ch;">Your objection was that the bar
+      &ldquo;consumes too much vertical space&rdquo;. It already hides on scroll — so the complaint may
+      really be about the <em>first</em> screen, where the bar, the masthead and the header were all
+      competing before the board appeared. The 270px masthead fixes that on its own, with the bar left
+      alone. Worth looking at Option A on a real phone before spending a spec change on Option B.</p>
+  </div>
+</div>

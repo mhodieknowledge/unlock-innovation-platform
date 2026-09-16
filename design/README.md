@@ -34,9 +34,13 @@ canvas editor with it.
    hero as deliberately absent, because the live closing list *is* the hero, and
    `apps/web/test/home-route.test.ts` asserts the board renders above the fold.
    The masthead here is 270px: one sentence, the search, four category chips.
-2. **The bottom navigation does not exist.** There is no fixed bottom bar in the
-   source. The real mobile problem is the header's six-link `flex-wrap` row,
-   which stacks onto three lines on a phone. `Shell.dc.html` replaces that.
+2. **The bottom navigation is a decision, not a styling change.** I first read
+   this at commit `4e814b8`, where no bottom bar existed, and said so. It shipped
+   the same evening in `9f0590f` — deliberately, because `DESIGN SYSTEM.md` §5.7
+   specifies "Mobile — bottom bar, 5 items, 56px, icon + label" and ends
+   "**Never**: hamburger menu hiding primary navigation". Removing it means
+   amending §5.7. `NavChoice.dc.html` draws both options with their costs;
+   `Shell.dc.html` draws the drawer itself.
 3. **Colour stays reserved for eligibility.** `DESIGN SYSTEM.md` §1.2: colour
    appearing means something has been determined about *you*. Blue is action and
    links; the four-step ramp is verdicts; everything else is grey.
