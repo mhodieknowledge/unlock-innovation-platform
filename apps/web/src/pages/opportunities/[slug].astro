@@ -177,6 +177,13 @@ const teamLabel =
  * `countdownLabel`'s "14 days left" into "14 Days Left", which is a value the product does not
  * say anywhere else. The row component reached the same conclusion for the same reason.
  */
+/**
+ * Where "apply" goes. `apply_url` when the organiser gave one, otherwise the official page,
+ * otherwise the page we found it on — invariant 1 guarantees at least one of the last two
+ * exists on anything published, so this is never null for a published record.
+ */
+const applyHref = opp ? (opp.apply_url ?? opp.official_url ?? opp.source_url ?? null) : null;
+
 const factGrid: [string, string][] = opp
   ? ([
       [
@@ -323,8 +330,14 @@ const factGrid: [string, string][] = opp
            string (DESIGN_SYSTEM.md §5.6). -->
       <dl class="mt-6 grid grid-cols-2 border-t border-line md:grid-cols-4">
         {
-          factGrid.map(([label, value]) => (
-            <div class="border-b border-r border-line px-3 py-2">
+          factGrid.map(([label, value], i) => (
+            /* A last cell with nothing beside it spans the row instead of leaving a
+               half-drawn box: three facts in a two-column grid drew an empty fourth. */
+            <div
+              class={`border-b border-r border-line px-3 py-2 ${
+                i === factGrid.length - 1 && factGrid.length % 2 === 1 ? "col-span-2 md:col-span-1" : ""
+              }`}
+            >
               <dt class="text-micro font-semibold text-ink-2">{label}</dt>
               <dd class="text-dense">{value}</dd>
             </div>
@@ -334,9 +347,19 @@ const factGrid: [string, string][] = opp
 
       <p class="mt-6 flex flex-wrap gap-3">
         {
-          opp.apply_url && !isExpired && (
+          /*
+           * The link out, and it falls back rather than disappearing.
+           *
+           * This rendered ONLY when `apply_url` was set, which most ingested records do not
+           * have — so on the live site the official page was reachable only as a small
+           * "Official source" text link at the foot of the page, under Freshness. The whole
+           * product is a signpost to somebody else's page; that link is the second most
+           * important thing here after the deadline, and it should never be absent when we
+           * hold any URL at all.
+           */
+          applyHref && !isExpired && (
             <a
-              href={opp.apply_url}
+              href={applyHref}
               rel="noopener noreferrer nofollow ugc"
               target="_blank"
               class={`inline-flex min-h-11 items-center rounded-row px-4 font-semibold ${
@@ -345,7 +368,7 @@ const factGrid: [string, string][] = opp
                   : "bg-brand text-surface"
               }`}
             >
-              Apply on official site
+              {opp.apply_url ? "Apply on official site" : "Open the official page"}
             </a>
           )
         }
