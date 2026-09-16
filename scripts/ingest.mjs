@@ -1207,14 +1207,29 @@ async function runSummaryBackfill() {
 }
 
 /**
- * Re-read the category of everything sitting in `other`.
+ * Re-read the category of everything sitting in `other`. Titles first, then a model.
  *
- * Costs nothing: no fetch, no model, just `categoriseFromText` over titles we already hold.
- * That is why it is safe to run daily — a record filed as `other` by a model that had been
- * offered a code the taxonomy does not hold gets a second look from something deterministic.
+ * TWO PASSES, AND THE ORDER IS THE WHOLE DESIGN.
  *
- * It only ever moves a record OUT of `other`, never between two real categories. A reviewer
- * who filed something deliberately is not overruled by a regex.
+ * The first is `categoriseFromText` over titles we already hold: no fetch, no model, and on
+ * run 43 it placed 40 of 58 records with every single answer correct. A listing called "Gates
+ * Cambridge Scholarships" never needed a model to be read; it needed something to be looking.
+ *
+ * The second is prompts/classify.v1.md, for what a title cannot answer — "Anglo American
+ * Processing Development Programme 2026", where the answer is in the page and not the name.
+ * It reads the stored document text, which is where the signal is and where a regex cannot
+ * safely go: run 43's four wrong answers all came from pattern-matching prose, because a
+ * mention ("the prize includes a scholarship") is indistinguishable from a declaration
+ * ("this is a scholarship") to a pattern. Telling those apart is what a model is for.
+ *
+ * It only ever moves a record OUT of `other`, never between two real categories — a reviewer
+ * who filed something deliberately is not overruled by either pass — and a model answer of
+ * `other`, or of anything the taxonomy does not hold, leaves the record where it is and is
+ * named in the output. So the worst case of the expensive pass is the status quo.
+ *
+ * With NO_AI, or with no provider configured, the first pass still runs and the second is
+ * skipped with a line saying so. AI_SYSTEM.md §13: the pipeline works with every provider
+ * gone, and a degraded run is not a broken one.
  */
 async function runRecategorise() {
   const otherId = CATEGORY_BY_CODE.get("other");
@@ -1224,20 +1239,25 @@ async function runRecategorise() {
   }
 
   const { rows } = await client.query(
-    `SELECT id, slug, title, summary FROM opportunities
-      WHERE category_id = $1 AND deleted_at IS NULL
-      ORDER BY deadline_at NULLS LAST`,
+    `SELECT o.id, o.slug, o.title, o.summary, d.text_raw
+       FROM opportunities o
+       LEFT JOIN raw_documents d ON d.id = o.raw_document_id
+      WHERE o.category_id = $1 AND o.deleted_at IS NULL
+      ORDER BY o.deadline_at NULLS LAST`,
     [otherId],
   );
   console.log(`${rows.length} record(s) filed as other.\n`);
 
   let moved = 0;
-  const stillOther = [];
+  /** Records the title could not place: candidates for the model pass. */
+  const unread = [];
   for (const row of rows) {
-    const code = categoriseFromText({ title: row.title, summary: row.summary });
+    // The summary is not consulted — see packages/ingest/src/categorise.mjs for the four
+    // production mistakes that removed it.
+    const code = categoriseFromText({ title: row.title });
     const id = code ? CATEGORY_BY_CODE.get(code) : null;
     if (!id) {
-      stillOther.push(row.title);
+      unread.push(row);
       continue;
     }
     if (!DRY_RUN) {
@@ -1246,14 +1266,99 @@ async function runRecategorise() {
     moved += 1;
     console.log(`  ${String(code).padEnd(26)} ${String(row.title).slice(0, 64)}`);
   }
+  console.log(`\n${moved} placed from the title alone. ${unread.length} left for a model.\n`);
 
-  console.log(`\n${moved} moved out of other, ${stillOther.length} left.`);
+  const modelMoved = await classifyRemaining(unread);
+
+  console.log(`\n${moved + modelMoved} moved out of other, ${rows.length - moved - modelMoved} left.`);
+}
+
+/**
+ * Ask a model what the title could not say, for each record in turn.
+ *
+ * Sequential rather than batched on purpose: one record per call keeps the prompt to one
+ * question, and the runner's rate limiting and circuit breakers are per call. The volume is a
+ * handful a day once the backfill is done, against a task whose first provider allows 14,000.
+ *
+ * @param {Array<{ id: string, slug: string, title: string, summary: string | null, text_raw: string | null }>} records
+ * @returns {Promise<number>} how many were moved out of `other`
+ */
+async function classifyRemaining(records) {
+  if (records.length === 0) return 0;
+
+  if (NO_AI) {
+    console.log("NO_AI mode: the model pass is skipped. These keep `other`:");
+    for (const row of records.slice(0, 20)) console.log(`  · ${String(row.title).slice(0, 72)}`);
+    return 0;
+  }
+
+  const chain = await chainFor("classify", true);
+  if (chain.length === 0) {
+    console.log("No provider configured for `classify`. These keep `other`:");
+    for (const row of records.slice(0, 20)) console.log(`  · ${String(row.title).slice(0, 72)}`);
+    return 0;
+  }
+
+  // Filled from the `categories` table, never from a list in the prompt file: that drift is
+  // the bug this whole job exists to clean up after.
+  const p = prompt("classify.v1", {
+    CATEGORY_CODES: [...CATEGORY_BY_CODE.keys()].sort().join(", "),
+  });
+  let moved = 0;
+  /** Titles the model also declined to place, for a person to read. */
+  const stillOther = [];
+
+  for (const row of records) {
+    const source = typeof row.text_raw === "string" && row.text_raw.trim().length > 0
+      ? row.text_raw.slice(0, 6000)
+      : typeof row.summary === "string" && row.summary.trim().length > 0
+        ? row.summary
+        : "";
+    const result = await runTask({
+      chain,
+      system: p.system,
+      user: [`TITLE: ${row.title}`, "", "SOURCE:", source || "(no page text was stored)"].join("\n"),
+      env,
+      fetch: globalThis.fetch,
+      breakers,
+      accept: (data) => typeof data === "object" && data !== null && "category_code" in data,
+      shapeHint: 'an object with a "category_code" field',
+    });
+    await logCalls(result.calls, "classify", p.version);
+
+    const offered = result.ok
+      ? /** @type {{ category_code?: unknown }} */ (result.data).category_code
+      : null;
+    const code = typeof offered === "string" ? offered.trim() : "";
+
+    // `other` is a correct answer here and the prompt says so, so it is not a warning. A code
+    // the taxonomy does not hold IS a warning: it means the filled vocabulary and the model's
+    // answer have come apart, which is the drift that started all of this.
+    if (code && code !== "other" && !CATEGORY_BY_CODE.has(code)) {
+      console.warn(`  ! ${row.slug}: model answered "${code}", which is not in the taxonomy`);
+    }
+
+    const id = code && code !== "other" ? CATEGORY_BY_CODE.get(code) : null;
+    if (!id) {
+      stillOther.push(row.title);
+      continue;
+    }
+    if (!DRY_RUN) {
+      await client.query("UPDATE opportunities SET category_id = $2 WHERE id = $1", [row.id, id]);
+    }
+    moved += 1;
+    console.log(`  ${String(code).padEnd(26)} ${String(row.title).slice(0, 64)}  (model)`);
+  }
+
+  console.log(`\n${moved} placed by the model, ${stillOther.length} still other.`);
   if (stillOther.length > 0) {
-    // Named rather than counted: these are the ones worth a person's eye, and most of them
-    // are things the taxonomy has no word for rather than things the reader got wrong.
-    console.log("Still other — the taxonomy may have no word for these:");
+    // Named rather than counted. Two different things end up here and only a person can tell
+    // them apart: a listing the taxonomy has no word for (add a category), and something that
+    // is not an opportunity at all (a visa explainer, a guide) which should not be published.
+    console.log("Still other — no code fits, or it is not an opportunity:");
     for (const title of stillOther.slice(0, 20)) console.log(`  · ${String(title).slice(0, 72)}`);
   }
+  return moved;
 }
 
 await client.connect();

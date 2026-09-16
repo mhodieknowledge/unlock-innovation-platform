@@ -17,7 +17,7 @@
  * job to a script that will interpret it as something else.
  */
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -134,5 +134,73 @@ describe("the daily job", () => {
     );
     expect(daily).toMatch(/npm run ingest -- --fill-summaries/);
     expect(daily).toMatch(/npm run ingest -- --recategorise/);
+  });
+});
+
+/**
+ * The AI task vocabulary, which is written down in three places.
+ *
+ * A `summarise` task meant a prompt file, provider rows in the seed, and a `chainFor` call in
+ * the runner — and a CHECK constraint from migration 0013 that listed six task names and had
+ * never heard of it. A CHECK violation is an error rather than a conflict, so `ON CONFLICT DO
+ * NOTHING` does not absorb it: `npm run db:seed` failed at 005_ai_providers.sql, and a run
+ * that got past it would have found `ai_chain_for('summarise')` empty and reported "no
+ * provider" forever.
+ *
+ * Measured, not assumed: seeded into a real Postgres at migration 0034 the seed fails on the
+ * constraint, and at 0035 it inserts. This test is the cheap version of that, so the next task
+ * cannot be added to two of the three places.
+ */
+describe("the ai_providers task vocabulary", () => {
+  const sql = (file: string) => readFileSync(join(ROOT, "supabase", file), "utf8");
+
+  /** Task names the seed inserts. */
+  const seeded = (): string[] => {
+    const rows = [...sql("seed/005_ai_providers.sql").matchAll(/^\s*\('[a-z_]+',\s*'([a-z_]+)'/gm)];
+    return [...new Set(rows.flatMap((row) => (row[1] === undefined ? [] : [row[1]])))];
+  };
+
+  /** Task names the constraint permits, from the LAST migration that defines it. */
+  const permitted = (): string[] => {
+    const migrations = readdirSync(join(ROOT, "supabase", "migrations"))
+      .filter((name) => name.endsWith(".up.sql"))
+      .sort();
+    let latest: string | null = null;
+    for (const name of migrations) {
+      const text = sql(join("migrations", name));
+      const match = /task\s+IN\s*\(([^)]+)\)/.exec(text);
+      if (match?.[1] !== undefined) latest = match[1];
+    }
+    if (latest === null) throw new Error("no migration defines the task CHECK");
+    return [...latest.matchAll(/'([a-z_]+)'/g)].flatMap((m) => (m[1] === undefined ? [] : [m[1]]));
+  };
+
+  it("permits every task the seed inserts", () => {
+    const rejected = seeded().filter((task) => !permitted().includes(task));
+    expect(rejected, "the seed would fail the CHECK constraint on these").toEqual([]);
+  });
+
+  it("has a provider row for every task the runner asks for", () => {
+    // A task with a chain of zero is not a failure anywhere: runTask reports no provider and
+    // the caller carries on, which is right for a missing key and wrong for a task nobody
+    // ever seeded.
+    const runner = readFileSync(join(ROOT, "scripts", "ingest.mjs"), "utf8");
+    const asked = [...runner.matchAll(/chainFor\("([a-z_]+)"/g)].flatMap((m) =>
+      m[1] === undefined ? [] : [m[1]],
+    );
+    expect(asked.length, "the runner should ask for chains").toBeGreaterThan(2);
+    expect(asked.filter((task) => !seeded().includes(task))).toEqual([]);
+  });
+
+  it("has a prompt file for every task that takes one", () => {
+    // `moderate` and `query` are called from the request tier, not from here.
+    const runner = readFileSync(join(ROOT, "scripts", "ingest.mjs"), "utf8");
+    const prompts = [...runner.matchAll(/prompt\("([a-z_.0-9]+)"/g)].flatMap((m) =>
+      m[1] === undefined ? [] : [m[1]],
+    );
+    const missing = prompts.filter(
+      (name) => !statSync(join(ROOT, "prompts", `${name}.md`), { throwIfNoEntry: false })?.isFile(),
+    );
+    expect(missing, "these prompts are loaded but no file exists").toEqual([]);
   });
 });

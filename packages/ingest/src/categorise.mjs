@@ -13,6 +13,9 @@
  * someone can read and a test someone can add — where a wrong answer from a model is a
  * shrug.
  *
+ * IT READS THE TITLE AND NOTHING ELSE. See categoriseFromText: the summary fallback it used
+ * to have produced every wrong answer in run 43 and no right ones.
+ *
  * IT RETURNS NULL RATHER THAN GUESSING. "Women in Foreign Affairs Mentorship Group" and "The
  * Government of Japan Exchange and Teaching Programme" have no code in the taxonomy, and
  * inventing a near-miss for them would be worse than `other`: a reader filtering by
@@ -61,12 +64,27 @@ const SIGNALS = /** @type {const} */ ([
 export const CATEGORISER_CODES = [...new Set(SIGNALS.map(([, code]) => code))];
 
 /**
- * A category code from what the listing calls itself, or null when it does not say.
+ * A category code from what the listing calls ITSELF, in its title, or null.
  *
- * The title carries almost all of the signal, so it is weighted by being read alone first: a
- * page body mentioning "our scholarship programme" in a footer should not turn a hackathon
- * into a scholarship. Only when the title is silent does the summary get a look, and the page
- * body is never consulted — it is where the false positives live.
+ * THE TITLE IS THE ONLY FIELD READ, and that is a correction rather than a simplification.
+ * An earlier version fell back to the summary when the title was silent. Run 43 put it over
+ * the live `other` bucket: of 44 moves, every one taken from a title was right, and all four
+ * wrong ones came from the summary.
+ *
+ *   grant        ← "UBA Foundation 2026 National Essay Competition"    (summary: awards grants to winners)
+ *   scholarship  ← "2026 UBA National Essay Competition"               (summary: scholarship for the winner)
+ *   scholarship  ← "Northeastern University Global Study Expo"         (summary: scholarships will be discussed)
+ *   scholarship  ← "Cassava and Vodafone bring an AI data centre"      (summary: mentions a scholarship fund)
+ *
+ * A title names the thing. Any other prose MENTIONS things — what the prize is, what the
+ * organiser also runs, what will be talked about at the event — and a mention reads exactly
+ * like a declaration to a regex. Distinguishing them needs to know what the sentence is
+ * DOING, which is a model's job and not a pattern's; `--recategorise` hands the leftovers to
+ * one (prompts/classify.v1.md) rather than guessing here.
+ *
+ * `record` still takes a summary, and still ignores it. Dropping the field would make the
+ * call sites look as though the summary had never been considered, and it was — wrongly, in
+ * production, and that is worth leaving legible.
  *
  * @param {{ title?: string | null, summary?: string | null }} record
  * @returns {string | null}
@@ -74,9 +92,5 @@ export const CATEGORISER_CODES = [...new Set(SIGNALS.map(([, code]) => code))];
 export function categoriseFromText(record) {
   const title = typeof record.title === "string" ? record.title : "";
   for (const [pattern, code] of SIGNALS) if (pattern.test(title)) return code;
-
-  const summary = typeof record.summary === "string" ? record.summary : "";
-  if (!summary) return null;
-  for (const [pattern, code] of SIGNALS) if (pattern.test(summary)) return code;
   return null;
 }

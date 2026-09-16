@@ -113,8 +113,8 @@ describe("reading the category out of a real title", () => {
   });
 
   it("does not let a page's footer rewrite the title", () => {
-    // The title is read alone first. A hackathon whose page mentions the organiser's
-    // scholarship programme elsewhere is still a hackathon.
+    // The title is read alone. A hackathon whose page mentions the organiser's scholarship
+    // programme elsewhere is still a hackathon.
     expect(
       categoriseFromText({
         title: "Climate Data Hackathon 2026",
@@ -122,10 +122,93 @@ describe("reading the category out of a real title", () => {
       }),
     ).toBe("hackathon");
   });
+});
 
-  it("falls back to the summary only when the title is silent", () => {
+describe("the summary, which this used to read and no longer does", () => {
+  /**
+   * These four are the entire case for the change, and they are not hypotheticals: run 43 of
+   * the Ingestion workflow proposed all four against the live catalogue, from summaries, while
+   * every answer it took from a title was correct.
+   *
+   * The pattern is the same each time. A title DECLARES what a thing is; any other prose
+   * MENTIONS things — the prize, the organiser's other programmes, the topics a panel will
+   * discuss — and a mention is indistinguishable from a declaration to a regex.
+   */
+  const productionMistakes: [string, string][] = [
+    [
+      "UBA Foundation 2026 National Essay Competition for Nigerian senior secondary students",
+      "Winners receive education grants towards their studies.",
+    ],
+    [
+      "2026 UBA National Essay Competition For Nigerian Students",
+      "The overall winner receives a scholarship covering undergraduate study.",
+    ],
+    [
+      "Northeastern University Global Study Expo – Africa 2026",
+      "Meet admissions staff and learn about scholarships and funding options.",
+    ],
+    [
+      "Cassava and Vodafone bring Nvidia-powered AI data centre to Egypt",
+      "The partnership includes a scholarship fund for local engineers.",
+    ],
+  ];
+
+  for (const [title, summary] of productionMistakes) {
+    it(`is not read for "${title.slice(0, 40)}…"`, () => {
+      expect(categoriseFromText({ title, summary })).toBeNull();
+    });
+  }
+
+  it("is ignored even when it would have been right", () => {
+    // The honest cost of the change: a real scholarship whose title does not say so is now
+    // left for prompts/classify.v1.md instead of being caught here. That is the trade — a
+    // model can tell a mention from a declaration and this cannot — and `other` in the
+    // meantime is a worse listing, where a wrong category is a wrong promise to a reader.
     expect(
       categoriseFromText({ title: "Mbele Programme 2027", summary: "A fully funded scholarship." }),
-    ).toBe("scholarship");
+    ).toBeNull();
+  });
+});
+
+describe("the classify prompt, which reads what a title cannot say", () => {
+  const promptText = readFileSync(
+    new URL("../../../prompts/classify.v1.md", import.meta.url).pathname,
+    "utf8",
+  );
+
+  it("holds no copy of the taxonomy", () => {
+    // The same rule as extract.v1.md, and the same trap: "grant", "scholarship" and
+    // "fellowship" are ordinary English, and the prompt uses them in the examples that teach
+    // the distinction it exists to teach ("a conference that mentions travel grants is not a
+    // grant"). Asserting the file never says "grant" would fail on a true sentence and teach
+    // the next person to delete it.
+    //
+    // A COPIED LIST HAS A DIFFERENT SHAPE. It holds the codes nobody writes in a sentence —
+    // `open_source_program`, `conference_cfp` — and it holds many of them on one line.
+    expect(promptText).toContain("{{CATEGORY_CODES}}");
+
+    const multiWord = TAXONOMY.filter((code) => code.includes("_"));
+    expect(multiWord.length, "the taxonomy should have codes no one writes in prose").toBeGreaterThan(5);
+    for (const code of multiWord) {
+      expect(promptText, `${code} can only be here as a copy of the database`).not.toContain(code);
+    }
+
+    for (const line of promptText.split("\n")) {
+      const codesOnThisLine = TAXONOMY.filter(
+        (code) => code !== "other" && new RegExp(`\\b${code}\\b`).test(line),
+      );
+      expect(codesOnThisLine.length, `this line is a list of codes: ${line.slice(0, 60)}`)
+        .toBeLessThan(2);
+    }
+  });
+
+  it("allows `other` as an answer", () => {
+    // Without this the model is forced to pick a near-miss, which is the outcome the whole
+    // change exists to avoid.
+    expect(promptText).toMatch(/Return `other` when/);
+  });
+
+  it("asks what the thing IS, not what it awards", () => {
+    expect(promptText).toMatch(/prize is a scholarship is a competition/);
   });
 });

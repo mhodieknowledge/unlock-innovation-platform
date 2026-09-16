@@ -68,10 +68,10 @@ VALUES
    'https://api.groq.com/openai/v1/chat/completions', 'GROQ_API_KEY',
    'The ONE LLM call permitted in a request handler, and only because it is KV-cached for 7 days.'),
 
-  -- ── Dedupe adjudication: one short question ───────────────────────────────
-  -- Summarise: the smallest call in the system — a title and a few hundred words in, under
-  -- 400 characters out. It exists because an API source costs no model calls and schema.org
-  -- has no field for "what is this", so those records arrived with no description at all.
+  -- ── Summarise: the smallest call in the system ────────────────────────────
+  -- A title and a few hundred words in, under 400 characters out. It exists because an API
+  -- source costs no model calls and schema.org has no field for "what is this", so those
+  -- records arrived with no description at all.
   ('groq', 'summarise', 'openai/gpt-oss-20b', 10, 950, 30, false,
    'https://api.groq.com/openai/v1/chat/completions', 'GROQ_API_KEY',
    'Tiny input, tiny output. First because it is the cheapest capable model in the chain and latency does not matter in a batch job.'),
@@ -81,6 +81,24 @@ VALUES
   ('gemini', 'summarise', 'gemini-3.6-flash', 30, 1400, 15, true,
    'https://generativelanguage.googleapis.com/v1beta/models', 'GEMINI_API_KEY',
    'Last. TRAINS ON INPUT: public web content only, never user data (§2 guardrail 5).'),
+
+  -- ── Classify: one question, one word back ─────────────────────────────────
+  -- Only ever asked what a title could not answer on its own. The regex in
+  -- packages/ingest/src/categorise.mjs reads the obvious ones for free; what reaches a model
+  -- here is "Anglo American Processing Development Programme 2026", where the answer is in
+  -- the page rather than the name. Cerebras leads because the daily volume is a handful and
+  -- its quota is the one that does not need rationing.
+  ('cerebras', 'classify', 'gpt-oss-120b', 10, 14000, 30, false,
+   'https://api.cerebras.ai/v1/chat/completions', 'CEREBRAS_API_KEY',
+   'Deepest quota for the smallest question. A whole-catalogue reclassification fits inside one day.'),
+  ('groq', 'classify', 'openai/gpt-oss-20b', 20, 950, 30, false,
+   'https://api.groq.com/openai/v1/chat/completions', 'GROQ_API_KEY',
+   'Second: the same tiny prompt on a smaller model, which is enough for a one-word answer.'),
+  ('gemini', 'classify', 'gemini-3.6-flash', 30, 1400, 15, true,
+   'https://generativelanguage.googleapis.com/v1beta/models', 'GEMINI_API_KEY',
+   'Last. TRAINS ON INPUT: public web content only, never user data (§2 guardrail 5).'),
+
+  -- ── Dedupe adjudication: one short question ───────────────────────────────
   ('groq', 'dedupe', 'openai/gpt-oss-20b', 10, 950, 30, false,
    'https://api.groq.com/openai/v1/chat/completions', 'GROQ_API_KEY',
    'Only ever asked about a pair a deterministic check already flagged (§9 step 4).'),
