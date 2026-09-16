@@ -127,7 +127,8 @@ vi.mock("../src/lib/db", () => ({
   getLastVerifiedAt: vi.fn(async () => state.lastVerifiedAt),
 }));
 
-vi.mock("../src/lib/auth", () => ({
+vi.mock("../src/lib/auth", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/lib/auth")>()),
   getSessionUser: vi.fn(async () => (state.signedIn ? SESSION_USER : null)),
   getResidenceCountry: vi.fn(async () => state.residence),
 }));

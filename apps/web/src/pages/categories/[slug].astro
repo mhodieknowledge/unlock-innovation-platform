@@ -6,6 +6,7 @@
 // is the pair of pages the long-tail queries in SEO.md's opening actually describe.
 
 import Base from "../../layouts/Base.astro";
+import { cachePolicyFor, getSessionUser } from "../../lib/auth";
 import OpportunityRow from "../../components/OpportunityRow.astro";
 import { getCategoryCounts, getMatrixCells, listOpportunities } from "../../lib/db";
 import { resolveLowData } from "../../lib/lowdata";
@@ -18,6 +19,12 @@ export const prerender = false;
 const PER_PAGE = 20;
 
 const env = runtimeEnv();
+
+/**
+ * The header has to know who is reading. `cachePolicyFor` below makes sure that
+ * never reaches a shared cache — one without the other is the bug this fixes.
+ */
+const user = await getSessionUser(Astro.cookies, env);
 const { slug } = Astro.params;
 
 const categories = await getCategoryCounts(env);
@@ -27,7 +34,7 @@ const category = categories.find((row) => row.slug === slug) ?? null;
 // rewrite loses this route's status and produces a soft 404.
 if (!category) {
   Astro.response.status = 404;
-  Astro.response.headers.set("cache-control", "public, s-maxage=300");
+  cachePolicyFor(Astro.response, user, "public, s-maxage=300");
 }
 
 const page = Math.max(1, Math.trunc(Number(Astro.url.searchParams.get("page") ?? "1")) || 1);
@@ -58,7 +65,7 @@ const canonical = `/categories/${category?.slug ?? ""}`;
 const pageHref = (n: number) => (n <= 1 ? canonical : `${canonical}?page=${n}`);
 
 if (category) {
-  Astro.response.headers.set("cache-control", "public, s-maxage=900, stale-while-revalidate=3600");
+  cachePolicyFor(Astro.response, user, "public, s-maxage=900, stale-while-revalidate=3600");
   Astro.response.headers.append("vary", "Save-Data, Cookie");
 }
 
@@ -89,7 +96,7 @@ const jsonLd = !category
 
 {
   !category ? (
-    <Base title="Not found" noindex>
+    <Base user={user} title="Not found" noindex>
       <h1 class="text-display font-bold">There's no page for that kind</h1>
       <p class="prose-measure mt-3 text-body text-ink-2">
         The link may be mistyped. Every kind we cover is listed on the index.
@@ -98,6 +105,7 @@ const jsonLd = !category
     </Base>
   ) : (
 <Base
+  user={user}
   title={categoryTitle(category.name, category.open_count)}
   description={`${category.open_count} ${category.name.toLowerCase()} opportunities open to builders across Africa right now, each with the eligibility rules quoted.`}
   canonical={canonical}

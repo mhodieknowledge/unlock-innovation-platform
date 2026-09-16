@@ -25,6 +25,7 @@
 import type { OpportunityRow as Row } from "../lib/db";
 import { countdownLabel, countdownWeight, deadlineFacts, freshnessLabel } from "../lib/deadline";
 import { VERDICTS } from "../lib/verdict";
+import { verificationLabel } from "../lib/verification";
 
 import Icon from "./Icon.astro";
 
@@ -120,8 +121,13 @@ const cells: [string, string][] = lowData ? known.filter(([label]) => label === 
 
     <p class="mt-[3px] text-meta text-ink-2">
       {o.organisations?.name ?? "Organisation not identified"}
-      <span aria-hidden="true"> · </span>
-      <span>{o.verification}</span>
+      {/* The label, never the enum. A row that reads "· auto" tells a reader nothing. */}
+      {verificationLabel(o.verification) && (
+        <>
+          <span aria-hidden="true"> · </span>
+          <span>{verificationLabel(o.verification)}</span>
+        </>
+      )}
     </p>
 
     {/* Countdown: black, tabular, weight by urgency — never a coloured pill (§5.5). */}

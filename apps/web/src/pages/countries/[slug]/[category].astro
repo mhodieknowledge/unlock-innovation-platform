@@ -16,6 +16,7 @@
 // the reason that does not become 1,134 thin pages.
 
 import Base from "../../../layouts/Base.astro";
+import { cachePolicyFor, getSessionUser } from "../../../lib/auth";
 import OpportunityRow from "../../../components/OpportunityRow.astro";
 import { getCountryBySlug, getMatrixCells, listOpportunities } from "../../../lib/db";
 import { resolveLowData } from "../../../lib/lowdata";
@@ -26,6 +27,12 @@ import { runtimeEnv } from "~/lib/runtime";
 export const prerender = false;
 
 const env = runtimeEnv();
+
+/**
+ * The header has to know who is reading. `cachePolicyFor` below makes sure that
+ * never reaches a shared cache — one without the other is the bug this fixes.
+ */
+const user = await getSessionUser(Astro.cookies, env);
 const { slug, category: categorySlug } = Astro.params;
 
 const country = await getCountryBySlug(slug, env);
@@ -39,7 +46,7 @@ const country = await getCountryBySlug(slug, env);
  */
 if (!country) {
   Astro.response.status = 404;
-  Astro.response.headers.set("cache-control", "public, s-maxage=300");
+  cachePolicyFor(Astro.response, user, "public, s-maxage=300");
 }
 
 const cells = country ? await getMatrixCells(country.iso2, env) : [];
@@ -53,7 +60,7 @@ const cell = cells.find((row) => row.category_slug === categorySlug) ?? null;
  * there is nothing at that address, and the country page is the nearest useful thing.
  */
 if (country && (!cell || cell.open_count < SEO_MATRIX_FLOOR)) {
-  Astro.response.headers.set("cache-control", "public, s-maxage=900");
+  cachePolicyFor(Astro.response, user, "public, s-maxage=900");
   return Astro.redirect(`/countries/${country.slug}`, 301);
 }
 
@@ -69,7 +76,7 @@ const listed = rows.ok ? rows.data : [];
 const canonical = country && cell ? `/countries/${country.slug}/${cell.category_slug}` : "";
 
 if (country && cell) {
-  Astro.response.headers.set("cache-control", "public, s-maxage=900, stale-while-revalidate=3600");
+  cachePolicyFor(Astro.response, user, "public, s-maxage=900, stale-while-revalidate=3600");
   Astro.response.headers.append("vary", "Save-Data, Cookie");
 }
 
@@ -99,7 +106,7 @@ const jsonLd =
 
 {
   !country || !cell ? (
-    <Base title="Not found" noindex>
+    <Base user={user} title="Not found" noindex>
       <h1 class="text-display font-bold">There's nothing at this address</h1>
       <p class="prose-measure mt-3 text-body text-ink-2">
         Every African country has a page, and each kind of opportunity has one. This pair does
@@ -109,6 +116,7 @@ const jsonLd =
     </Base>
   ) : (
 <Base
+  user={user}
   title={matrixTitle(cell.category_name, country.iso2, country.name, cell.open_count)}
   description={`${cell.open_count} ${cell.category_name.toLowerCase()} opportunities open to builders in ${country.name} right now, each with an eligibility verdict and the rules quoted.`}
   canonical={canonical}

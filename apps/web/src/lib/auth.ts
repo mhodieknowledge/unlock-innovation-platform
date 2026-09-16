@@ -100,6 +100,48 @@ export async function getSessionUser(
 }
 
 /**
+ * The cache policy for a page that is shared until it is personalised.
+ *
+ * READING THE SESSION AND SETTING THE CACHE HEADER ARE ONE DECISION, so they are one call.
+ * Ten SSR pages — every opportunity, category, country and organisation page — rendered the
+ * signed-out header at a signed-in reader, and the reason was sound: they set
+ * `public, s-maxage=900`, and a page carrying somebody's name must never land in a shared
+ * cache. The detail page said so in a comment and left the session unread.
+ *
+ * But the board has always done both, and correctly: personalise, and go private in the same
+ * breath. The failure was that it took two separate statements to do it, so ten pages did the
+ * safe half and skipped the useful one. Here it takes one, and the unsafe combination —
+ * a user in the markup and `public` on the response — cannot be written.
+ *
+ * An anonymous reader still gets the shared policy unchanged, which is where edge caching
+ * actually earns its keep: crawlers, shared links, the first visit from a search result.
+ *
+ * `Vary: Cookie` is appended by the pages themselves and is deliberately NOT relied on here.
+ * Cloudflare honours `Vary` for very little, which is exactly why the private response is
+ * marked private rather than trusted to vary.
+ */
+export function cachePolicyFor(
+  response: { headers: Headers },
+  user: unknown | null,
+  sharedPolicy: string,
+  /**
+   * Any OTHER reason this particular response is not shareable.
+   *
+   * The board needs it: a page at `/` shaped by the reader's profile country or by the edge's
+   * country hint is not the `/` the next reader should be handed, even when nobody is signed
+   * in. Passing the reason here keeps that judgement in the same call as the header rather
+   * than in a separate `shareable` variable a later edit can forget to consult.
+   */
+  alsoPrivateWhen = false,
+): void {
+  const personal = alsoPrivateWhen || (user !== null && user !== undefined);
+  response.headers.set(
+    "cache-control",
+    personal ? "private, max-age=0, must-revalidate" : sharedPolicy,
+  );
+}
+
+/**
  * PRODUCT_SPEC.md §22.1 and SYSTEM_ARCHITECTURE.md §11.3.
  *
  * An account that is restricted, or has not confirmed 18+, is read-only: no

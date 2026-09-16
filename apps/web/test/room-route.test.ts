@@ -124,7 +124,8 @@ const rpc = async (fn: string) => {
   }
 };
 
-vi.mock("../src/lib/auth", () => ({
+vi.mock("../src/lib/auth", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/lib/auth")>()),
   getSessionUser: vi.fn(async () => (state.signedIn ? SESSION_USER : null)),
   createAuthClient: vi.fn(() => ({ rpc, from: () => ({}) })),
   socialWritesAllowed: vi.fn(() => ({ allowed: true, reason: null })),

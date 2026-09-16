@@ -9,6 +9,7 @@
 // people who would otherwise give up.
 
 import Base from "../layouts/Base.astro";
+import { cachePolicyFor, getSessionUser } from "../lib/auth";
 import { getClient } from "../lib/db";
 import { reportError } from "../lib/errors";
 import { runtimeEnv } from "~/lib/runtime";
@@ -16,6 +17,12 @@ import { runtimeEnv } from "~/lib/runtime";
 export const prerender = false;
 
 const env = runtimeEnv();
+
+/**
+ * The header has to know who is reading. `cachePolicyFor` below makes sure that
+ * never reaches a shared cache — one without the other is the bug this fixes.
+ */
+const user = await getSessionUser(Astro.cookies, env);
 
 const LISTING_REASONS: [string, string][] = [
   ["expired", "This has closed"],
@@ -138,7 +145,7 @@ if (Astro.request.method === "POST") {
 // SEO.md §1: a user tool, not content.
 ---
 
-<Base title={isProfile ? "Report a profile" : "Report a problem"} noindex>
+<Base user={user} title={isProfile ? "Report a profile" : "Report a problem"} noindex>
   <h1 class="text-title font-semibold">
     {isProfile ? `Report /b/${profileHandle}` : "Report a problem"}
   </h1>

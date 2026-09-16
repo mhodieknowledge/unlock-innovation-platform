@@ -81,7 +81,8 @@ const client = () => ({
       : { data: null, error: null },
 });
 
-vi.mock("../src/lib/auth", () => ({
+vi.mock("../src/lib/auth", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/lib/auth")>()),
   getSessionUser: vi.fn(async () => (state.signedIn ? VIEWER : null)),
   createAuthClient: vi.fn(() => (state.signedIn ? client() : null)),
   socialWritesAllowed: vi.fn(() => ({ allowed: true, reason: null })),

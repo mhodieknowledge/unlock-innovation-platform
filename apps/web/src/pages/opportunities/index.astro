@@ -18,7 +18,7 @@ import {
   parseFilters,
   toSearchParams,
 } from "../../lib/filters";
-import { getSessionUser } from "../../lib/auth";
+import { cachePolicyFor, getSessionUser } from "../../lib/auth";
 import { resolveLowData } from "../../lib/lowdata";
 import { search } from "../../lib/search";
 import { runtimeEnv } from "~/lib/runtime";
@@ -26,6 +26,12 @@ import { runtimeEnv } from "~/lib/runtime";
 export const prerender = false;
 
 const env = runtimeEnv();
+
+/**
+ * The header has to know who is reading. `cachePolicyFor` below makes sure that
+ * never reaches a shared cache — one without the other is the bug this fixes.
+ */
+const user = await getSessionUser(Astro.cookies, env);
 const filters = parseFilters(Astro.url);
 
 // The viewer, for the eligibility boost in ranking (§6.1). Their profile never leaves the
@@ -157,8 +163,9 @@ const moreHref = (() => {
 
 const hasMore = rows.length >= filters.limit;
 
-Astro.response.headers.set(
-  "cache-control",
+cachePolicyFor(
+  Astro.response,
+  user,
   degraded ? "public, s-maxage=30" : "public, s-maxage=300, stale-while-revalidate=600",
 );
 // The two request headers this page's weight depends on. See the note on the detail page
@@ -178,6 +185,7 @@ const SORT_LABELS: [string, string][] = [
 ---
 
 <Base
+  user={user}
   title="Open opportunities"
   description="Hackathons, grants, fellowships and scholarships open to builders across Africa, with an eligibility verdict for your country."
   noindex={isFiltered}

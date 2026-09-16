@@ -13,6 +13,7 @@
 // look at what is open Africa-wide, and tell us about a source we are missing.
 
 import Base from "../../layouts/Base.astro";
+import { cachePolicyFor, getSessionUser } from "../../lib/auth";
 import OpportunityRow from "../../components/OpportunityRow.astro";
 import {
   getCountryBySlug,
@@ -32,6 +33,12 @@ export const prerender = false;
 const PER_PAGE = 20;
 
 const env = runtimeEnv();
+
+/**
+ * The header has to know who is reading. `cachePolicyFor` below makes sure that
+ * never reaches a shared cache — one without the other is the bug this fixes.
+ */
+const user = await getSessionUser(Astro.cookies, env);
 const { slug } = Astro.params;
 
 const country = await getCountryBySlug(slug, env);
@@ -43,7 +50,7 @@ const country = await getCountryBySlug(slug, env);
  */
 if (!country) {
   Astro.response.status = 404;
-  Astro.response.headers.set("cache-control", "public, s-maxage=300");
+  cachePolicyFor(Astro.response, user, "public, s-maxage=300");
 }
 
 const page = Math.max(1, Math.trunc(Number(Astro.url.searchParams.get("page") ?? "1")) || 1);
@@ -98,10 +105,11 @@ const pageHref = (n: number) =>
 const canonical = `/countries/${country?.slug ?? ""}`;
 
 if (country) {
-  Astro.response.headers.set(
-    "cache-control",
-    degraded ? "public, s-maxage=60" : "public, s-maxage=900, stale-while-revalidate=3600",
-  );
+  cachePolicyFor(
+  Astro.response,
+  user,
+  degraded ? "public, s-maxage=60" : "public, s-maxage=900, stale-while-revalidate=3600",
+);
 }
 Astro.response.headers.append("vary", "Save-Data, Cookie");
 
@@ -136,7 +144,7 @@ const description = !country
 
 {
   !country ? (
-    <Base title="Not found" noindex>
+    <Base user={user} title="Not found" noindex>
       <h1 class="text-display font-bold">There's no country page at this address</h1>
       <p class="prose-measure mt-3 text-body text-ink-2">
         Every African country has one, so this is almost certainly a mistyped link.
@@ -145,6 +153,7 @@ const description = !country
     </Base>
   ) : (
 <Base
+  user={user}
   title={countryTitle(country.name, open)}
   description={description}
   canonical={canonical}

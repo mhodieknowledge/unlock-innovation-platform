@@ -13,7 +13,7 @@
 // page cannot accidentally render a browse surface by asking the wrong question.
 
 import Base from "../../layouts/Base.astro";
-import { getSessionUser } from "../../lib/auth";
+import { cachePolicyFor, getSessionUser } from "../../lib/auth";
 import { getClient } from "../../lib/db";
 import { reportError } from "../../lib/errors";
 import { getProjectBrowseState, stateLabel, type ProjectState } from "../../lib/projects";
@@ -59,9 +59,9 @@ if (client) {
 
 if (browse.state !== "open") {
   Astro.response.status = 404;
-  Astro.response.headers.set("cache-control", "public, s-maxage=300");
+  cachePolicyFor(Astro.response, user, "public, s-maxage=300");
 } else {
-  Astro.response.headers.set("cache-control", "public, s-maxage=900");
+  cachePolicyFor(Astro.response, user, "public, s-maxage=900");
 }
 ---
 

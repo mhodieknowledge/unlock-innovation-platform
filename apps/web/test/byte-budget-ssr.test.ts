@@ -818,7 +818,8 @@ const ACTION_ROWS = Array.from({ length: 5 }, (_, i) => ({
   priority: i + 1,
 }));
 
-vi.mock("../src/lib/auth", () => ({
+vi.mock("../src/lib/auth", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/lib/auth")>()),
   getSessionUser: vi.fn(async () => SESSION_USER),
   getResidenceCountry: vi.fn(async () => "ZW"),
   createAuthClient: vi.fn(() => ({

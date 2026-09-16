@@ -22,7 +22,7 @@ import {
   getPublishedCount,
   listOpportunities,
 } from "../lib/db";
-import { getResidenceCountry, getSessionUser } from "../lib/auth";
+import { cachePolicyFor, getResidenceCountry, getSessionUser } from "../lib/auth";
 import { freshnessLabel } from "../lib/deadline";
 import { resolveLowData } from "../lib/lowdata";
 import { itemList, website } from "../lib/seo";
@@ -103,14 +103,11 @@ const degraded = !board.ok;
  * is part of the cache key and shares safely, which is also why the "not your country?"
  * control navigates rather than setting a preference.
  */
-const shareable = user === null && resolved.source !== "profile" && resolved.source !== "hint";
-Astro.response.headers.set(
-  "cache-control",
-  degraded
-    ? "public, s-maxage=30"
-    : shareable
-      ? "public, s-maxage=300, stale-while-revalidate=600"
-      : "private, max-age=0, must-revalidate",
+cachePolicyFor(
+  Astro.response,
+  user,
+  degraded ? "public, s-maxage=30" : "public, s-maxage=300, stale-while-revalidate=600",
+  resolved.source === "profile" || resolved.source === "hint",
 );
 // Declared on every response, not only the private ones: even a shareable board depends on
 // these two headers for its WEIGHT (low-data mode), and the honest declaration is the same

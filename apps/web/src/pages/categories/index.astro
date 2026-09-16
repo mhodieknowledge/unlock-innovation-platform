@@ -6,6 +6,7 @@
 // dropping the empty ones would make the coverage look more even than it is.
 
 import Base from "../../layouts/Base.astro";
+import { cachePolicyFor, getSessionUser } from "../../lib/auth";
 import { getCategoryCounts } from "../../lib/db";
 import { resolveLowData } from "../../lib/lowdata";
 import { breadcrumb, itemList } from "../../lib/seo";
@@ -15,10 +16,16 @@ import { runtimeEnv } from "~/lib/runtime";
 export const prerender = false;
 
 const env = runtimeEnv();
+
+/**
+ * The header has to know who is reading. `cachePolicyFor` below makes sure that
+ * never reaches a shared cache — one without the other is the bug this fixes.
+ */
+const user = await getSessionUser(Astro.cookies, env);
 const categories = await getCategoryCounts(env);
 const open = categories.reduce((sum, row) => sum + row.open_count, 0);
 
-Astro.response.headers.set("cache-control", "public, s-maxage=900, stale-while-revalidate=3600");
+cachePolicyFor(Astro.response, user, "public, s-maxage=900, stale-while-revalidate=3600");
 Astro.response.headers.append("vary", "Save-Data, Cookie");
 
 const lowData = resolveLowData({ cookies: Astro.cookies, request: Astro.request }).on;
@@ -34,6 +41,7 @@ const jsonLd = [
 ---
 
 <Base
+  user={user}
   title="Opportunities by kind"
   description="Hackathons, grants, fellowships, scholarships and the rest — what is open in each, right now."
   canonical="/categories"

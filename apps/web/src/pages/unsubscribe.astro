@@ -18,6 +18,7 @@
 // nothing else, so knowing a token is the whole of the authorisation.
 
 import Base from "../layouts/Base.astro";
+import { cachePolicyFor, getSessionUser } from "../lib/auth";
 import { getClient } from "../lib/db";
 import { reportError } from "../lib/errors";
 import { runtimeEnv } from "~/lib/runtime";
@@ -25,6 +26,12 @@ import { runtimeEnv } from "~/lib/runtime";
 export const prerender = false;
 
 const env = runtimeEnv();
+
+/**
+ * The header has to know who is reading. `cachePolicyFor` below makes sure that
+ * never reaches a shared cache — one without the other is the bug this fixes.
+ */
+const user = await getSessionUser(Astro.cookies, env);
 const client = getClient(env);
 
 const token = (Astro.url.searchParams.get("t") ?? "").slice(0, 200);
@@ -105,7 +112,7 @@ const what = type ? (LABELS[type] ?? "these messages") : "these messages";
 const canReduce = type === "digest" && frequency === "daily";
 ---
 
-<Base title="Unsubscribe" noindex>
+<Base user={user} title="Unsubscribe" noindex>
   {
     state === "no_token" && (
       <div class="max-w-prose">

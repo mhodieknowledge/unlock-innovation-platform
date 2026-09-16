@@ -8,6 +8,8 @@
 // SYSTEM_ARCHITECTURE.md §3.2 (15 min) and API_SPEC.md §1.4.
 
 import Base from "../../layouts/Base.astro";
+import { verificationLabel } from "../../lib/verification";
+import { cachePolicyFor, getSessionUser } from "../../lib/auth";
 import EligibilityCheck from "../../components/EligibilityCheck.svelte";
 import { getClient, getCountryNames, getOpportunity } from "../../lib/db";
 import { getIntentCount, getRoomState } from "../../lib/rooms";
@@ -29,6 +31,12 @@ export const prerender = false;
 const { slug } = Astro.params;
 const env = runtimeEnv();
 
+/**
+ * The header has to know who is reading. `cachePolicyFor` below makes sure that
+ * never reaches a shared cache — one without the other is the bug this fixes.
+ */
+const user = await getSessionUser(Astro.cookies, env);
+
 const found = await getOpportunity(slug!, env);
 
 // 410 GONE for a merged record, never a silent redirect — a merged record is not
@@ -36,7 +44,7 @@ const found = await getOpportunity(slug!, env);
 if (!found.ok && found.reason === "gone") {
   const target = "mergedInto" in found ? found.mergedInto : null;
   Astro.response.status = 410;
-  Astro.response.headers.set("cache-control", "public, s-maxage=3600");
+  cachePolicyFor(Astro.response, user, "public, s-maxage=3600");
   return Astro.rewrite(target ? `/opportunities/${target}?merged=1` : "/opportunities");
 }
 
@@ -44,8 +52,9 @@ if (!found.ok && found.reason === "not_found") {
   Astro.response.status = 404;
 }
 
-Astro.response.headers.set(
-  "cache-control",
+cachePolicyFor(
+  Astro.response,
+  user,
   found.ok ? "public, s-maxage=900, stale-while-revalidate=3600" : "public, s-maxage=60",
 );
 
@@ -159,10 +168,23 @@ const teamLabel =
       ? "Individual"
       : null;
 
+/**
+ * The facts worth a cell, and `Closes` is deliberately not among them.
+ *
+ * The countdown is rendered beside this grid at `countdown-lg` in black — §1.2 makes it "the
+ * single most typographically prominent thing" on the page — so a `Closes` cell printed the
+ * same deadline twice, a centimetre apart. Worse, `capitalize` on the cell turned
+ * `countdownLabel`'s "14 days left" into "14 Days Left", which is a value the product does not
+ * say anywhere else. The row component reached the same conclusion for the same reason.
+ */
 const factGrid: [string, string][] = opp
   ? ([
-      ["Closes", facts ? countdownLabel(facts) : "Unknown"],
-      ["Format", opp.participation_mode === "unknown" ? "Not stated" : opp.participation_mode],
+      [
+        "Format",
+        opp.participation_mode === "unknown"
+          ? "Not stated"
+          : opp.participation_mode.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()),
+      ],
       teamLabel ? ["Team", teamLabel] : null,
       prize ? ["Prize", prize] : null,
       ["Cost", opp.cost === "free" ? "Free to enter" : opp.cost === "paid" ? "Has a cost" : "Not stated"],
@@ -173,7 +195,7 @@ const factGrid: [string, string][] = opp
 
 {
   !opp ? (
-    <Base title="Not found" noindex>
+    <Base user={user} title="Not found" noindex>
       <h1 class="text-display font-bold">
         {found.ok === false && found.reason === "unavailable"
           ? "We can't load this right now"
@@ -188,6 +210,7 @@ const factGrid: [string, string][] = opp
     </Base>
   ) : (
     <Base
+      user={user}
       title={opportunityTitle(opp)}
       description={opportunityDescription(opp, countryNames)}
       noindex={isExpired}
@@ -222,7 +245,18 @@ const factGrid: [string, string][] = opp
         )
       }
 
-      <h1 class="text-display font-bold">{opp.title}</h1>
+      {/*
+        EDITORIAL HIERARCHY, not one enormous line. The title was `text-display` at every
+        width, which on a phone spent three lines and the whole first screen on the one thing
+        the reader already knew — they clicked it. The category above and the organisation
+        below do the work a 34px line was being asked to do alone, and the title steps up to
+        display only where there is room for it.
+      */}
+      <p class="text-micro font-semibold uppercase tracking-[0.08em] text-ink-3">
+        {opp.categories?.name ?? "Opportunity"}
+      </p>
+
+      <h1 class="mt-1 text-title font-bold text-balance md:text-display">{opp.title}</h1>
 
       <p class="mt-1 text-meta text-ink-2">
         {
@@ -236,10 +270,24 @@ const factGrid: [string, string][] = opp
         }
         <span aria-hidden="true"> · </span>
         <span class="rounded-[2px] bg-sunken px-[6px] py-[2px] text-micro font-semibold">
-          {opp.verification}
+          {verificationLabel(opp.verification) ?? opp.verification}
         </span>
       </p>
 
+      {
+        opp.summary && (
+          <>
+                        <p class="prose-measure mt-4 text-body text-ink-2">{opp.summary}</p>
+          </>
+        )
+      }
+
+      {/*
+        THE DECISION BLOCK. Countdown, the facts it turns on, then the two things a reader
+        can do — all before the eligibility island. The island used to come first, so the
+        page asked for a country, a student status and a birth year before it had said what
+        the opportunity was or when it closed.
+      */}
       <!-- Countdown: black, tabular, weight by urgency. The one piece of
            expressive typography in the system (DESIGN_SYSTEM.md §2.2). -->
       <p
@@ -271,13 +319,18 @@ const factGrid: [string, string][] = opp
         )
       }
 
-      <!-- The personal verdict. One island; the page HTML above and below is
-           identical for every viewer and stays cacheable. -->
-      <EligibilityCheck
-        client:idle
-        opportunityId={opp.id}
-        officialUrl={opp.official_url ?? opp.source_url ?? ""}
-      />
+      <!-- Fact grid: labelled cells separated by hairlines, not a middle-dot
+           string (DESIGN_SYSTEM.md §5.6). -->
+      <dl class="mt-6 grid grid-cols-2 border-t border-line md:grid-cols-4">
+        {
+          factGrid.map(([label, value]) => (
+            <div class="border-b border-r border-line px-3 py-2">
+              <dt class="text-micro font-semibold text-ink-2">{label}</dt>
+              <dd class="text-dense">{value}</dd>
+            </div>
+          ))
+        }
+      </dl>
 
       <p class="mt-6 flex flex-wrap gap-3">
         {
@@ -305,6 +358,14 @@ const factGrid: [string, string][] = opp
           >Save opportunity</a
         >
       </p>
+
+      <!-- The personal verdict. One island; the page HTML above and below is
+           identical for every viewer and stays cacheable. -->
+      <EligibilityCheck
+        client:idle
+        opportunityId={opp.id}
+        officialUrl={opp.official_url ?? opp.source_url ?? ""}
+      />
 
       {
         /* §2.3 `[PR]`: the count appears at 5 or more and NOT AT ALL below that.
@@ -337,28 +398,6 @@ const factGrid: [string, string][] = opp
               >No one has said they're going for this yet. Say you're going</a
             >
           </p>
-        )
-      }
-
-      <!-- Fact grid: labelled cells separated by hairlines, not a middle-dot
-           string (DESIGN_SYSTEM.md §5.6). -->
-      <dl class="mt-6 grid grid-cols-2 border-t border-line md:grid-cols-4">
-        {
-          factGrid.map(([label, value]) => (
-            <div class="border-b border-r border-line px-3 py-2">
-              <dt class="text-micro font-semibold text-ink-2">{label}</dt>
-              <dd class="text-dense capitalize">{value}</dd>
-            </div>
-          ))
-        }
-      </dl>
-
-      {
-        opp.summary && (
-          <>
-            <h2 class="mt-8 text-subtitle font-semibold">Summary</h2>
-            <p class="prose-measure mt-2 text-body">{opp.summary}</p>
-          </>
         )
       }
 

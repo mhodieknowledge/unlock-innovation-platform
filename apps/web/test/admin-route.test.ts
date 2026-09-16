@@ -138,7 +138,8 @@ const rpc = async (fn: string) => {
   return { data: answers[fn] ?? null, error: null };
 };
 
-vi.mock("../src/lib/auth", () => ({
+vi.mock("../src/lib/auth", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/lib/auth")>()),
   getSessionUser: vi.fn(async () => SESSION()),
   createAuthClient: vi.fn(() => ({
     rpc,

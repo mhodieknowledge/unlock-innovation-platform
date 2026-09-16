@@ -193,7 +193,8 @@ function tableStub(table: string) {
 
 const client = () => ({ from: (t: string) => tableStub(t), rpc });
 
-vi.mock("../src/lib/auth", () => ({
+vi.mock("../src/lib/auth", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/lib/auth")>()),
   getSessionUser: vi.fn(async () => (state.signedIn ? SESSION_USER : null)),
   getResidenceCountry: vi.fn(async () => null),
   createAuthClient: vi.fn(() => (state.signedIn ? client() : null)),

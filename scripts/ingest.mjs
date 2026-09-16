@@ -515,10 +515,20 @@ async function deriveRules(doc, record) {
 /**
  * @param {string | null} name
  * @param {string} url
+ * @param {{ url?: string | null } | null} [source] The source the document came from.
  * @returns {Promise<{ id: string | null, how: string }>}
  */
-async function resolveOrganisation(name, url) {
-  const domain = hostOf(url);
+async function resolveOrganisation(name, url, source = null) {
+  /**
+   * The document's domain identifies the ORGANISER only when we followed a link out to
+   * them. On an aggregator — Opportunity Desk, Opportunities for Africans, the whole tier-2
+   * feed layer — every listing shares one domain, so matching on it attaches every listing
+   * to whichever organisation happened to be created first. That is how one fellowship came
+   * to be credited to another's title, and it is the second half of the same bug.
+   */
+  const documentDomain = hostOf(url);
+  const sourceDomain = source?.url ? hostOf(source.url) : null;
+  const domain = documentDomain && documentDomain !== sourceDomain ? documentDomain : null;
 
   if (domain) {
     const { rows } = await client.query(
@@ -649,13 +659,28 @@ async function processDocument(source, item) {
   // model was available, and it reads the SOURCE, not the model's `cost` field.
   const fee = detectFeeLanguage(doc.text);
 
-  const organisationName =
+  /**
+   * WHO IS RUNNING THIS, or nobody.
+   *
+   * This used to fall back to `item.title` — the feed item's own headline — when extraction
+   * produced no organisation name. That is not a fallback, it is an invention: it created
+   * organisations literally called "AfricaLics Visiting PhD Fellowship Programme 2027 for
+   * young African PhD Students (Funded)" and "France Student Visa Financial Requirements
+   * 2026/2027", and then `resolveOrganisation` matched every later listing from the same
+   * aggregator to them by domain. The live board showed three of eight rows attributed to an
+   * organisation that was another row's title.
+   *
+   * On a product whose whole claim is that a listing is checked against its own source,
+   * attributing a fellowship to the wrong body is worse than admitting we do not know. The
+   * row component has always rendered "Organisation not identified" for a null, and that is
+   * the honest output.
+   */
+  const extractedName =
     typeof extracted.record.organisation_name === "string"
-      ? extracted.record.organisation_name
-      : typeof item.title === "string"
-        ? item.title
-        : null;
-  const organisation = await resolveOrganisation(organisationName, doc.canonicalUrl);
+      ? extracted.record.organisation_name.trim()
+      : "";
+  const organisationName = extractedName.length > 0 ? extractedName : null;
+  const organisation = await resolveOrganisation(organisationName, doc.canonicalUrl, source);
 
   const summary =
     typeof extracted.record.summary === "string" ? extracted.record.summary : null;

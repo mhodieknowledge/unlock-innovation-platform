@@ -66,7 +66,8 @@ const OPPORTUNITY = {
 
 const state = { entries: [] as unknown[], lowDataAccount: false };
 
-vi.mock("../src/lib/auth", () => ({
+vi.mock("../src/lib/auth", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/lib/auth")>()),
   getSessionUser: vi.fn(async () => ({
     ...SESSION_USER,
     low_data_mode: state.lowDataAccount,

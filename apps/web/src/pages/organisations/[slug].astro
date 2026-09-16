@@ -7,6 +7,7 @@
 // powers "this runs annually" (OPPORTUNITY_INGESTION.md §5.4).
 
 import Base from "../../layouts/Base.astro";
+import { cachePolicyFor, getSessionUser } from "../../lib/auth";
 import Monogram from "../../components/Monogram.astro";
 import OpportunityRow from "../../components/OpportunityRow.astro";
 import { getOrganisation } from "../../lib/db";
@@ -20,11 +21,18 @@ export const prerender = false;
 const { slug } = Astro.params;
 const env = runtimeEnv();
 
+/**
+ * The header has to know who is reading. `cachePolicyFor` below makes sure that
+ * never reaches a shared cache — one without the other is the bug this fixes.
+ */
+const user = await getSessionUser(Astro.cookies, env);
+
 const found = await getOrganisation(slug!, env);
 if (!found.ok && found.reason === "not_found") Astro.response.status = 404;
 
-Astro.response.headers.set(
-  "cache-control",
+cachePolicyFor(
+  Astro.response,
+  user,
   found.ok ? "public, s-maxage=21600, stale-while-revalidate=86400" : "public, s-maxage=60",
 );
 
@@ -81,7 +89,7 @@ const VERIFICATION_COPY: Record<string, string> = {
 
 {
   !org ? (
-    <Base title="Organisation not found" noindex>
+    <Base user={user} title="Organisation not found" noindex>
       <h1 class="text-display font-bold">
         {found.ok === false && found.reason === "unavailable"
           ? "We can't load this right now"
@@ -96,6 +104,7 @@ const VERIFICATION_COPY: Record<string, string> = {
     </Base>
   ) : (
     <Base
+      user={user}
       title={`${org.name} — opportunities and programmes`}
       description={org.description ?? `Opportunities and programmes run by ${org.name}.`}
       canonical={`/organisations/${org.slug}`}

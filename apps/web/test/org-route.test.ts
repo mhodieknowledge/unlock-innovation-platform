@@ -117,7 +117,8 @@ function tableStub(table: string) {
   return chain;
 }
 
-vi.mock("../src/lib/auth", () => ({
+vi.mock("../src/lib/auth", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/lib/auth")>()),
   getSessionUser: vi.fn(async () => SESSION_USER),
   createAuthClient: vi.fn(() => ({ rpc, from: (t: string) => tableStub(t) })),
   socialWritesAllowed: vi.fn(() => ({ allowed: true, reason: null })),
