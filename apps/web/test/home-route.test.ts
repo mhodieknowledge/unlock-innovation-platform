@@ -238,6 +238,26 @@ describe("the board is the hero (UX_FLOWS.md §2)", () => {
     expect(html).not.toMatch(/<select[^>]*name="country"/);
   });
 
+  it("never lowercases a category name by hand", () => {
+    /*
+     * "48 ai challenge open now" shipped in the hero. I fixed it there, and the next
+     * composition wrote `band.category.name.toLowerCase()` twenty lines away, which put
+     * "All 48 ai challenges →" on the page — the same mistake, a second time, because the
+     * rule lived in one call site instead of in a function.
+     *
+     * Category names are seeded in sentence case and some begin with an acronym ("AI
+     * challenge"), so lowering the first letter is only correct when the first two are not
+     * both capitals. That test is `categoryPhrase`, and this asserts nothing bypasses it.
+     */
+    const page = readFileSync(
+      new URL("../src/pages/index.astro", import.meta.url).pathname,
+      "utf8",
+    );
+    expect(page, "use categoryPhrase — it knows an acronym from a capitalised word").not.toMatch(
+      /\.name\.toLowerCase\(\)/,
+    );
+  });
+
   it("gives every standalone link a 44px target, per DESIGN_SYSTEM.md §329", () => {
     /*
      * WHAT THIS MEASURES, AND WHAT IT DOES NOT. It reads the source for the class that sets

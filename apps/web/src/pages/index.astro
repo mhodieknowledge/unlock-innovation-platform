@@ -235,7 +235,10 @@ const cycleCategories =
     : [];
 
 /**
- * "48 ai challenge open now" is what the hero said on the live site.
+ * "48 ai challenge open now" is what the hero said on the live site, and "All 48 ai challenges"
+ * is what a band's link said after I fixed the hero — the same mistake, written out a second
+ * time twenty lines apart. Both call this now, which is the only reason the second one cannot
+ * drift from the first again.
  *
  * Two bugs in one interpolation: the count was never pluralised, and `.toLowerCase()` was
  * applied to a name that can begin with an acronym. Category names are seeded in sentence case
@@ -658,7 +661,7 @@ const STATS = [
             href={`/categories/${band.category.slug}`}
             class="mt-4 inline-flex min-h-12 items-center rounded-row border border-line-strong bg-surface px-5 text-dense font-semibold text-ink no-underline hover:bg-sunken"
           >
-            All {band.category.open_count} {band.category.name.toLowerCase()}s →
+            All {band.category.open_count} {categoryPhrase(band.category.name)} →
           </a>
         </div>
       </section>
