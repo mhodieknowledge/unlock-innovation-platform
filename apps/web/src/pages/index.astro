@@ -4,29 +4,34 @@
 // "The most characteristic thing in this product's world is a live list of things about to
 // close." This page is that list, arranged so it reads as a home screen rather than a feed.
 //
-// THE SHAPE IS A RHYTHM: rail, band, rail, band. A horizontal rail of listings, then a
-// full-bleed category band with a photograph, then that category's own rail, then the next
-// band. Three rails and two bands put roughly twenty real opportunities on the page and keep
-// it feeling composed — which a single long vertical list does not, however good the cards
-// are. A page where every section is the same shape reads as a search result; a page that
-// changes shape between sections reads as somewhere that was designed.
+// THE SHAPE IS SECTIONS OF ONE LIST, and it took three tries to get here.
 //
-// WHAT CHANGED TWICE, AND WHY THE SECOND CHANGE IS NOT THE FIRST ONE UNDONE. The version
-// before last put the board in a CAROUSEL — a slide deck, one card filling the width, seven
-// off-screen with nothing to say they existed, reached through JavaScript and 8×8px dots.
-// Measured on an iPhone 13 that was one visible listing, 1.67 viewports down the page. So the
-// deck went, and with it went the horizontal arrangement and the photography — and that was an
-// overcorrection, because the deck was the defect, not the direction.
+// First it was a CAROUSEL: a slide deck, one card filling the width, seven off-screen with
+// nothing to say they existed, reached through JavaScript and 8×8px dots. On an iPhone 13
+// that was one visible listing, 1.67 viewports down the page.
 //
-// A RAIL IS NOT A DECK. Its cards are ~78vw, so the next one is always cut off at the edge,
-// and a cut-off card is the only affordance a horizontal list needs. It is native overflow
-// scrolling: no script, a touch drag, a trackpad swipe, arrow keys once focused, and a
-// `tabindex` so a keyboard can reach it at all (the thing the deck's dots were pretending to
-// do). Nothing is hidden from a crawler or from a reader without JavaScript — every card is in
-// the HTML either way.
+// Then it was RAILS AND BANDS: horizontal overflow-scrolling rows of cards, with full-bleed
+// photographic category bands between them. That fixed the deck's real defect — every card
+// was in the HTML, reachable without script — and it looked composed. But it kept the
+// deck's underlying bet, which is that a reader will scroll sideways through a list of
+// things they are trying to COMPARE. Two axes of scrolling on one page is a reader deciding
+// which direction the page wants, twelve times, while trying to read deadlines.
 //
-// Photography comes back with it, and stays honest: category-level and generic, never attached
-// to a specific listing. A photograph of one real opportunity is a claim we cannot check.
+// Now it is one direction. Every section is a vertical list, and the page is read the way
+// a phone is already being read. What that costs is the composed look the bands gave it;
+// what it buys is that the second listing in a section is visible without a gesture, which
+// the rails never managed. Roughly eighteen real opportunities are on the page, all of them
+// scannable in one motion.
+//
+// THE BANDS ARE GONE, AND "BROWSE BY KIND" IS WHY. A band was a full-bleed photograph
+// carrying a category name and its count — the loudest thing on the page after the hero,
+// spent on saying "hackathons exist". The category grid below says that for all twenty-one
+// categories, in one screenful, with the same live counts. Two answers to one question, and
+// the quiet one was the more complete. So a featured category is now a heading and a count
+// over its listings, which is the part of a band that was carrying information.
+//
+// CARDS BECAME ROWS for the same reason (see OpportunityRow): a border earns its keep
+// between two cards side by side, and there is no side by side here any more.
 //
 // CONTENT_AND_LAUNCH.md §1: every number here is true and computed live, and disappears when
 // it comes back empty rather than being padded to look like a launch.
@@ -36,10 +41,6 @@ import Base from "../layouts/Base.astro";
 import Icon from "../components/Icon.astro";
 import OpportunityRow from "../components/OpportunityRow.astro";
 import heroImage from "../assets/marketing/hero-collab.jpg";
-import catHackathon from "../assets/marketing/cat-hackathon.jpg";
-import catScholarship from "../assets/marketing/cat-scholarship.jpg";
-import catGrant from "../assets/marketing/cat-grant.jpg";
-import catInternship from "../assets/marketing/cat-internship.jpg";
 import {
   getCategoryCounts,
   getCountry,
@@ -55,29 +56,22 @@ import { itemList, website } from "../lib/seo";
 import { BRAND, NO_FEE_STATEMENT } from "@mbele/config";
 import { runtimeEnv } from "~/lib/runtime";
 
-/**
- * One representative photograph per category, for the feature bands and the category cards.
- * Never rendered on an individual opportunity, which has no photograph of its own — and could
- * not honestly be given one.
- */
-const CATEGORY_IMAGES: Record<string, ImageMetadata> = {
-  hackathon: catHackathon,
-  scholarship: catScholarship,
-  grant: catGrant,
-  internship: catInternship,
-};
-
 export const prerender = false;
 
 const env = runtimeEnv();
 
 /**
- * §2 item 3 asked for 8 rows "enough to prove the board is alive, above the fold". Eight was
- * the right number for a carousel showing one of them. It is the wrong number for a feed that
- * a reader scrolls: twelve is roughly three screens of scanning, which is long enough to feel
- * like a catalogue and short enough that "view all" still means something.
+ * §2 item 3 asked for 8 rows, "enough to prove the board is alive, above the fold", and this
+ * number has now been wrong in both directions. Eight was too few for a carousel that showed
+ * one of them at a time. Twelve was right for a RAIL, where the eleven cards a reader does
+ * not want cost them nothing — they are off-screen sideways, and scrolling past them is a
+ * gesture nobody has to make.
+ *
+ * Vertically every row is ~112px of page that everyone pays for on the way to the category
+ * sections and the trust panel below. Eight is §2's number, and with two category sections
+ * under it the board still puts eighteen real listings on the page.
  */
-const BOARD_SIZE = 12;
+const BOARD_SIZE = 8;
 
 const user = await getSessionUser(Astro.cookies, env);
 
@@ -135,77 +129,71 @@ const rows = board.ok ? board.data : [];
 const degraded = !board.ok;
 
 /**
- * The two category bands, and the rails beneath them.
+ * The two featured categories, and the listings under each.
  *
  * Ordered by what is actually open, so the page reflects the catalogue rather than a
  * hard-coded pair of favourites. `other` is excluded: it is where a listing goes when the
  * taxonomy has no word for it, so as a destination it promises nothing.
  *
- * A PHOTOGRAPH IS NOT A REQUIREMENT, and making it one was a mistake worth recording. We hold
- * four photographs; of those categories only hackathons clears the floor (grants 3,
- * internships 3, scholarships 4), while AI challenges with forty-eight and fellowships with
- * nine have none. Requiring a photograph therefore meant either one band and no rhythm, or a
- * band spent on the fourth-largest category — both decided by what is in assets/marketing
- * rather than by what the catalogue holds. A band without a photograph is a colour band with
- * the same proportions, which is a deliberate variant rather than an absence.
- */
-/**
- * A band needs enough listings to fill the rail underneath it.
+ * WHAT A FEATURED CATEGORY IS NOW. It was a full-bleed photographic band with the name and
+ * count set over it, then a rail of that category's listings. The photograph is gone with
+ * the band — a category-level stock image was doing compositional work rather than telling
+ * anyone anything, and "Browse by kind" below already answers "what kinds are there?" for
+ * all of them with the same live counts. What is left is the part that carried information:
+ * a heading, a true count, and the listings themselves.
  *
- * `open_count > 0` was the first rule and the live page showed what it buys: scholarships, with
- * FOUR open, took a full-width photographic band and a rail of two, while AI challenges with
- * forty-eight sat in a small card below — because scholarships had a photograph and AI
- * challenges did not. A band is the loudest thing on the page after the hero; spending it on
- * the fourth-largest category because of what is in the assets folder is letting the assets
- * folder edit the page.
- *
- * Six is the floor: enough that the rail is a rail rather than a pair. A category with fewer
- * is not hidden — it is in the card grid below with its true count, which is the honest place
- * for it.
+ * SIX IS STILL THE FLOOR, for a reason that survived the redesign. Scholarships with FOUR
+ * open once took a full-width band while AI challenges with forty-eight sat in a small card
+ * below, because scholarships had a photograph in assets/marketing and AI challenges did
+ * not — the assets folder editing the page. There is no photograph to bias it now, but a
+ * section of two under a heading is still a section that should have been a card, so the
+ * floor stays. A category below it is not hidden: it is in the grid with its true count.
  */
-const BAND_FLOOR = 6;
+const SECTION_FLOOR = 6;
 
-const FEATURE_BANDS = categoryCounts
-  .filter((c) => c.open_count >= BAND_FLOOR && c.code !== "other")
+/** How many listings a featured category shows before "all N" takes over. */
+const SECTION_SIZE = 5;
+
+const FEATURE_SECTIONS = categoryCounts
+  .filter((c) => c.open_count >= SECTION_FLOOR && c.code !== "other")
   .sort((a, b) => b.open_count - a.open_count)
   .slice(0, 2);
 
 /**
- * THE BANDS ARE NOT COUNTRY-FILTERED, AND THE FIRST RAIL IS. That is a deliberate division,
- * and getting it wrong was visible on the live page: a band headed "79 open now" — the count
- * comes from `category_open_counts`, which is global — sat above a rail of TWO, because the
- * rail was filtered to the reader's country and the heading was not. A number over a row that
- * contradicts it is worse than no number.
+ * THE SECTIONS ARE NOT COUNTRY-FILTERED, AND THE BOARD IS. That is a deliberate division,
+ * and getting it wrong was visible on the live page: a heading reading "79 open now" — the
+ * count comes from `category_open_counts`, which is global — sat above a list of TWO,
+ * because the list was filtered to the reader's country and the heading was not. A number
+ * over a list that contradicts it is worse than no number.
  *
- * So the top rail is the personal one ("open to Zimbabwe and Africa-wide") and the bands are
- * the catalogue: their count, their rail and the category page they link to now all describe
- * the same set. Anyone who wants the personal view of a category has the filter on that page.
+ * So the board at the top is the personal one ("open to Zimbabwe and Africa-wide") and the
+ * category sections are the catalogue: their count, their listings and the category page
+ * they link to all describe the same set. Anyone who wants the personal view of a category
+ * has the filter on that page.
  */
-const bandResults = await Promise.all(
-  FEATURE_BANDS.map((c) => listOpportunities({ categoryCode: c.code, limit: 24 }, env)),
+const sectionResults = await Promise.all(
+  FEATURE_SECTIONS.map((c) => listOpportunities({ categoryCode: c.code, limit: 16 }, env)),
 );
 
 /**
- * A band's rail does not repeat what the first rail already showed.
+ * A section does not repeat what the board already showed.
  *
- * The top rail is the soonest twelve overall and a band is the soonest of one category, so
+ * The board is the soonest eight overall and a section is the soonest of one category, so
  * the most urgent hackathon is in both by definition. Twice on one screenful reads as a
- * catalogue that has run out of things to show. Fourteen are fetched so that after the
- * overlap is removed there are still eight — a rail of three is a rail that should have been
- * a list.
+ * catalogue that has run out of things to show. Sixteen are fetched so that after the
+ * overlap is removed there are still five.
  */
 const shownAlready = new Set(rows.map((r) => r.id));
 
-const bands = FEATURE_BANDS.map((category, i) => ({
+const sections = FEATURE_SECTIONS.map((category, i) => ({
   category,
-  image: CATEGORY_IMAGES[category.code],
-  rows: (bandResults[i]?.ok ? bandResults[i].data : [])
+  rows: (sectionResults[i]?.ok ? sectionResults[i].data : [])
     .filter((o) => !shownAlready.has(o.id))
-    .slice(0, 8),
-})).filter((band) => band.rows.length > 0);
+    .slice(0, SECTION_SIZE),
+})).filter((section) => section.rows.length > 0);
 
-/** Every category shown in a band, so the card grid below does not repeat them. */
-const BANDED = new Set(bands.map((b) => b.category.code));
+/** Every category given a section, so the card grid below does not repeat it. */
+const SECTIONED = new Set(sections.map((b) => b.category.code));
 
 /**
  * WHAT KIND OF THING IT IS, DRAWN RATHER THAN PHOTOGRAPHED.
@@ -216,9 +204,9 @@ const BANDED = new Set(bands.map((b) => b.category.code));
  * image had failed to load — which is the one thing a deliberate variant must never do.
  *
  * An icon has no such shortfall, because there is no missing asset to notice. Every card
- * is now one object: white, hairline, one icon, the name, the count. The photographs are
- * not lost — they still carry the feature bands above, where a picture is doing a
- * compositional job rather than labelling a row in a directory.
+ * is now one object: white, hairline, one icon, the name, the count. The photographs went
+ * with the bands in the pass after this one — once a category was a heading rather than a
+ * full-bleed image, there was nowhere on this page a stock photograph was doing work.
  *
  * The map is by code with a fallback, so a category added to the taxonomy tomorrow gets
  * the generic mark rather than nothing at all.
@@ -248,7 +236,7 @@ const CATEGORY_ICONS: Record<string, "code" | "award" | "briefcase" | "growth" |
 
 /** The rest of the directory, as cards — one shape, one icon each. */
 const CATEGORY_CARDS = categoryCounts
-  .filter((c) => c.open_count > 0 && c.code !== "other" && !BANDED.has(c.code))
+  .filter((c) => c.open_count > 0 && c.code !== "other" && !SECTIONED.has(c.code))
   .sort((a, b) => b.open_count - a.open_count)
   .slice(0, 6)
   .map((c) => ({ ...c, icon: CATEGORY_ICONS[c.code] ?? ("categories" as const) }));
@@ -582,12 +570,13 @@ const STATS = [
     )
   }
 
-  {/* ── RAIL ONE — what is closing, as a rail. ────────────────────────────────
-      Twelve cards, the next always cut off at the right edge. The cut is the affordance:
-      it says there is more without a control to say it, which is what the old deck's
-      8×8px dots were for. Native overflow scrolling, so it needs no script — and
-      `tabindex` makes the region reachable by keyboard, which a scrollable area is not by
-      default (axe calls this scrollable-region-focusable, and the deck failed it too). ── */}
+  {/* ── THE BOARD — what is closing, as a list. ───────────────────────────────
+      Eight rows, stacked, separated by a hairline. No `tabindex` and no
+      `aria-label` on the list any more: both existed to make a horizontally
+      scrolling region reachable by keyboard (axe calls it
+      scrollable-region-focusable), and a vertical list of links has never needed
+      either — the rows are in the tab order because they contain links. The
+      section's own `aria-labelledby` names it. ─────────────────────────────── */}
   <section class="mx-auto max-w-[1160px] px-4 pt-6" aria-labelledby="board">
     <div class="flex flex-wrap items-center justify-between gap-x-4">
       <h2 id="board" class="text-title font-bold tracking-[-0.015em]">Closing soonest</h2>
@@ -608,17 +597,13 @@ const STATS = [
 
     {
       rows.length > 0 ? (
-        /* `tabindex` and a label, but NOT `role="group"`: that replaces the <ul>'s implicit
-           list role and orphans every <li> inside it, which is what axe caught on the first
-           run of this. A labelled, focusable list is already the right thing. */
-        <ul
-          class="rail mt-3 -mx-4 list-none px-4"
-          tabindex="0"
-          aria-label="Opportunities closing soonest"
-        >
+        /* `divide-y` puts the hairline BETWEEN rows and never above the first or below the
+           last, which is the one thing a border on each row cannot do without a
+           `last:border-0` that the next person deletes. */
+        <ul class="mt-2 list-none divide-y divide-line p-0">
           {rows.map((o) => (
             <li>
-              <OpportunityRow opportunity={o} lowData={lowData} />
+              <OpportunityRow opportunity={o} lowData={lowData} variant="list" />
             </li>
           ))}
         </ul>
@@ -671,87 +656,59 @@ const STATS = [
     }
   </section>
 
-  {/* ── BAND + RAIL, TWICE — the rhythm. ──────────────────────────────────────
-      A full-bleed photograph with the category's name and its live count set over it, then
-      that category's own listings as a rail beneath. The band is the beat between two
-      rails: it changes the page's shape, which is what stops a home screen reading as a
-      search result, and it carries a real number rather than a slogan.
+  {/* ── FEATURED CATEGORIES — the same list, twice more, under a heading. ─────
+      A band used to sit here: a full-bleed photograph with the category's name and count
+      set over it, alternating its overlay side on desktop so two in a row did not read as
+      a template. It was the loudest thing on the page after the hero, and what it said was
+      the category's name — which the grid below now says for all twenty-one of them, with
+      the same live counts, in one screenful.
 
-      The photograph is generic and category-level by necessity — a photograph attached to a
-      specific listing would be a claim we cannot check — so it is doing a compositional job
-      and is marked `aria-hidden`, because it says nothing a screen reader needs.
+      So the heading is the band. Same information (name, count, a way into the category),
+      a tenth of the page, and no stock photograph standing in for a fact.
 
-      Bands alternate their overlay side on desktop so two in a row do not read as a
-      repeated template. On a phone there is only one side, so they simply differ in the
-      photograph. ────────────────────────────────────────────────────────────────────── */}
+      Deliberately the SAME shape as the board above rather than a contrasting one. The old
+      page changed shape between sections on the theory that a page where every section
+      looks alike reads as a search result. What it actually produced was a reader deciding,
+      at each section, which way this one scrolls. One shape, read one way, and the heading
+      is what says a new section has started. ─────────────────────────────────────────── */}
   {
-    bands.map((band, i) => (
-      <section class="pt-12" aria-labelledby={`band-${band.category.code}`}>
-        <div class="relative isolate overflow-hidden">
-          {band.image && !lowData ? (
-            <>
-              <Image
-                src={band.image}
-                alt=""
-                aria-hidden="true"
-                widths={[480, 800, 1200, 1600]}
-                sizes="100vw"
-                loading="lazy"
-                class="absolute inset-0 -z-10 h-full w-full object-cover"
-              />
-              <div
-                class={`absolute inset-0 -z-10 bg-gradient-to-t from-black/90 via-black/60 to-black/30 ${
-                  i % 2 === 1 ? "lg:bg-gradient-to-l" : "lg:bg-gradient-to-r"
-                }`}
-              />
-            </>
-          ) : (
-            /* The same band, in ink instead of a photograph. Same proportions, same type, so
-               the rhythm does not stutter where the assets folder happens to stop. */
-            <div class="absolute inset-0 -z-10 bg-gradient-to-br from-brand-ink to-ink" />
-          )}
-          <div
-            class={`mx-auto flex max-w-[1160px] flex-col justify-end px-4 pt-24 pb-6 lg:pt-32 lg:pb-10 ${
-              i % 2 === 1 ? "lg:items-end lg:text-right" : ""
-            }`}
+    sections.map((section) => (
+      <section class="mx-auto max-w-[1160px] px-4 pt-10" aria-labelledby={`cat-${section.category.code}`}>
+        <div class="flex flex-wrap items-center justify-between gap-x-4">
+          <h2
+            id={`cat-${section.category.code}`}
+            class="text-title font-bold tracking-[-0.015em]"
           >
-            <p class="eyebrow text-white/70">{band.category.open_count} open now</p>
-            <h2
-              id={`band-${band.category.code}`}
-              class="mt-1 text-title font-bold tracking-[-0.02em] text-white lg:text-display"
-            >
-              {band.category.name}s
-            </h2>
-          </div>
-        </div>
-
-        <div class="mx-auto max-w-[1160px] px-4 pt-4">
-          <ul
-            class="rail -mx-4 list-none px-4"
-            tabindex="0"
-            aria-label={`${band.category.name}s closing soonest`}
-          >
-            {band.rows.map((o) => (
-              <li>
-                <OpportunityRow opportunity={o} lowData={lowData} />
-              </li>
-            ))}
-          </ul>
+            {section.category.name}s
+          </h2>
           <a
-            href={`/categories/${band.category.slug}`}
-            class="mt-4 inline-flex min-h-12 items-center rounded-row border border-line-strong bg-surface px-5 text-dense font-semibold text-ink no-underline hover:bg-sunken"
+            href={`/categories/${section.category.slug}`}
+            class="inline-flex min-h-11 items-center text-meta font-semibold text-brand no-underline hover:underline"
           >
-            All {band.category.open_count} {categoryPhrase(band.category.name)} →
+            All {section.category.open_count} →
           </a>
         </div>
+        <p class="text-meta text-ink-2">{section.category.open_count} open across Africa</p>
+
+        <ul class="mt-2 list-none divide-y divide-line p-0">
+          {section.rows.map((o) => (
+            <li>
+              {/* No category label on these rows: the section heading two lines above
+                  already says it, and repeating it five times in 11px caps is a heading
+                  read back in a quieter voice. */}
+              <OpportunityRow opportunity={o} lowData={lowData} variant="list" hideCategory />
+            </li>
+          ))}
+        </ul>
       </section>
     ))
   }
 
-  {/* ── CATEGORY CARDS — the rest of the directory, with a picture where we have one.
+  {/* ── CATEGORY CARDS — the rest of the directory. ──────────────────────────
       Name, live count and the next deadline, which is the fact that decides whether a
-      category is worth opening today. A card with no photograph is typographic rather than
-      given a grey box: the absence of a picture is not something to paper over. ───────── */}
+      category is worth opening today. This is the section that made the photographic
+      bands redundant: it answers "what kinds are there, and is any of them worth my
+      time today?" for every category at once, which a band answered for one. ────────── */}
   {
     CATEGORY_CARDS.length > 0 && (
       <section class="mx-auto max-w-[1160px] px-4 pt-12" aria-labelledby="by-category">
@@ -784,8 +741,9 @@ const STATS = [
                 So the photographs come out of the grid entirely and the cards are white.
                 What distinguishes one from another is now the icon and the count — the
                 two things that actually differ — carried on a hairline-and-shadow card
-                that matches every other card in the product. The pictures still exist
-                where they earn their keep: the full-bleed bands above.
+                that matches every other card in the product. The pictures are gone from
+                the page entirely now — the bands that were holding them went in the pass
+                after this one, because this grid is what made them redundant.
 
                 The icon sits in a brand wash tile rather than loose on the white, which
                 gives the card a fixed anchor point so six of them scan as a column of
