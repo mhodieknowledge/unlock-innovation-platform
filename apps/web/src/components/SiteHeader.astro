@@ -29,8 +29,8 @@ interface Props {
 const { user = null, unread = 0, pathname } = Astro.props;
 ---
 
-<header class="sticky top-0 z-40 border-b border-line bg-surface">
-  <div class="mx-auto flex max-w-[1160px] items-center gap-3 px-4 py-[10px] lg:gap-6">
+<header class="sticky top-0 z-40 border-b border-line bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
+  <div class="mx-auto flex max-w-[1160px] items-center gap-4 px-4 py-3 lg:gap-8">
     <a
       href="/"
       class="shrink-0 text-[20px] font-bold leading-6 tracking-[-0.02em] text-brand no-underline lg:text-title"
@@ -53,7 +53,7 @@ const { user = null, unread = 0, pathname } = Astro.props;
           type="search"
           name="q"
           placeholder="Search opportunities"
-          class="h-10 w-56 rounded-row border border-line-strong bg-surface px-3 text-dense"
+          class="h-10 w-64 rounded-row border border-line-strong bg-sunken px-3 text-dense placeholder:text-ink-3 focus:bg-surface"
         />
       </label>
     </form>

@@ -9,6 +9,7 @@
 // money without asking.
 
 import Base from "../../layouts/Base.astro";
+import Icon from "../../components/Icon.astro";
 import OpportunityRow from "../../components/OpportunityRow.astro";
 import { getOpportunitiesByIds, searchOpportunities } from "../../lib/db";
 import {
@@ -194,23 +195,32 @@ const SORT_LABELS: [string, string][] = [
   offlineCapable
   feed={{ path: "/feeds/closing-soon.xml", title: "Closing this week" }}
 >
-  <h1 class="text-title font-semibold">Open opportunities</h1>
+  <h1 class="text-title font-bold tracking-[-0.015em]">Open opportunities</h1>
+  <p class="mt-1 text-dense text-ink-2">
+    Scholarships, fellowships, hackathons and grants open across Africa, searchable by what
+    they are, where they're open to, and when they close.
+  </p>
 
-  <form method="get" action="/opportunities" class="mt-4">
-    <label class="block">
+  <form method="get" action="/opportunities" class="mt-5 rounded-sheet border border-line bg-surface p-4">
+    <label class="relative block">
       <span class="sr-only">Search opportunities</span>
+      <Icon
+        name="search"
+        size={20}
+        class="pointer-events-none absolute top-1/2 left-3 h-[18px] w-[18px] -translate-y-1/2 text-ink-3"
+      />
       <input
         type="search"
         name="q"
         value={filters.q ?? ""}
-        placeholder="remote AI hackathons open to Zimbabwe"
-        class="h-11 w-full rounded-row border border-line-strong bg-surface px-3"
+        placeholder="Search scholarships, hackathons, grants…"
+        class="h-12 w-full rounded-row border border-line-strong bg-surface pr-3 pl-10 text-[15px]"
       />
     </label>
 
     <!-- Filters that survive without JavaScript. UX_FLOWS.md §1: no page needs
          JS to display its content, and these are plain form controls. -->
-    <div class="mt-2 flex flex-wrap gap-2">
+    <div class="mt-3 flex flex-wrap gap-2">
       <label class="text-meta">
         <span class="sr-only">Country</span>
         <input
@@ -218,12 +228,12 @@ const SORT_LABELS: [string, string][] = [
           value={filters.country ?? ""}
           maxlength="2"
           placeholder="Country"
-          class="h-11 w-24 rounded-row border border-line-strong px-2 uppercase"
+          class="h-11 w-24 rounded-row border border-line-strong bg-surface px-3 uppercase"
         />
       </label>
       <label class="text-meta">
         <span class="sr-only">Format</span>
-        <select name="mode" class="h-11 rounded-row border border-line-strong bg-surface px-2">
+        <select name="mode" class="h-11 rounded-row border border-line-strong bg-surface px-3">
           <option value="">Any format</option>
           <option value="online" selected={filters.mode === "online"}>Remote</option>
           <option value="in_person" selected={filters.mode === "in_person"}>In person</option>
@@ -232,14 +242,14 @@ const SORT_LABELS: [string, string][] = [
       </label>
       <label class="text-meta">
         <span class="sr-only">Cost</span>
-        <select name="cost" class="h-11 rounded-row border border-line-strong bg-surface px-2">
+        <select name="cost" class="h-11 rounded-row border border-line-strong bg-surface px-3">
           <option value="">Any cost</option>
           <option value="free" selected={filters.cost === "free"}>Free to enter</option>
         </select>
       </label>
       <label class="text-meta">
         <span class="sr-only">Sort by</span>
-        <select name="sort" class="h-11 rounded-row border border-line-strong bg-surface px-2">
+        <select name="sort" class="h-11 rounded-row border border-line-strong bg-surface px-3">
           {
             SORT_LABELS.map(([value, label]) => (
               <option {value} selected={filters.sort === value}>
@@ -249,7 +259,7 @@ const SORT_LABELS: [string, string][] = [
           }
         </select>
       </label>
-      <button type="submit" class="h-11 rounded-row bg-brand px-4 font-semibold text-surface">
+      <button type="submit" class="h-11 rounded-row bg-brand px-5 text-dense font-semibold text-surface hover:bg-brand-ink">
         Apply
       </button>
     </div>
@@ -257,15 +267,15 @@ const SORT_LABELS: [string, string][] = [
 
   {
     compiledChips.length > 0 && (
-      <div class="mt-3">
+      <div class="mt-4">
         <p class="text-meta text-ink-2">
           We read that as — remove anything we got wrong:
         </p>
-        <div class="mt-1 flex flex-wrap items-center gap-2">
+        <div class="mt-2 flex flex-wrap items-center gap-2">
           {compiledChips.map((chip) => (
             <a
               href={compiledHref(chip)}
-              class="inline-flex min-h-11 items-center gap-1 rounded-row border border-brand bg-brand-wash px-3 text-meta text-brand no-underline"
+              class="inline-flex min-h-11 items-center gap-1 rounded-monogram border border-brand bg-brand-wash px-3 text-meta font-medium text-brand no-underline"
               title={`From "${chip.from}"`}
             >
               {chip.label}
@@ -273,7 +283,7 @@ const SORT_LABELS: [string, string][] = [
               <span class="sr-only">Remove this filter</span>
             </a>
           ))}
-          <a href={compiledHref()} class="text-meta text-brand">Keep these as filters</a>
+          <a href={compiledHref()} class="text-meta font-semibold text-brand no-underline hover:underline">Keep these as filters</a>
         </div>
       </div>
     )
@@ -281,18 +291,18 @@ const SORT_LABELS: [string, string][] = [
 
   {
     chips.length > 0 && (
-      <div class="mt-3 flex flex-wrap items-center gap-2">
+      <div class="mt-4 flex flex-wrap items-center gap-2">
         {chips.map((chip) => (
           <a
             href={chip.removeHref}
-            class="inline-flex items-center gap-1 rounded-row bg-brand-wash px-2 py-1 text-meta text-brand no-underline"
+            class="inline-flex min-h-11 items-center gap-1 rounded-monogram bg-brand-wash px-3 text-meta font-medium text-brand no-underline"
           >
             {chip.label}
             <span aria-hidden="true">×</span>
             <span class="sr-only">Remove this filter</span>
           </a>
         ))}
-        <a href="/opportunities" class="text-meta text-brand">Clear all</a>
+        <a href="/opportunities" class="text-meta font-semibold text-brand no-underline hover:underline">Clear all</a>
       </div>
     )
   }
@@ -318,18 +328,18 @@ const SORT_LABELS: [string, string][] = [
             needs its own h2 — the count line above is the visible label, and repeating it as a
             heading would be noise for a sighted reader and a missing level for everyone else. */}
         <h2 class="sr-only">Results</h2>
-        <div class="mt-3 border-t border-line">
+        <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {rows.map((o) => (
             <OpportunityRow opportunity={o} lowData={lowData} />
           ))}
         </div>
 
         {hasMore && (
-          <p class="mt-4">
+          <p class="mt-6 text-center">
             <a
               href={moreHref}
               rel="nofollow"
-              class="inline-flex min-h-11 items-center rounded-row border border-line-strong bg-surface px-4 font-semibold no-underline"
+              class="inline-flex min-h-11 items-center rounded-row border border-line-strong bg-surface px-5 text-dense font-semibold no-underline hover:bg-sunken"
               >Show 20 more</a
             >
           </p>
@@ -338,7 +348,7 @@ const SORT_LABELS: [string, string][] = [
     ) : (
       /* Empty states: one sentence naming the situation, one action
          (DESIGN_SYSTEM.md §6.4). Never an illustration, never "Nothing here yet!". */
-      <div class="mt-6 border border-line bg-surface p-4">
+      <div class="mt-6 rounded-sheet border border-line bg-surface p-5">
         {degraded ? (
           <>
             <p class="font-semibold">We can't search right now.</p>
@@ -349,9 +359,9 @@ const SORT_LABELS: [string, string][] = [
         ) : isFiltered ? (
           <>
             <p class="font-semibold">No open opportunities match these filters.</p>
-            <p class="mt-2 flex flex-wrap gap-3 text-dense">
-              <a href="/opportunities" class="text-brand">Clear filters</a>
-              <a href="/opportunities?region=africa_wide" class="text-brand"
+            <p class="mt-2 flex flex-wrap gap-4 text-dense">
+              <a href="/opportunities" class="font-semibold text-brand no-underline hover:underline">Clear filters</a>
+              <a href="/opportunities?region=africa_wide" class="font-semibold text-brand no-underline hover:underline"
                 >Search all of Africa</a
               >
             </p>

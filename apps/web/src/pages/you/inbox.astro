@@ -121,7 +121,7 @@ function link(row: Row): string | null {
 ---
 
 <Base title="Your messages" noindex user={user} unread={unread}>
-  <h1 class="text-title font-semibold">Your messages</h1>
+  <h1 class="text-title font-bold tracking-[-0.015em]">Your messages</h1>
   <p class="mt-2 max-w-prose text-dense text-ink-2">
     Everything we have sent you, whether or not it reached you by Telegram or email. Nothing here is
     ever only a push — the record is written first, so nothing is lost when a channel is off, paused
@@ -130,7 +130,7 @@ function link(row: Row): string | null {
 
   {
     failed && (
-      <p class="mt-4 max-w-prose border-l-[3px] border-danger bg-noteligible-wash p-3 text-dense">
+      <p class="mt-4 max-w-prose rounded-sheet border border-danger/30 bg-noteligible-wash p-4 text-dense text-danger">
         We couldn't load your messages just now. Nothing has been deleted — try again in a moment.
       </p>
     )
@@ -138,14 +138,14 @@ function link(row: Row): string | null {
 
   {
     !failed && rows.length === 0 && (
-      <div class="mt-6 max-w-prose rounded-sheet border border-line bg-surface p-4">
+      <div class="mt-6 max-w-prose rounded-sheet border border-line bg-surface p-5">
         <p class="text-dense font-semibold">Nothing yet.</p>
         <p class="mt-1 text-dense text-ink-2">
           Save something to your tracker and we will remind you before it closes. That is the only
           thing we will message you about unprompted.
         </p>
         <p class="mt-3">
-          <a href="/opportunities" class="text-brand">Find something to save</a>
+          <a href="/opportunities" class="font-semibold text-brand no-underline hover:underline">Find something to save</a>
         </p>
       </div>
     )
@@ -154,7 +154,7 @@ function link(row: Row): string | null {
   {
     unread > 0 && (
       <form method="post" class="mt-4">
-        <button type="submit" class="min-h-11 rounded-row border border-line px-4 text-dense">
+        <button type="submit" class="min-h-11 rounded-row border border-line-strong bg-surface px-4 text-dense font-semibold text-ink hover:bg-sunken">
           Mark {unread} as read
         </button>
       </form>
@@ -163,18 +163,19 @@ function link(row: Row): string | null {
 
   {
     rows.length > 0 && (
-      <ul class="mt-6 max-w-prose divide-y divide-line">
+      <ul class="mt-6 flex max-w-prose flex-col gap-3">
         {rows.map((row) => (
-          <li class={`py-4 ${row.read_at === null ? "border-l-[3px] border-brand pl-3" : ""}`}>
-            <p class="text-micro uppercase tracking-wide text-ink-2">
+          <li class={`rounded-sheet border bg-surface p-4 ${row.read_at === null ? "border-brand/30" : "border-line"}`}>
+            <p class="eyebrow text-ink-3">
+              {row.read_at === null && <span class="mr-1 inline-block size-[6px] rounded-full bg-brand align-middle" aria-hidden="true" />}
               {TYPE_LABELS[row.type] ?? "Message"} · {dateTime(row.created_at)}
             </p>
             <p class="mt-1 text-dense font-semibold">{headline(row)}</p>
             {/* §1.1: the reason is a required field, "rendered in the message". */}
             <p class="mt-1 text-dense text-ink-2">{row.reason}</p>
             {link(row) && (
-              <p class="mt-1">
-                <a href={link(row)!} class="text-brand text-dense">
+              <p class="mt-2">
+                <a href={link(row)!} class="text-dense font-semibold text-brand no-underline hover:underline">
                   Open it
                 </a>
               </p>
@@ -186,6 +187,6 @@ function link(row: Row): string | null {
   }
 
   <p class="mt-8 text-micro text-ink-2">
-    <a href="/you/notifications" class="underline">Choose what we send and when</a>
+    <a href="/you/notifications" class="font-semibold text-brand no-underline hover:underline">Choose what we send and when</a>
   </p>
 </Base>

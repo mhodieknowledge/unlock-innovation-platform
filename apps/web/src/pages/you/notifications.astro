@@ -213,10 +213,10 @@ const pad = (h: number) => `${String(h).padStart(2, "0")}:00`;
 ---
 
 <Base title="Notifications" noindex user={user}>
-  <h1 class="text-title font-semibold">Notifications</h1>
+  <h1 class="text-title font-bold tracking-[-0.015em]">Notifications</h1>
 
   <!-- §8: the caps, stated visibly. -->
-  <p class="mt-2 max-w-prose border-l-[3px] border-brand bg-brand-wash p-3 text-dense">
+  <p class="mt-3 max-w-prose rounded-sheet border border-brand/30 bg-brand-wash p-4 text-dense">
     At most <strong class="font-semibold">one digest a day</strong> and
     <strong class="font-semibold">three other messages</strong>. We never send anything to get your
     attention back — no streaks, no unread counts, no notifications about other people's activity
@@ -226,10 +226,10 @@ const pad = (h: number) => `${String(h).padStart(2, "0")}:00`;
   {
     flash && (
       <p
-        class={`mt-3 max-w-prose border-l-[3px] p-3 text-dense ${
+        class={`mt-3 max-w-prose rounded-sheet border p-4 text-dense font-medium ${
           flashKind === "ok"
-            ? "border-eligible bg-eligible-wash text-eligible"
-            : "border-danger bg-noteligible-wash text-danger"
+            ? "border-eligible/30 bg-eligible-wash text-eligible"
+            : "border-danger/30 bg-noteligible-wash text-danger"
         }`}
         role="status"
       >
@@ -240,19 +240,21 @@ const pad = (h: number) => `${String(h).padStart(2, "0")}:00`;
 
   {
     isPaused && (
-      <p class="mt-3 max-w-prose border-l-[3px] border-unclear bg-unclear-wash p-3 text-dense">
-        Everything is paused until {pausedUntil!.toLocaleDateString("en-GB", { dateStyle: "long" })}.
-        You will still see everything in the app, and security messages still come through.
+      <div class="mt-3 max-w-prose rounded-sheet border border-unclear/30 bg-unclear-wash p-4 text-dense">
+        <p>
+          Everything is paused until {pausedUntil!.toLocaleDateString("en-GB", { dateStyle: "long" })}.
+          You will still see everything in the app, and security messages still come through.
+        </p>
         <form method="post" class="mt-2">
           <input type="hidden" name="action" value="resume_all" />
-          <button type="submit" class="inline-flex min-h-11 items-center underline">Turn messages back on</button>
+          <button type="submit" class="inline-flex min-h-11 items-center font-semibold underline">Turn messages back on</button>
         </form>
-      </p>
+      </div>
     )
   }
 
   <!-- ── Telegram ────────────────────────────────────────────────────────── -->
-  <section class="mt-8 max-w-prose" aria-labelledby="telegram">
+  <section class="mt-8 max-w-prose rounded-sheet border border-line bg-surface p-5" aria-labelledby="telegram">
     <h2 id="telegram" class="text-subtitle font-semibold">Telegram</h2>
     <p class="mt-1 text-dense text-ink-2">
       Free to receive, and it does not use your email allowance. It is also a full read client —
@@ -267,7 +269,7 @@ const pad = (h: number) => `${String(h).padStart(2, "0")}:00`;
           </p>
           <form method="post" class="mt-2">
             <input type="hidden" name="action" value="unlink_telegram" />
-            <button type="submit" class="min-h-11 rounded-row border border-line px-4 text-dense">
+            <button type="submit" class="min-h-11 rounded-row border border-line-strong bg-surface px-4 text-dense font-semibold text-ink hover:bg-sunken">
               Unlink Telegram
             </button>
           </form>
@@ -288,7 +290,7 @@ const pad = (h: number) => `${String(h).padStart(2, "0")}:00`;
             </div>
           ) : (
             <form method="post" action="/api/v1/telegram/link-code">
-              <button type="submit" class="min-h-11 rounded-row bg-brand px-4 font-semibold text-surface">
+              <button type="submit" class="min-h-11 rounded-row bg-brand px-4 font-semibold text-surface hover:bg-brand-ink">
                 Get a link code
               </button>
             </form>
@@ -304,7 +306,7 @@ const pad = (h: number) => `${String(h).padStart(2, "0")}:00`;
   </section>
 
   <!-- ── The matrix ──────────────────────────────────────────────────────── -->
-  <form method="post" class="mt-8 max-w-prose">
+  <form method="post" class="mt-8 max-w-prose rounded-sheet border border-line bg-surface p-5">
     <input type="hidden" name="action" value="matrix" />
     <h2 class="text-subtitle font-semibold">What we send</h2>
     <p class="mt-1 text-dense text-ink-2">
@@ -312,10 +314,10 @@ const pad = (h: number) => `${String(h).padStart(2, "0")}:00`;
       stops the push, never the record.
     </p>
 
-    <ul class="mt-4 space-y-5">
+    <ul class="mt-4 flex flex-col gap-3">
       {
         ROWS.map((row) => (
-          <li>
+          <li class="rounded-row bg-sunken p-3">
             <p class="text-dense font-semibold">{row.label}</p>
             <p class="text-micro text-ink-2">{row.detail}</p>
             {row.channels.length === 0 ? (
@@ -328,6 +330,7 @@ const pad = (h: number) => `${String(h).padStart(2, "0")}:00`;
                       type="checkbox"
                       name={`pref:${row.type}:${channel}`}
                       checked={isOn(row.type, channel)}
+                      class="h-4 w-4 accent-brand"
                     />
                     {CHANNEL_LABELS[channel]}
                   </label>
@@ -344,21 +347,21 @@ const pad = (h: number) => `${String(h).padStart(2, "0")}:00`;
       them on purpose.
     </p>
 
-    <button type="submit" class="mt-4 min-h-11 rounded-row bg-brand px-4 font-semibold text-surface">
+    <button type="submit" class="mt-4 min-h-12 rounded-row bg-brand px-5 font-semibold text-surface hover:bg-brand-ink">
       Save what we send
     </button>
   </form>
 
   <!-- ── Frequency and quiet hours ───────────────────────────────────────── -->
-  <form method="post" class="mt-10 max-w-prose space-y-5">
+  <form method="post" class="mt-10 max-w-prose space-y-5 rounded-sheet border border-line bg-surface p-5">
     <input type="hidden" name="action" value="settings" />
     <h2 class="text-subtitle font-semibold">When we send</h2>
 
     <label class="block">
-      <span class="block text-micro font-semibold text-ink-2">Digest</span>
+      <span class="block text-meta font-semibold text-ink">Digest</span>
       <select
         name="digest_frequency"
-        class="mt-1 h-11 w-full rounded-row border border-line-strong bg-surface px-3 text-dense"
+        class="mt-1 h-12 w-full rounded-row border border-line-strong bg-surface px-3 text-dense focus:border-brand"
       >
         <option value="weekly" selected={(settings.digest_frequency ?? "weekly") === "weekly"}>
           Weekly — the default, and the one most worth reading
@@ -372,14 +375,14 @@ const pad = (h: number) => `${String(h).padStart(2, "0")}:00`;
     </label>
 
     <fieldset>
-      <legend class="text-micro font-semibold text-ink-2">
+      <legend class="text-meta font-semibold text-ink">
         Quiet hours ({user.timezone})
       </legend>
       <div class="mt-1 flex items-center gap-2">
         <select
           name="quiet_hours_start"
           aria-label="Quiet hours start"
-          class="h-11 rounded-row border border-line-strong bg-surface px-3 text-dense"
+          class="h-12 rounded-row border border-line-strong bg-surface px-3 text-dense focus:border-brand"
         >
           {HOURS.map((h) => (
             <option value={h} selected={(settings.quiet_hours_start ?? 21) === h}>
@@ -391,7 +394,7 @@ const pad = (h: number) => `${String(h).padStart(2, "0")}:00`;
         <select
           name="quiet_hours_end"
           aria-label="Quiet hours end"
-          class="h-11 rounded-row border border-line-strong bg-surface px-3 text-dense"
+          class="h-12 rounded-row border border-line-strong bg-surface px-3 text-dense focus:border-brand"
         >
           {HOURS.map((h) => (
             <option value={h} selected={(settings.quiet_hours_end ?? 7) === h}>
@@ -406,21 +409,21 @@ const pad = (h: number) => `${String(h).padStart(2, "0")}:00`;
       </p>
     </fieldset>
 
-    <button type="submit" class="min-h-11 rounded-row bg-brand px-4 font-semibold text-surface">
+    <button type="submit" class="min-h-12 rounded-row bg-brand px-5 font-semibold text-surface hover:bg-brand-ink">
       Save when we send
     </button>
   </form>
 
   {
     !isPaused && (
-      <form method="post" class="mt-10 max-w-prose border-t border-line pt-6">
+      <form method="post" class="mt-10 max-w-prose rounded-sheet border border-line bg-surface p-5">
         <input type="hidden" name="action" value="pause_all" />
         <h2 class="text-subtitle font-semibold">Pause everything</h2>
         <p class="mt-1 text-dense text-ink-2">
           Stops every message for 30 days without changing anything else. Your account, your tracker
           and your saved items are untouched.
         </p>
-        <button type="submit" class="mt-3 min-h-11 rounded-row border border-line px-4 text-dense">
+        <button type="submit" class="mt-3 min-h-11 rounded-row border border-line-strong bg-surface px-4 text-dense font-semibold text-ink hover:bg-sunken">
           Pause for 30 days
         </button>
       </form>
@@ -428,6 +431,6 @@ const pad = (h: number) => `${String(h).padStart(2, "0")}:00`;
   }
 
   <p class="mt-8 text-micro text-ink-2">
-    <a href="/you/account" class="underline">Your account, export and deletion</a>
+    <a href="/you/account" class="font-semibold text-brand no-underline hover:underline">Your account, export and deletion</a>
   </p>
 </Base>

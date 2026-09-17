@@ -179,14 +179,14 @@ const NEXT_STATES: Record<string, string[]> = {
   lowData={lowData}
   offlineCapable
 >
-  <h1 class="text-title font-semibold">Your tracker</h1>
-  <p class="mt-1 text-meta text-ink-2">
+  <h1 class="text-title font-bold tracking-[-0.015em]">Your saved opportunities</h1>
+  <p class="mt-1 text-dense text-ink-2">
     Private to you. Notes here are never read, scanned or used for anything.
   </p>
 
   {
     queued && (
-      <p class="mt-3 border-l-[3px] border-warning bg-unclear-wash p-3 text-dense" role="status">
+      <p class="mt-4 rounded-sheet border border-line bg-unclear-wash p-4 text-dense" role="status">
         That change is saved on this device and waiting to sync. It goes out as soon as you
         are back online — you can close the page.
       </p>
@@ -196,10 +196,10 @@ const NEXT_STATES: Record<string, string[]> = {
   {
     flash && (
       <p
-        class={`mt-3 border-l-[3px] p-3 text-dense ${
+        class={`mt-4 rounded-sheet border p-4 text-dense font-medium ${
           flashKind === "ok"
-            ? "border-eligible bg-eligible-wash text-eligible"
-            : "border-danger bg-noteligible-wash text-danger"
+            ? "border-eligible/30 bg-eligible-wash text-eligible"
+            : "border-danger/30 bg-noteligible-wash text-danger"
         }`}
         role="status"
       >
@@ -218,7 +218,7 @@ const NEXT_STATES: Record<string, string[]> = {
       <div
         data-install-prompt
         hidden
-        class="mt-4 flex flex-wrap items-center justify-between gap-3 border border-line bg-sunken px-3 py-2"
+        class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-sheet border border-line bg-sunken px-4 py-3"
       >
         <p class="text-dense">
           Add this to your home screen and your tracker keeps working with no connection.
@@ -241,34 +241,34 @@ const NEXT_STATES: Record<string, string[]> = {
   {
     entries.length === 0 ? (
       /* DESIGN_SYSTEM.md §6.4 — one sentence naming the situation, one action. */
-      <div class="mt-6 border border-line bg-surface p-4">
+      <div class="mt-6 rounded-sheet border border-line bg-surface p-5">
         <p class="font-semibold">Nothing saved yet.</p>
         <p class="mt-1 text-dense text-ink-2">
           Saving an opportunity gets you a reminder before it closes.
         </p>
-        <p class="mt-3">
+        <p class="mt-4">
           <a
             href="/opportunities?deadline_state=closing_this_week"
-            class="inline-flex min-h-11 items-center rounded-row bg-brand px-4 font-semibold text-surface no-underline"
+            class="inline-flex min-h-11 items-center rounded-row bg-brand px-4 text-dense font-semibold text-surface no-underline hover:bg-brand-ink"
             >Browse what's closing this week</a
           >
         </p>
       </div>
     ) : (
       <>
-        <nav class="mt-4 flex flex-wrap gap-2" aria-label="Filter by state">
+        <nav class="mt-5 flex flex-wrap gap-2" aria-label="Filter by state">
           <a
             href="/tracker"
-            class={`rounded-row px-2 py-1 text-meta no-underline ${
-              !activeTab ? "bg-brand-wash text-brand" : "bg-sunken text-ink-2"
+            class={`inline-flex min-h-9 items-center rounded-monogram px-3 text-meta font-medium no-underline ${
+              !activeTab ? "bg-brand-wash text-brand" : "bg-sunken text-ink-2 hover:bg-line"
             }`}
             >All {entries.length}</a
           >
           {Object.entries(counts).map(([state, n]) => (
             <a
               href={`/tracker?state=${state}`}
-              class={`rounded-row px-2 py-1 text-meta no-underline ${
-                activeTab === state ? "bg-brand-wash text-brand" : "bg-sunken text-ink-2"
+              class={`inline-flex min-h-9 items-center rounded-monogram px-3 text-meta font-medium no-underline ${
+                activeTab === state ? "bg-brand-wash text-brand" : "bg-sunken text-ink-2 hover:bg-line"
               }`}
             >
               {STATE_LABELS[state] ?? state} {n}
@@ -277,11 +277,11 @@ const NEXT_STATES: Record<string, string[]> = {
         </nav>
 
         {closingSoon.length > 0 && (
-          <section class="mt-6" aria-labelledby="closing-soon">
+          <section class="mt-7" aria-labelledby="closing-soon">
             <h2 id="closing-soon" class="text-subtitle font-semibold">Closing soon</h2>
-            <div class="mt-2 border-t border-line">
+            <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {closingSoon.map(({ entry, facts }) => (
-                <article class="border-b border-line bg-surface px-3 py-3">
+                <article class="rounded-sheet border border-line bg-surface p-4">
                   <h3 class="text-dense font-semibold">
                     <a
                       href={`/opportunities/${entry.opportunities?.slug ?? ""}`}
@@ -290,7 +290,7 @@ const NEXT_STATES: Record<string, string[]> = {
                     >
                   </h3>
                   <p
-                    class="mt-1 text-countdown-sm text-absolute"
+                    class="mt-2 text-countdown-sm text-ink"
                     style={`font-weight:${countdownWeight(facts?.daysRemaining ?? null)}`}
                   >
                     {facts ? countdownLabel(facts) : ""}
@@ -301,7 +301,7 @@ const NEXT_STATES: Record<string, string[]> = {
                     {freshnessLabel(entry.opportunities?.last_verified_at)}
                   </p>
 
-                  <form method="post" class="mt-2 flex flex-wrap items-center gap-2">
+                  <form method="post" class="mt-3 flex flex-wrap items-center gap-2">
                     <input type="hidden" name="entry_id" value={entry.id} />
                     <input type="hidden" name="action" value="set_state" />
                     <label class="sr-only" for={`state-${entry.id}`}>Change state</label>
@@ -316,7 +316,7 @@ const NEXT_STATES: Record<string, string[]> = {
                     </select>
                     <button
                       type="submit"
-                      class="h-11 rounded-row border border-line-strong bg-surface px-3 font-semibold text-dense"
+                      class="h-11 rounded-row border border-line-strong bg-surface px-3 font-semibold text-dense hover:bg-sunken"
                       >Update</button
                     >
                   </form>
@@ -331,9 +331,9 @@ const NEXT_STATES: Record<string, string[]> = {
             <h2 id="everything-else" class="text-subtitle font-semibold">
               {closingSoon.length > 0 ? "Everything else" : "Tracked"}
             </h2>
-            <div class="mt-2 border-t border-line">
+            <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {rest.map(({ entry, facts }) => (
-                <article class="border-b border-line bg-surface px-3 py-3">
+                <article class="rounded-sheet border border-line bg-surface p-4">
                   <h3 class="text-dense font-semibold">
                     <a
                       href={`/opportunities/${entry.opportunities?.slug ?? ""}`}
@@ -351,7 +351,7 @@ const NEXT_STATES: Record<string, string[]> = {
                     )}
                   </p>
 
-                  <div class="mt-2 flex flex-wrap items-center gap-2">
+                  <div class="mt-3 flex flex-wrap items-center gap-2">
                     <form method="post" class="flex items-center gap-2">
                       <input type="hidden" name="entry_id" value={entry.id} />
                       <input type="hidden" name="action" value="set_state" />
@@ -367,7 +367,7 @@ const NEXT_STATES: Record<string, string[]> = {
                       </select>
                       <button
                         type="submit"
-                        class="h-11 rounded-row border border-line-strong bg-surface px-3 font-semibold text-dense"
+                        class="h-11 rounded-row border border-line-strong bg-surface px-3 font-semibold text-dense hover:bg-sunken"
                         >Update</button
                       >
                     </form>
@@ -377,7 +377,7 @@ const NEXT_STATES: Record<string, string[]> = {
                       <input type="hidden" name="action" value="remove" />
                       <button
                         type="submit"
-                        class="h-11 rounded-row border border-danger bg-surface px-3 font-semibold text-dense text-danger"
+                        class="h-11 rounded-row border border-danger/40 bg-surface px-3 font-semibold text-dense text-danger hover:bg-noteligible-wash"
                         >Remove</button
                       >
                     </form>
@@ -391,9 +391,9 @@ const NEXT_STATES: Record<string, string[]> = {
         <!-- PRODUCT_SPEC.md §15 and §22.5: export is a right, self-serve, no
              support ticket. -->
         <p class="mt-8 text-meta">
-          <a href="/api/v1/tracker/export?format=json" class="text-brand">Export as JSON</a>
+          <a href="/api/v1/tracker/export?format=json" class="font-semibold text-brand no-underline hover:underline">Export as JSON</a>
           <span aria-hidden="true"> · </span>
-          <a href="/api/v1/tracker/export?format=csv" class="text-brand">Export as CSV</a>
+          <a href="/api/v1/tracker/export?format=csv" class="font-semibold text-brand no-underline hover:underline">Export as CSV</a>
         </p>
       </>
     )

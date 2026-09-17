@@ -59,29 +59,29 @@ const GROUPS: { heading: string; links: { label: string; href: string }[] }[] = 
 ];
 ---
 
-<footer class="mt-7 border-t border-line bg-surface">
-  <div class="mx-auto max-w-[1160px] px-4 pt-6 pb-5">
-    <span class="text-[20px] font-bold leading-6 tracking-[-0.02em] text-brand">{BRAND.name}</span>
-    <p class="mt-[6px] max-w-[300px] text-meta text-ink-2">
+<footer class="mt-16 border-t border-line bg-sunken">
+  <div class="mx-auto max-w-[1160px] px-4 pt-10 pb-6">
+    <span class="text-[22px] font-bold leading-6 tracking-[-0.02em] text-brand">{BRAND.name}</span>
+    <p class="mt-2 max-w-[320px] text-dense text-ink-2">
       Open opportunities across Africa, checked against their sources.
     </p>
 
     {
       /* Rule 3, for every page that does not carry the trust panel. */
       !trustPanelAbove && (
-        <p class="mt-4 border-l-[3px] border-brand bg-brand-wash p-3 text-dense font-semibold text-ink">
+        <p class="mt-5 max-w-[420px] rounded-sheet border border-line bg-surface p-3 text-dense font-medium text-ink">
           {NO_FEE_STATEMENT}
         </p>
       )
     }
 
-    <div class="mt-[22px] flex flex-wrap gap-x-10 gap-y-6">
+    <div class="mt-9 grid grid-cols-2 gap-x-8 gap-y-8 md:grid-cols-4">
       {
         GROUPS.map((group) => (
-          <nav aria-label={group.heading} class="flex flex-col gap-2">
-            <h2 class="eyebrow">{group.heading}</h2>
+          <nav aria-label={group.heading} class="flex flex-col gap-3">
+            <h2 class="eyebrow text-ink-3">{group.heading}</h2>
             {group.links.map((link) => (
-              <a href={link.href} class="text-meta text-brand no-underline hover:underline">
+              <a href={link.href} class="text-dense text-ink-2 no-underline hover:text-brand hover:underline">
                 {link.label}
               </a>
             ))}
@@ -90,7 +90,7 @@ const GROUPS: { heading: string; links: { label: string; href: string }[] }[] = 
       }
     </div>
 
-    <div class="mt-[22px] flex flex-wrap items-center gap-2 border-t border-line pt-[14px]">
+    <div class="mt-9 flex flex-wrap items-center gap-2 border-t border-line pt-4">
       {/* §10: "A persistent meta line in the footer." A form, not a script — the mode
           exists for people whose connection cannot afford a bundle, and a toggle that
           needed one would be a joke at their expense. */}
@@ -100,7 +100,7 @@ const GROUPS: { heading: string; links: { label: string; href: string }[] }[] = 
         <span class="text-micro text-ink-3">
           {lowData ? "Low-data mode is on." : "Paying by the megabyte?"}
         </span>
-        <button type="submit" class="min-h-11 text-micro font-semibold text-brand underline">
+        <button type="submit" class="min-h-11 text-micro font-semibold text-ink-2 underline">
           {lowData ? "Turn it off" : "Turn on low-data mode"}
         </button>
       </form>

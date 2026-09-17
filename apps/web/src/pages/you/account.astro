@@ -142,15 +142,15 @@ const longDate = (d: Date) => d.toLocaleDateString("en-GB", { dateStyle: "long" 
 ---
 
 <Base title="Your account" noindex user={user}>
-  <h1 class="text-title font-semibold">Your account</h1>
+  <h1 class="text-title font-bold tracking-[-0.015em]">Your account</h1>
 
   {
     flash && (
       <p
-        class={`mt-3 max-w-prose border-l-[3px] p-3 text-dense ${
+        class={`mt-3 max-w-prose rounded-sheet border p-4 text-dense font-medium ${
           flashKind === "ok"
-            ? "border-eligible bg-eligible-wash text-eligible"
-            : "border-danger bg-noteligible-wash text-danger"
+            ? "border-eligible/30 bg-eligible-wash text-eligible"
+            : "border-danger/30 bg-noteligible-wash text-danger"
         }`}
         role="status"
       >
@@ -161,7 +161,7 @@ const longDate = (d: Date) => d.toLocaleDateString("en-GB", { dateStyle: "long" 
 
   {
     pendingDeletion && (
-      <section class="mt-4 max-w-prose border-l-[3px] border-danger bg-noteligible-wash p-3">
+      <section class="mt-4 max-w-prose rounded-sheet border border-danger/30 bg-noteligible-wash p-5">
         <h2 class="text-dense font-semibold text-danger">This account is scheduled for deletion</h2>
         <p class="mt-1 text-dense">
           It was deactivated on {longDate(deletionRequestedAt!)} and everything left will be
@@ -170,7 +170,7 @@ const longDate = (d: Date) => d.toLocaleDateString("en-GB", { dateStyle: "long" 
         </p>
         <form method="post" class="mt-3">
           <input type="hidden" name="action" value="cancel_deletion" />
-          <button type="submit" class="min-h-11 rounded-row bg-brand px-4 font-semibold text-surface">
+          <button type="submit" class="min-h-12 rounded-row bg-brand px-5 font-semibold text-surface hover:bg-brand-ink">
             Keep my account
           </button>
         </form>
@@ -178,7 +178,7 @@ const longDate = (d: Date) => d.toLocaleDateString("en-GB", { dateStyle: "long" 
     )
   }
 
-  <section class="mt-8 max-w-prose" aria-labelledby="identity">
+  <section class="mt-8 max-w-prose rounded-sheet border border-line bg-surface p-5" aria-labelledby="identity">
     <h2 id="identity" class="text-subtitle font-semibold">Sign-in</h2>
     <dl class="mt-2 space-y-1 text-dense">
       <div class="flex gap-2">
@@ -200,15 +200,15 @@ const longDate = (d: Date) => d.toLocaleDateString("en-GB", { dateStyle: "long" 
     </p>
   </section>
 
-  <form method="post" class="mt-8 max-w-prose space-y-5">
+  <form method="post" class="mt-8 max-w-prose space-y-5 rounded-sheet border border-line bg-surface p-5">
     <input type="hidden" name="action" value="preferences" />
     <h2 class="text-subtitle font-semibold">Preferences</h2>
 
     <label class="block">
-      <span class="block text-micro font-semibold text-ink-2">Timezone</span>
+      <span class="block text-meta font-semibold text-ink">Timezone</span>
       <select
         name="timezone"
-        class="mt-1 h-11 w-full rounded-row border border-line-strong bg-surface px-3 text-dense"
+        class="mt-1 h-12 w-full rounded-row border border-line-strong bg-surface px-3 text-dense focus:border-brand"
       >
         {
           TIMEZONES.map((tz) => (
@@ -224,7 +224,7 @@ const longDate = (d: Date) => d.toLocaleDateString("en-GB", { dateStyle: "long" 
     </label>
 
     <label class="flex items-start gap-2">
-      <input type="checkbox" name="low_data_mode" checked={account.low_data_mode === true} class="mt-1" />
+      <input type="checkbox" name="low_data_mode" checked={account.low_data_mode === true} class="mt-1 h-4 w-4 accent-brand" />
       <span class="text-dense">
         Low-data mode
         <span class="block text-micro text-ink-2">
@@ -234,13 +234,13 @@ const longDate = (d: Date) => d.toLocaleDateString("en-GB", { dateStyle: "long" 
       </span>
     </label>
 
-    <button type="submit" class="min-h-11 rounded-row bg-brand px-4 font-semibold text-surface">
+    <button type="submit" class="min-h-12 rounded-row bg-brand px-5 font-semibold text-surface hover:bg-brand-ink">
       Save preferences
     </button>
   </form>
 
   <!-- ── Export ──────────────────────────────────────────────────────────── -->
-  <section class="mt-10 max-w-prose" aria-labelledby="export">
+  <section class="mt-10 max-w-prose rounded-sheet border border-line bg-surface p-5" aria-labelledby="export">
     <h2 id="export" class="text-subtitle font-semibold">Export my data</h2>
     <p class="mt-1 text-dense text-ink-2">
       Everything held about your account as JSON — your profile, eligibility details, tracker with
@@ -250,14 +250,14 @@ const longDate = (d: Date) => d.toLocaleDateString("en-GB", { dateStyle: "long" 
     <p class="mt-3 flex flex-wrap gap-3">
       <a
         href="/api/v1/account/export"
-        class="min-h-11 rounded-row border border-line px-4 text-dense"
+        class="inline-flex min-h-11 items-center rounded-row border border-line-strong bg-surface px-4 text-dense font-semibold text-ink no-underline hover:bg-sunken"
         download
       >
         Download everything (JSON)
       </a>
       <a
         href="/api/v1/tracker/export?format=csv"
-        class="min-h-11 rounded-row border border-line px-4 text-dense"
+        class="inline-flex min-h-11 items-center rounded-row border border-line-strong bg-surface px-4 text-dense font-semibold text-ink no-underline hover:bg-sunken"
         download
       >
         Just my tracker (CSV)
@@ -268,7 +268,7 @@ const longDate = (d: Date) => d.toLocaleDateString("en-GB", { dateStyle: "long" 
   <!-- ── Eligibility details, deletable on their own ─────────────────────── -->
   {
     hasEligibilityProfile && (
-      <form method="post" class="mt-10 max-w-prose">
+      <form method="post" class="mt-10 max-w-prose rounded-sheet border border-line bg-surface p-5">
         <input type="hidden" name="action" value="delete_eligibility" />
         <h2 class="text-subtitle font-semibold">Delete my eligibility details</h2>
         <p class="mt-1 text-dense text-ink-2">
@@ -276,7 +276,7 @@ const longDate = (d: Date) => d.toLocaleDateString("en-GB", { dateStyle: "long" 
           Verdicts go back to reading "unclear" until you fill them in again. Nothing else is
           affected.
         </p>
-        <button type="submit" class="mt-3 min-h-11 rounded-row border border-danger px-4 text-dense text-danger">
+        <button type="submit" class="mt-3 min-h-11 rounded-row border border-danger/40 bg-surface px-4 text-dense font-semibold text-danger hover:bg-noteligible-wash">
           Delete my eligibility details
         </button>
       </form>
@@ -286,7 +286,7 @@ const longDate = (d: Date) => d.toLocaleDateString("en-GB", { dateStyle: "long" 
   <!-- ── Deletion ────────────────────────────────────────────────────────── -->
   {
     !pendingDeletion && (
-      <section class="mt-10 max-w-prose border-t border-line pt-6" aria-labelledby="delete">
+      <section class="mt-10 max-w-prose rounded-sheet border border-line bg-surface p-5" aria-labelledby="delete">
         <h2 id="delete" class="text-subtitle font-semibold">Delete my account</h2>
         <p class="mt-2 text-dense">Here is exactly what happens:</p>
         <ul class="mt-2 list-disc space-y-1 pl-5 text-dense text-ink-2">
@@ -304,11 +304,11 @@ const longDate = (d: Date) => d.toLocaleDateString("en-GB", { dateStyle: "long" 
           <input type="hidden" name="action" value="delete_account" />
 
           <fieldset>
-            <legend class="text-micro font-semibold text-ink-2">
+            <legend class="text-meta font-semibold text-ink-2">
               Anything you posted publicly
             </legend>
             <label class="mt-1 flex items-start gap-2 text-dense">
-              <input type="radio" name="public_content" value="anonymise" checked class="mt-1" />
+              <input type="radio" name="public_content" value="anonymise" checked class="mt-1 accent-brand" />
               <span>
                 Keep it, without my name
                 <span class="block text-micro text-ink-2">
@@ -317,24 +317,24 @@ const longDate = (d: Date) => d.toLocaleDateString("en-GB", { dateStyle: "long" 
               </span>
             </label>
             <label class="mt-2 flex items-start gap-2 text-dense">
-              <input type="radio" name="public_content" value="remove" class="mt-1" />
+              <input type="radio" name="public_content" value="remove" class="mt-1 accent-brand" />
               <span>Remove it entirely</span>
             </label>
           </fieldset>
 
           <label class="block">
-            <span class="block text-micro font-semibold text-ink-2">
+            <span class="block text-meta font-semibold text-ink">
               Type DELETE to confirm
             </span>
             <input
               type="text"
               name="confirm"
               autocomplete="off"
-              class="mt-1 w-40 h-11 rounded-row border border-line-strong bg-surface px-3 text-dense"
+              class="mt-1 h-12 w-40 rounded-row border border-line-strong bg-surface px-3 text-dense focus:border-brand"
             />
           </label>
 
-          <button type="submit" class="min-h-11 rounded-row bg-danger px-4 font-semibold text-surface">
+          <button type="submit" class="min-h-12 rounded-row border border-danger/40 bg-surface px-5 font-semibold text-danger hover:bg-noteligible-wash">
             Delete my account
           </button>
         </form>
@@ -343,6 +343,6 @@ const longDate = (d: Date) => d.toLocaleDateString("en-GB", { dateStyle: "long" 
   }
 
   <p class="mt-8 text-micro text-ink-2">
-    <a href="/you/notifications" class="underline">Notification settings</a>
+    <a href="/you/notifications" class="font-semibold text-brand no-underline hover:underline">Notification settings</a>
   </p>
 </Base>

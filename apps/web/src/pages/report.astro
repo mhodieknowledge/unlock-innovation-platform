@@ -146,19 +146,19 @@ if (Astro.request.method === "POST") {
 ---
 
 <Base user={user} title={isProfile ? "Report a profile" : "Report a problem"} noindex>
-  <h1 class="text-title font-semibold">
+  <h1 class="text-title font-bold tracking-[-0.015em]">
     {isProfile ? `Report /b/${profileHandle}` : "Report a problem"}
   </h1>
 
   {
     state === "received" ? (
-      <div class="mt-4 border-l-[3px] border-eligible bg-eligible-wash p-4">
+      <div class="mt-4 max-w-lg rounded-sheet border border-eligible/30 bg-eligible-wash p-5">
         <p class="font-semibold text-eligible">
           <span aria-hidden="true">●</span> Report received
         </p>
         <p class="mt-1 text-dense text-ink-2">{message}</p>
         <p class="mt-3 text-dense">
-          <a href="/opportunities" class="text-brand">Back to open opportunities</a>
+          <a href="/opportunities" class="font-semibold text-brand no-underline hover:underline">Back to open opportunities</a>
         </p>
       </div>
     ) : (
@@ -170,16 +170,16 @@ if (Astro.request.method === "POST") {
         </p>
 
         {(state === "error" || state === "not_found") && (
-          <p class="mt-3 border-l-[3px] border-danger bg-noteligible-wash p-3 text-dense text-danger" role="alert">
+          <p class="mt-3 max-w-lg rounded-sheet border border-danger/30 bg-noteligible-wash p-4 text-dense text-danger" role="alert">
             {message}
           </p>
         )}
 
-        <form method="post" class="mt-4 max-w-lg space-y-4">
+        <form method="post" class="mt-5 max-w-lg space-y-4 rounded-sheet border border-line bg-surface p-5">
           {isProfile && <input type="hidden" name="profile" value={profileHandle} />}
 
           <label class={`block ${isProfile ? "hidden" : ""}`}>
-            <span class="block text-micro font-semibold text-ink-2">
+            <span class="block text-meta font-semibold text-ink">
               {isProfile ? "Profile" : "Listing"}
             </span>
             <input
@@ -187,13 +187,13 @@ if (Astro.request.method === "POST") {
               value={isProfile ? profileHandle : (subjectSlug ?? "")}
               required={!isProfile}
               placeholder="the listing's address, e.g. agritech-ai-challenge-2026"
-              class="mt-1 h-11 w-full rounded-row border border-line-strong px-3"
+              class="mt-[6px] h-12 w-full rounded-row border border-line-strong bg-surface px-3 focus:border-brand"
             />
           </label>
 
           <fieldset>
-            <legend class="text-micro font-semibold text-ink-2">What's wrong?</legend>
-            <div class="mt-2 space-y-2">
+            <legend class="text-meta font-semibold text-ink">What's wrong?</legend>
+            <div class="mt-2 flex flex-col gap-2">
               {REASONS.map(([value, label]) => (
                 <label class="flex items-center gap-2 text-dense">
                   <input
@@ -202,7 +202,7 @@ if (Astro.request.method === "POST") {
                     {value}
                     required
                     checked={chosenReason === value}
-                    class="h-4 w-4"
+                    class="h-4 w-4 accent-brand"
                   />
                   {label}
                 </label>
@@ -211,18 +211,18 @@ if (Astro.request.method === "POST") {
           </fieldset>
 
           <label class="block">
-            <span class="block text-micro font-semibold text-ink-2">
-              Anything else? <span class="font-normal">(optional)</span>
+            <span class="block text-meta font-semibold text-ink">
+              Anything else? <span class="font-normal text-ink-2">(optional)</span>
             </span>
             <textarea
               name="detail"
               rows="4"
               maxlength="1000"
-              class="mt-1 w-full rounded-row border border-line-strong p-3"
+              class="mt-[6px] w-full rounded-row border border-line-strong bg-surface p-3 focus:border-brand"
             ></textarea>
           </label>
 
-          <button type="submit" class="h-11 rounded-row bg-brand px-4 font-semibold text-surface">
+          <button type="submit" class="h-12 rounded-row bg-brand px-5 text-dense font-semibold text-surface hover:bg-brand-ink">
             Send report
           </button>
 
