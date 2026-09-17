@@ -160,7 +160,7 @@ const FEATURE_BANDS = categoryCounts
  * the same set. Anyone who wants the personal view of a category has the filter on that page.
  */
 const bandResults = await Promise.all(
-  FEATURE_BANDS.map((c) => listOpportunities({ categoryCode: c.code, limit: 14 }, env)),
+  FEATURE_BANDS.map((c) => listOpportunities({ categoryCode: c.code, limit: 24 }, env)),
 );
 
 /**
