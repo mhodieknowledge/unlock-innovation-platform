@@ -254,7 +254,7 @@ const pad = (h: number) => `${String(h).padStart(2, "0")}:00`;
   }
 
   <!-- ── Telegram ────────────────────────────────────────────────────────── -->
-  <section class="mt-8 max-w-prose" aria-labelledby="telegram">
+  <section class="mt-8 max-w-prose rounded-sheet border border-line bg-surface p-5" aria-labelledby="telegram">
     <h2 id="telegram" class="text-subtitle font-semibold">Telegram</h2>
     <p class="mt-1 text-dense text-ink-2">
       Free to receive, and it does not use your email allowance. It is also a full read client —
@@ -269,7 +269,7 @@ const pad = (h: number) => `${String(h).padStart(2, "0")}:00`;
           </p>
           <form method="post" class="mt-2">
             <input type="hidden" name="action" value="unlink_telegram" />
-            <button type="submit" class="min-h-11 rounded-row border border-line px-4 text-dense">
+            <button type="submit" class="min-h-11 rounded-row border border-line-strong bg-surface px-4 text-dense font-semibold text-ink hover:bg-sunken">
               Unlink Telegram
             </button>
           </form>
@@ -290,7 +290,7 @@ const pad = (h: number) => `${String(h).padStart(2, "0")}:00`;
             </div>
           ) : (
             <form method="post" action="/api/v1/telegram/link-code">
-              <button type="submit" class="min-h-11 rounded-row bg-brand px-4 font-semibold text-surface">
+              <button type="submit" class="min-h-11 rounded-row bg-brand px-4 font-semibold text-surface hover:bg-brand-ink">
                 Get a link code
               </button>
             </form>
