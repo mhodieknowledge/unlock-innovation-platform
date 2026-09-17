@@ -26,7 +26,7 @@ on:
         required: true
         default: ingest
         type: choice
-        options: [ingest, fill-summaries, recategorise, recheck-relevance, dedupe, links, reverify, sweep, health, check-sources, embed, recommend, match-projects, project-sweep]
+        options: [ingest, fill-summaries, recategorise, recheck-relevance, dedupe, links, reverify, sweep, health, images, check-sources, embed, recommend, match-projects, project-sweep]
       dry_run:
         description: Print what would be stored; write nothing to the database
         required: false
@@ -201,7 +201,7 @@ jobs:
             # Named rather than wildcarded, because a wildcard sent `recategorise`
             # to reverify on run 42 and the dropdown looked correct the whole time.
             # A new option above that nobody wires up now says so.
-            links|reverify|sweep|health) npm run reverify -- "$JOB" $DRY ;;
+            links|reverify|sweep|health|images) npm run reverify -- "$JOB" $DRY ;;
             *)
               echo "::error::No step is wired up for job '$JOB'. Add a branch here."
               exit 1

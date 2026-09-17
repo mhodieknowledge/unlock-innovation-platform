@@ -8,6 +8,7 @@
  *   reverify   §5.3  re-fetch, re-extract, diff, notify trackers of real changes
  *   sweep      §5.4  staleness, expiry, closure, and the cadence recomputation
  *   health     §3    alert the operator when sources are quietly dying
+ *   images           backfill the og:image of records that have none
  *
  * The reason this is separate from ingest.mjs: ingestion adds, freshness corrects,
  * and the product's central claim is the second one. IMPLEMENTATION_PLAN.md §5 calls
@@ -20,6 +21,7 @@
  *   DATABASE_URL=... node scripts/reverify.mjs reverify [--limit 20]
  *   DATABASE_URL=... node scripts/reverify.mjs sweep
  *   DATABASE_URL=... node scripts/reverify.mjs health
+ *   DATABASE_URL=... node scripts/reverify.mjs images [--limit 200]
  *   ... --dry-run
  */
 
@@ -28,6 +30,7 @@ import pg from "pg";
 import {
   canonicaliseUrl,
   contentHash,
+  extractImageUrl,
   extractJsonLd,
   htmlToText,
   recordFromJsonLd,
@@ -36,11 +39,19 @@ import {
 } from "../packages/ingest/src/index.mjs";
 import { politeFetch, robotsFor } from "./lib/fetcher.mjs";
 
-const MODES = ["links", "reverify", "sweep", "health"];
+const MODES = ["links", "reverify", "sweep", "health", "images"];
 const mode = process.argv[2];
 const dryRun = process.argv.includes("--dry-run");
 const limitArg = process.argv.indexOf("--limit");
-const LIMIT = limitArg === -1 ? 40 : Number(process.argv[limitArg + 1] ?? 40);
+/*
+ * Forty is a cadence job's number: `reverify` is meant to keep pace with what is due, not to
+ * sweep the catalogue. `images` is the opposite — a backlog walk over records that predate
+ * migration 0038, which is all of them — so its default is the whole board in one run. Both
+ * are still overridable with --limit, and both still go through politeFetch.
+ */
+const DEFAULT_LIMIT = mode === "images" ? 500 : 40;
+const LIMIT =
+  limitArg === -1 ? DEFAULT_LIMIT : Number(process.argv[limitArg + 1] ?? DEFAULT_LIMIT);
 
 if (!MODES.includes(mode ?? "")) {
   console.error(`Usage: node scripts/reverify.mjs <${MODES.join("|")}> [--limit n] [--dry-run]`);
@@ -262,6 +273,26 @@ async function runReverify() {
     }
 
     checked += 1;
+
+    /*
+     * THE PICTURE IS CAPTURED HERE, above the unchanged-hash early return below.
+     *
+     * Putting it after that return would have made this job almost useless for images: an
+     * unchanged page is the COMMON case — that is the whole point of the hash check — so the
+     * branch that continues past it runs rarely. A page whose text has not moved an inch can
+     * still be the first time we have looked for its og:image at all, which is true of every
+     * record ingested before migration 0038.
+     *
+     * coalesce, so a page that has stopped publishing one does not blank a picture we hold.
+     */
+    const picture = extractImageUrl(fetched.body, url, extractJsonLd(fetched.body));
+    if (picture && !dryRun) {
+      await client.query(
+        "UPDATE opportunities SET image_url = coalesce($2, image_url) WHERE id = $1",
+        [row.id, picture],
+      );
+    }
+
     const { text } = htmlToText(fetched.body);
     const stored = truncateForStorage(text);
     const hash = await contentHash(stored);
@@ -437,6 +468,75 @@ async function runHealth() {
   }
 }
 
+/**
+ * Backfill: the picture, for records that have none.
+ *
+ * WHY THIS EXISTS AS ITS OWN JOB. `reverify` now captures an og:image on every successful
+ * re-fetch, which keeps the catalogue current from here on — but it only visits what
+ * `due_for_verification` hands it, on a cadence measured in days to weeks. Migration 0038
+ * landed on a catalogue where every single record predated it, so waiting for the cadence
+ * meant a board of category panels for a month. This walks the backlog directly.
+ *
+ * It is re-runnable and self-limiting: a record is only a candidate while `image_url IS
+ * NULL`, so a second run picks up where the first stopped rather than re-fetching what it
+ * already answered. Records whose source publishes no og:image are re-visited on each run and
+ * simply stay null — the cost of that is one polite fetch per run, and the alternative (a
+ * "we looked and found nothing" column) is state to maintain for a card that renders the same
+ * either way.
+ *
+ * `politeFetch` is the same fetcher every other job uses, so robots.txt, crawl delay and the
+ * conditional-request headers all apply unchanged. A backfill is not a licence to hammer
+ * anyone: this is the crawler doing what it always does, for one more field.
+ */
+async function runImages() {
+  const { rows } = await client.query(
+    `SELECT id, slug, source_url, official_url
+       FROM opportunities
+      WHERE image_url IS NULL
+        AND deleted_at IS NULL
+        AND duplicate_of IS NULL
+        AND status = 'published'
+      ORDER BY deadline_at NULLS LAST
+      LIMIT $1`,
+    [LIMIT],
+  );
+
+  console.log(`${rows.length} published record(s) without a picture.\n`);
+  let found = 0;
+  let none = 0;
+  let unreachable = 0;
+
+  for (const row of rows) {
+    const url = row.source_url ?? row.official_url;
+    if (!url) continue;
+
+    const fetched = await politeFetch(url);
+    // `not_modified` carries no body, so there is nothing to read an og:image out of. It is
+    // not a failure — the page is fine, we just have no bytes this time.
+    if (fetched.status !== "ok" || !fetched.body) {
+      unreachable += 1;
+      console.log(`  ${row.slug}: no body — ${fetched.error ?? fetched.status}`);
+      continue;
+    }
+
+    const picture = extractImageUrl(fetched.body, url, extractJsonLd(fetched.body));
+    if (!picture) {
+      none += 1;
+      continue;
+    }
+
+    found += 1;
+    console.log(`  ${row.slug}: ${picture}`);
+    if (!dryRun) {
+      await client.query("UPDATE opportunities SET image_url = $2 WHERE id = $1", [row.id, picture]);
+    }
+  }
+
+  console.log(
+    `\n${found} picture(s) found, ${none} source(s) publish none, ${unreachable} unreachable.`,
+  );
+}
+
 await client.connect();
 /** @type {Error | null} */
 let failure = null;
@@ -453,6 +553,9 @@ try {
       break;
     case "health":
       await runHealth();
+      break;
+    case "images":
+      await runImages();
       break;
   }
   if (dryRun) console.log("\n(dry run — nothing was written)");
