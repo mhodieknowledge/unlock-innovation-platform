@@ -45,6 +45,7 @@ export {
 } from "./validate.mjs";
 
 export { extractJsonLd, findOpportunityNode, recordFromJsonLd } from "./jsonld.mjs";
+export { MAX_IMAGE_URL_LENGTH, extractImageUrl, safeImageUrl } from "./images.mjs";
 
 export { THIN_TEXT_CHARS, detectChallenge, looksUnrendered, stillChallenged } from "./challenge.mjs";
 

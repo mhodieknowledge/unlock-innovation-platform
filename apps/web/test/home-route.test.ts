@@ -84,6 +84,9 @@ function row(i: number, title: string, deadline: string) {
     apply_url: null,
     status: "published",
     duplicate_of: null,
+    // The `og:image` the source published (migration 0038). Set here so the low-data
+    // assertions below are about suppression rather than about an absent fixture.
+    image_url: "https://cdn.example.invalid/banner.jpg",
     organisations: { slug: "example-org", name: "Example Organisation", verification: "verified" },
     categories: { code: "ai_challenge", name: "AI challenge", slug: "ai-challenges" },
   };
@@ -433,6 +436,30 @@ describe("low-data and offline (DESIGN_SYSTEM.md §10, SYSTEM_ARCHITECTURE.md §
     // and normal mode) — it now lives once, in full, on the opportunity detail page's "Source
     // & verification" section, rather than being repeated on every card on the board.
     expect(html).not.toContain("Checked today</span>");
+
+    /*
+     * §25.2: low-data mode "suppresses all images including logos". A listing's picture is
+     * the newest thing that has to obey it, and the most tempting to exempt — it is the one
+     * that makes the board look good. It goes, and so does the tinted panel that stands in
+     * for it, because a header is a third of a phone screen to scroll past whether or not
+     * it costs a request.
+     */
+    expect(html, "a listing picture must not be requested in low-data mode").not.toContain("/img/");
+    expect(html, "no card header at all in low-data mode").not.toContain("aspect-[5/2]");
+  });
+
+  it("reserves the space a picture will occupy, so the card cannot jump", async () => {
+    // A lazily-loaded image with no dimensions is a layout shift on a slow connection —
+    // the exact connection this product is built for, and the one where the reader has
+    // already started reading when the picture lands. The ratio is on the container and
+    // width/height are on the <img>, so the box exists before a byte of it arrives.
+    const html = await (await home()).text();
+    expect(html).toContain('src="/img/board-0"');
+    expect(html).toContain('loading="lazy"');
+    expect(html).toMatch(/<img[^>]+width="480"[^>]+height="270"/);
+    // Someone else's promotional artwork, which we have not read. §8 would require a
+    // description if it carried meaning; inventing one is the thing this product does not do.
+    expect(html).toMatch(/<img[^>]+alt=""/);
   });
 
   it("honours Save-Data with no cookie at all", async () => {

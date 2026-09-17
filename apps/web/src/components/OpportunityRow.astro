@@ -27,6 +27,7 @@
 
 import type { OpportunityRow as Row } from "../lib/db";
 import { countdownLabel, countdownWeight, deadlineFacts } from "../lib/deadline";
+import { categoryIcon } from "../lib/categories";
 import { verificationLabel } from "../lib/verification";
 
 import Icon from "./Icon.astro";
@@ -111,11 +112,82 @@ const verLabel = o.verification === "auto" ? null : verificationLabel(o.verifica
  * warnings or absences of confirmation, and take the alert mark in the warning colour.
  */
 const verPositive = o.verification === "official" || o.verification === "verified";
+
+/**
+ * THE PICTURE, AND THE FACT THAT MOST LISTINGS DO NOT HAVE ONE.
+ *
+ * `image_url` is the `og:image` the source published on its own page (migration 0038), and it
+ * is null for the majority of listings because most sources publish no such tag.
+ *
+ * That asymmetry is the whole design problem, and this page has now got it wrong twice in
+ * other forms: a category grid that was half photographs and half tinted boxes, and before
+ * that a band whose photograph decided which category got featured. Both times the lesson was
+ * the same — when only some cards have a picture, the ones without read as BROKEN rather than
+ * as a deliberate variant, and the eye goes to the pictures rather than to the deadlines.
+ *
+ * So the header is not optional. Every card has one, at the same 16:9, and what fills it is
+ * either the source's photograph or a brand-tinted panel carrying the category mark. Neither
+ * pretends to be the other, and a reader scanning the board is comparing listings rather than
+ * noticing which ones came with artwork.
+ *
+ * In low-data mode there is no header at all — not a placeholder, not a wash. PRODUCT_SPEC.md
+ * §25.2 suppresses all images, and a decorative panel that costs nothing to send still costs
+ * a third of a screen to scroll past on a phone someone is paying for by the megabyte.
+ *
+ * THE RATIO IS SHORTER ON A PHONE, and that is a measurement rather than a preference. At
+ * 16:9 a full-width card header is 201px on a 390px screen; across the eighteen cards this
+ * page carries, the board grew from 6,134px to 9,666px — half a page of scrolling bought with
+ * artwork. 5:2 gives a banner of 143px and returns most of it. Above `md` the cards are
+ * narrow columns rather than the full width, so 16:9 costs little and crops the source's
+ * picture less.
+ */
+const showHeader = !lowData;
+const categoryIconName = categoryIcon(o.categories?.code);
+const hasPicture = showHeader && typeof o.image_url === "string" && o.image_url.length > 0;
 ---
 
 <article
   class={`group relative flex flex-col rounded-sheet border border-line bg-surface p-4 shadow-card transition-shadow hover:shadow-card-hover ${closed ? "opacity-60" : ""}`}
 >
+{
+  showHeader && (
+    <div class="-mx-4 -mt-4 mb-3 aspect-[5/2] overflow-hidden rounded-t-sheet bg-brand-wash md:aspect-[16/9]">
+      {hasPicture ? (
+        /*
+          SERVED FROM OUR OWN ORIGIN, never from the source's CDN — see pages/img/[slug].ts.
+          The `src` is a slug, not a URL: the route looks the URL up rather than accepting one,
+          which is what keeps this from being a server-side request forgery endpoint.
+
+          `alt=""` and aria-hidden, deliberately. This is the organiser's promotional artwork,
+          and we have not read it — describing it would mean inventing a description, which is
+          the one thing this product does not do with a source's material. Everything a reader
+          needs is in the text below, so a screen reader loses nothing by skipping it.
+
+          Width and height are the 16:9 box rather than the real file's dimensions, which we do
+          not record: the container fixes the aspect ratio and `object-cover` crops to it, so
+          these exist to reserve the space and stop the card shifting when the picture lands.
+        */
+        <img
+          src={`/img/${o.slug}`}
+          alt=""
+          aria-hidden="true"
+          width="480"
+          height="270"
+          loading="lazy"
+          decoding="async"
+          class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+        />
+      ) : (
+        /* The same box, with the category's mark instead. Not a "missing image" state — a
+           card that never had a picture and is not pretending otherwise. */
+        <div class="flex h-full w-full items-center justify-center bg-gradient-to-br from-brand-wash to-sunken text-brand/40">
+          <Icon name={categoryIconName} size={24} class="h-8 w-8" />
+        </div>
+      )}
+    </div>
+  )
+}
+
 {/* Badge row: category + one standout fact. Neutral, not a colour wash — the brief's
     restraint applies here too; colour is spent on the primary action only. */}
 <div class="flex flex-wrap items-center gap-[6px]">
