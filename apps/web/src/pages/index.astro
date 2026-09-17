@@ -143,8 +143,24 @@ const degraded = !board.ok;
  * `other` is excluded: it is where a listing goes when the taxonomy has no word for it, so as
  * a destination it promises nothing.
  */
+/**
+ * A band needs enough listings to fill the rail underneath it.
+ *
+ * `open_count > 0` was the first rule and the live page showed what it buys: scholarships, with
+ * FOUR open, took a full-width photographic band and a rail of two, while AI challenges with
+ * forty-eight sat in a small card below — because scholarships had a photograph and AI
+ * challenges did not. A band is the loudest thing on the page after the hero; spending it on
+ * the fourth-largest category because of what is in the assets folder is letting the assets
+ * folder edit the page.
+ *
+ * Six is the floor: enough that the rail is a rail rather than a pair. A category with fewer
+ * is not hidden — it is in the card grid below with its true count, which is the honest place
+ * for it.
+ */
+const BAND_FLOOR = 6;
+
 const FEATURE_BANDS = categoryCounts
-  .filter((c) => c.open_count > 0 && c.code !== "other" && CATEGORY_IMAGES[c.code])
+  .filter((c) => c.open_count >= BAND_FLOOR && c.code !== "other" && CATEGORY_IMAGES[c.code])
   .sort((a, b) => b.open_count - a.open_count)
   .slice(0, 2);
 
@@ -657,11 +673,25 @@ const STATS = [
         <ul class="mt-3 grid list-none grid-cols-2 gap-3 p-0 lg:grid-cols-3">
           {CATEGORY_CARDS.map((c) => (
             <li>
+              {/*
+                ONE SHAPE, PHOTOGRAPH OR NOT.
+
+                We hold four category photographs and there are twenty-one categories, two of
+                which the bands above have already taken. So most cards have no picture, and
+                the first version rendered those as a shorter white box with the text floating
+                in the middle of it — beside a full-bleed photo card, it read as a component
+                that had failed to load rather than a deliberate variant.
+
+                Every card is now the same object: same height, same text in the same place at
+                the bottom. A card with a photograph gets the photograph; a card without gets a
+                wash in the brand tint. Neither pretends to be the other, and a reader scanning
+                the grid is reading a directory rather than wondering what is missing.
+              */}
               <a
                 href={`/categories/${c.slug}`}
-                class="group relative flex h-full flex-col justify-end overflow-hidden rounded-sheet border border-line bg-surface no-underline hover:border-line-strong"
+                class="group relative flex h-full min-h-[128px] flex-col justify-end overflow-hidden rounded-sheet border border-line no-underline hover:border-line-strong"
               >
-                {c.image && !lowData && (
+                {c.image && !lowData ? (
                   <>
                     <Image
                       src={c.image}
@@ -672,14 +702,20 @@ const STATS = [
                       loading="lazy"
                       class="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
                     />
-                    <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/45 to-black/10" />
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/50 to-black/20" />
                   </>
+                ) : (
+                  <div class="absolute inset-0 bg-gradient-to-br from-brand-wash to-sunken" />
                 )}
-                <div class={`relative p-3 ${c.image && !lowData ? "pt-16 text-surface" : "pt-10"}`}>
-                  <span class={`block text-dense font-semibold ${c.image && !lowData ? "" : "text-ink"}`}>
+                <div class="relative p-3">
+                  <span
+                    class={`block text-dense font-semibold ${c.image && !lowData ? "text-surface" : "text-ink"}`}
+                  >
                     {c.name}
                   </span>
-                  <span class={`mt-1 block text-micro ${c.image && !lowData ? "text-surface/75" : "text-ink-2"}`}>
+                  <span
+                    class={`mt-1 block text-micro ${c.image && !lowData ? "text-surface/80" : "text-ink-2"}`}
+                  >
                     {c.open_count} open
                     {shortDate(c.soonest_deadline) && <span> · next {shortDate(c.soonest_deadline)}</span>}
                   </span>
