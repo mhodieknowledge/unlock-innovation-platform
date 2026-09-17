@@ -456,7 +456,7 @@ The product **never** shows an empty or near-empty social surface to any user. `
 | Authenticated dashboard | ≤ 200 KB | ≤ 70 KB |
 | Any route | never > 250 KB | never > 90 KB |
 
-Images: no hero images anywhere; organisation logos ≤ 12 KB, served at exact display size; no icon fonts; inline SVG only for icons actually used. Fonts: one variable family, subset, woff2, ≤ 60 KB total, `font-display: swap` with a system-font fallback stack that does not shift layout. `[PR]`
+Images: no hero images anywhere; a listing may carry the `og:image` its own source published, ≤ 120 KB, lazily loaded and proxied through this app's own origin (never hotlinked — the CSP allows no remote image origins, and pointing readers at each source's CDN would hand those hosts an IP-bearing request per page view); organisation logos ≤ 12 KB, served at exact display size; no icon fonts; inline SVG only for icons actually used. Fonts: one variable family, subset, woff2, ≤ 60 KB total, `font-display: swap` with a system-font fallback stack that does not shift layout. `[PR]`
 
 ### 25.2 Low-data mode `[PR]`
 A user-toggled and `Save-Data`-header-respecting mode that suppresses all images including logos, disables prefetch, and serves list views only. Persisted in a cookie so it applies server-side on first paint.

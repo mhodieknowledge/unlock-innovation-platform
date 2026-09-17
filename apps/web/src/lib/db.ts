@@ -91,6 +91,12 @@ export interface OpportunityRow {
   apply_url: string | null;
   status: string;
   duplicate_of: string | null;
+  /**
+   * The `og:image` the source published on its own page, or null — which is the normal case.
+   * Never rendered directly: the CSP allows no remote image origins, so the card points at
+   * this app's own `/img/[slug]` route and that route fetches it. See migration 0038.
+   */
+  image_url: string | null;
   organisations: OrganisationRef | null;
   categories: { code: string; name: string; slug: string } | null;
 }
@@ -103,7 +109,7 @@ const OPPORTUNITY_FIELDS = `
   team_required, team_size_min, team_size_max,
   prize_amount, prize_currency, cost, cost_description,
   verification, last_verified_at, source_url, official_url, apply_url,
-  status, duplicate_of,
+  status, duplicate_of, image_url,
   organisations ( slug, name, verification ),
   categories ( code, name, slug )
 `;

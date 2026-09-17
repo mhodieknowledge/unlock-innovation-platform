@@ -55,6 +55,7 @@ import {
 } from "../lib/db";
 import { cachePolicyFor, getResidenceCountry, getSessionUser } from "../lib/auth";
 import { freshnessLabel } from "../lib/deadline";
+import { categoryIcon } from "../lib/categories";
 import { resolveLowData } from "../lib/lowdata";
 import { itemList, website } from "../lib/seo";
 import { BRAND, NO_FEE_STATEMENT } from "@mbele/config";
@@ -212,38 +213,16 @@ const SECTIONED = new Set(sections.map((b) => b.category.code));
  * with the bands in the pass after this one — once a category was a heading rather than a
  * full-bleed image, there was nowhere on this page a stock photograph was doing work.
  *
- * The map is by code with a fallback, so a category added to the taxonomy tomorrow gets
- * the generic mark rather than nothing at all.
+ * The map itself is lib/categories.ts, because the opportunity card needs the same answer
+ * for a listing whose source published no picture — and two copies would drift the first
+ * time a category was added to the taxonomy.
  */
-const CATEGORY_ICONS: Record<string, "code" | "award" | "briefcase" | "growth" | "book" | "you" | "categories"> = {
-  hackathon: "code",
-  coding_competition: "code",
-  ai_challenge: "code",
-  data_competition: "code",
-  innovation_challenge: "code",
-  open_source_program: "code",
-  grant: "award",
-  fellowship: "award",
-  scholarship: "award",
-  internship: "briefcase",
-  developer_program: "briefcase",
-  startup_competition: "growth",
-  pitch_competition: "growth",
-  accelerator: "growth",
-  incubator: "growth",
-  entrepreneurship_program: "growth",
-  research_opportunity: "book",
-  conference_cfp: "book",
-  bootcamp: "book",
-  community_challenge: "you",
-};
-
 /** The rest of the directory, as cards — one shape, one icon each. */
 const CATEGORY_CARDS = categoryCounts
   .filter((c) => c.open_count > 0 && c.code !== "other" && !SECTIONED.has(c.code))
   .sort((a, b) => b.open_count - a.open_count)
   .slice(0, 6)
-  .map((c) => ({ ...c, icon: CATEGORY_ICONS[c.code] ?? ("categories" as const) }));
+  .map((c) => ({ ...c, icon: categoryIcon(c.code) }));
 
 /**
  * The hero's rotating stat — real counts, not marketing copy. Padded to exactly four slots

@@ -181,7 +181,9 @@ The token NAMES survive the merge (`--radius-row`, `--radius-sheet`), because th
 - **Freshness**: monochrome, always present, `meta`.
 - Whole row is the link; `[Save]` is a nested button with its own hit area.
 - Row height ≥ 88px so the tap target is generous.
-- No image, no logo, no shadow, no hover lift. Hover changes background to `--sunken` only.
+- No logo. Since the card redesign the row carries a **header** at 5:2 on a phone and 16:9 above `md`: the `og:image` the listing's own source published, or — for the majority that publish none — a brand-tinted panel carrying the category mark.
+- **Every card has a header, or none does.** A grid where only some cards carry a picture reads as a grid where the others failed to load, and the eye goes to the artwork rather than to the deadlines. This page has learned it twice: a category grid that was half photographs and half tinted boxes, and feature bands whose photograph decided which category got featured. The panel is not a placeholder — it is the variant.
+- A picture is never a verification signal. It sits above the same verification label as everything else and never in place of it: a scam listing has the glossiest banner of all (MODERATION_AND_TRUST.md §2.2).
 
 ### 5.2 Verdict block (opportunity detail)
 Full-width panel in the verdict wash with the verdict ink. Verdict label and glyph, then one line per rule: glyph, plain-language outcome, and the **quoted source sentence** in `meta`, indented with a hairline left border. Below: missing-field prompts as inline actions, then the permanent disclaimer and a link to the official page.

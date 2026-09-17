@@ -40,6 +40,7 @@ import {
   clearsConfidenceFloors,
   contentHash,
   detectFeeLanguage,
+  extractImageUrl,
   extractJsonLd,
   htmlToText,
   hostOf,
@@ -357,7 +358,7 @@ async function recordFetch(sourceId, status, httpStatus, seen, added, error, eta
  * @param {string | undefined} contentType
  * @returns {Promise<{ ok: false, skip: string }
  *                 | { ok: true, canonicalUrl: string, title: string | null, text: string,
- *                     jsonld: unknown[], hash: string,
+ *                     jsonld: unknown[], hash: string, imageUrl: string | null,
  *                     hintRegion?: string | null, hintCategories?: string[] }>}
  */
 async function normalise(url, body, contentType, extraJsonLd = []) {
@@ -383,6 +384,10 @@ async function normalise(url, body, contentType, extraJsonLd = []) {
     text: stored,
     jsonld,
     hash: await contentHash(stored),
+    // Read from the FULL body rather than from `stored`, which is text-only and truncated at
+    // 40 KB — a <meta> tag in <head> survives neither. The blocks are passed in so JSON-LD is
+    // not parsed a second time just to look for an image.
+    imageUrl: extractImageUrl(body, url, jsonld),
   };
 }
 
@@ -735,6 +740,9 @@ async function processDocument(source, item) {
     // the cost `paid`, whatever the model said, and `paid` cannot be published.
     cost: fee.hit ? "paid" : (extracted.record.cost ?? "unknown"),
     summary: summaryCheck.ok ? summary : null,
+    // Null for most listings, and the card is built for that — see the migration note. A
+    // picture is never a reason to publish, and never stands in for a verification state.
+    image_url: doc.imageUrl ?? null,
   };
 
   if (DRY_RUN) {
@@ -993,10 +1001,10 @@ async function writeCandidate({ source, doc, candidate, confidence, rules, rejec
         starts_at, ends_at, team_required, team_size_min, team_size_max,
         prize_amount, prize_currency, cost, source_url, official_url,
         status, verification, extraction_confidence, last_verified_at,
-        published_at, link_ok, link_checked_at)
+        published_at, link_ok, link_checked_at, image_url)
      VALUES ($1,$2,$3,'model',$4,$5,$6,$7,$8::eligibility_scope,$9,$10::participation_mode,
              $11,$12::deadline_precision,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22::cost_kind,$23,$24,
-             $25::opp_status,$26::opp_verification,$27,$28,$29,$30,$31)
+             $25::opp_status,$26::opp_verification,$27,$28,$29,$30,$31,$32)
      RETURNING id, slug`,
     [
       slug,
@@ -1037,6 +1045,10 @@ async function writeCandidate({ source, doc, candidate, confidence, rules, rejec
       // cadence.
       true,
       new Date().toISOString(),
+      // $32. Already validated by `safeImageUrl` when it was extracted, and validated
+      // again by the CHECK on the column and by the route that serves it — the value is
+      // fetched by our own server, so one check is not enough of them.
+      candidate.image_url ?? null,
     ],
   );
 

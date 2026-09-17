@@ -6,7 +6,8 @@
   "description": "Pure ingestion logic: URL canonicalisation, text normalisation, and the deterministic validations that AI output must survive. No I/O, no network.",
   "main": "./src/index.mjs",
   "exports": {
-    ".": "./src/index.mjs"
+    ".": "./src/index.mjs",
+    "./images": "./src/images.mjs"
   },
   "dependencies": {
     "@mbele/eligibility": "*"
