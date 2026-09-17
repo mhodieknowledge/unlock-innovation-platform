@@ -2,31 +2,50 @@
 // The board. UX_FLOWS.md §2.
 //
 // "The most characteristic thing in this product's world is a live list of things about to
-// close." The live board is still the substance of the page — but the composition around it
-// has been rebuilt twice now on explicit direction: first from a text-only notice board to an
-// image-rich one, then again after the first pass read as a generic scrolling page rather than
-// a product that sells itself. This version leans into variety of layout on purpose — a
-// full-bleed cinematic hero, a real slide carousel (not a raw horizontal scroll), two editorial
-// category features instead of a repeated card grid, and a bold numbers band — because a
-// homepage that uses the same "eyebrow + heading + grid" shape six times in a row is the thing
-// that reads as boring, independent of how nice any one instance of that shape is.
+// close." This page has been rebuilt three times, and the third time is the one that took
+// that sentence literally: the opportunities ARE the product, so they are the page, and
+// everything else earns its place around them.
 //
-// CONTENT_AND_LAUNCH.md §1: every number shown is true and computed live — which is why the
-// counts on this page (the hero badge, the stats band, the footer line) come from live queries
-// and disappear when they come back empty, rather than being padded to look like a launch.
-// Photography is category-level and generic (what a hackathon/scholarship looks like), never
-// attached to a specific listing — attaching stock photography to one real opportunity would be
-// exactly the kind of unverifiable claim this product refuses to make.
+// WHAT THE PREVIOUS COMPOSITION COST, measured on an iPhone 13 (390×664) against the live
+// site rather than estimated:
+//
+//   header          69px
+//   hero           621px   0.93 of the viewport, and not one opportunity in it
+//   location strip 201px   one sentence and a full-width button
+//   the board      417px   EIGHT cards in the DOM, ONE visible — a carousel
+//   category ×2    613px each — 1.85 viewports spent on five links
+//   stats/countries/eligibility/trust  1418px
+//   footer         576px
+//   ──────────────────────
+//   4764px total = 7.2 viewports, first opportunity at y=1109 (1.67 viewports down)
+//
+// A reader on a phone scrolled past a screen and two thirds of photograph and prose to reach
+// one listing, which they then could not compare with the seven behind it. The carousel's own
+// controls were 8×8px dots, a quarter of the 44px minimum, on the primary feed of an
+// opportunity product.
+//
+// THE FEED IS NOW A VERTICAL LIST AND IT STARTS INSIDE THE FIRST SCREEN. Everything else
+// answers a question in order — what is this (hero), what is open to me (context line), what
+// is closing (the feed), what else is there (categories, countries), why believe it (trust) —
+// and each answers it once. Where the old page used "eyebrow + big heading + paragraph + list
+// + button" six times, sections now carry a heading and the content itself: a reader who can
+// see 79 hackathons open does not need a paragraph saying there are hackathons.
+//
+// The two photographic category features are gone. The photography was generic and
+// category-level by necessity — attaching stock photography to a specific real listing is
+// exactly the unverifiable claim this product refuses to make — which also means it carried no
+// information. 269px of stock photograph for three links is decoration standing where content
+// should be. One photograph survives, in the hero, because the page should still feel like a
+// place made for someone.
+//
+// CONTENT_AND_LAUNCH.md §1: every number here is true and computed live, and disappears when
+// it comes back empty rather than being padded to look like a launch.
 
 import { Image } from "astro:assets";
 import Base from "../layouts/Base.astro";
 import Icon from "../components/Icon.astro";
 import OpportunityRow from "../components/OpportunityRow.astro";
 import heroImage from "../assets/marketing/hero-collab.jpg";
-import catHackathon from "../assets/marketing/cat-hackathon.jpg";
-import catScholarship from "../assets/marketing/cat-scholarship.jpg";
-import catGrant from "../assets/marketing/cat-grant.jpg";
-import catInternship from "../assets/marketing/cat-internship.jpg";
 import {
   getCategoryCounts,
   getCountry,
@@ -42,22 +61,17 @@ import { itemList, website } from "../lib/seo";
 import { BRAND, NO_FEE_STATEMENT } from "@mbele/config";
 import { runtimeEnv } from "~/lib/runtime";
 
-/** One representative photo per category, used only for the two feature blocks below —
- * never rendered on an individual opportunity, which has no photo of its own. */
-const CATEGORY_IMAGES: Record<string, ImageMetadata> = {
-  hackathon: catHackathon,
-  scholarship: catScholarship,
-  grant: catGrant,
-  internship: catInternship,
-};
-const FEATURED_CATEGORY_CODES = ["hackathon", "scholarship", "grant", "internship"];
-
 export const prerender = false;
 
 const env = runtimeEnv();
 
-/** §2 item 3: 8 rows. Not 10, not 20 — enough to prove the board is alive, above the fold. */
-const BOARD_SIZE = 8;
+/**
+ * §2 item 3 asked for 8 rows "enough to prove the board is alive, above the fold". Eight was
+ * the right number for a carousel showing one of them. It is the wrong number for a feed that
+ * a reader scrolls: twelve is roughly three screens of scanning, which is long enough to feel
+ * like a catalogue and short enough that "view all" still means something.
+ */
+const BOARD_SIZE = 12;
 
 const user = await getSessionUser(Astro.cookies, env);
 
@@ -115,36 +129,27 @@ const rows = board.ok ? board.data : [];
 const degraded = !board.ok;
 
 /**
- * Two category feature blocks — not four, and not a card grid. The homepage's category
- * story used to be told three times over (hero pills, a card-grid rail per category, and a
- * flat "browse by category" tile grid) — exactly the repetition a reader notices as
- * clutter, and the categories page already exists to be the actual directory. Now it is
- * told once here, as two editorial blocks for the two categories with the most open right
- * now: a photo, a real number, three real titles as plain links, and a link to the rest.
- * Limited to categories with a representative photo AND something actually open — a photo
- * over an empty section is decoration standing in for content, which CONTENT_AND_LAUNCH.md
- * §1 rules out.
+ * Categories as a compact directory, not two photo essays.
+ *
+ * The old page told the category story as two full-viewport editorial features: a 269px
+ * photograph, an eyebrow, a display heading, a paragraph, three plain links and a filled
+ * button, twice. 1226px on a phone to reach five listings, and the photographs were generic
+ * stock — they had to be, because a photograph of a specific real opportunity is a claim we
+ * cannot check.
+ *
+ * What a reader actually wants from this section is WHERE THE THINGS ARE AND HOW MANY, and
+ * that is two facts per category. Six tiles carrying a name, a live count and the next
+ * deadline give more information than two features did, in a quarter of the height, and the
+ * soonest date is the fact that makes a category worth opening today rather than a name.
+ *
+ * Ordered by what is open, so the directory reflects the catalogue instead of a hard-coded
+ * list of favourites. `other` is excluded: it is where a listing goes when the taxonomy has no
+ * word for it, so as a browsing destination it promises nothing.
  */
-const featuredCategories = FEATURED_CATEGORY_CODES.map((code) =>
-  entryPoints.categories.find((c) => c.code === code),
-)
-  .filter((c): c is { code: string; name: string; slug: string } => c !== undefined)
-  .map((c) => ({ ...c, open_count: categoryCounts.find((cc) => cc.code === c.code)?.open_count ?? 0 }))
-  .filter((c) => c.open_count > 0)
+const CATEGORY_TILES = categoryCounts
+  .filter((c) => c.open_count > 0 && c.code !== "other")
   .sort((a, b) => b.open_count - a.open_count)
-  .slice(0, 2);
-
-const featuredResults = await Promise.all(
-  featuredCategories.map((c) => listOpportunities({ categoryCode: c.code, limit: 3, countryIso2 }, env)),
-);
-
-const featuredSections = featuredCategories
-  .map((category, i) => ({
-    category,
-    examples: featuredResults[i]?.ok ? featuredResults[i].data : [],
-    image: CATEGORY_IMAGES[category.code],
-  }))
-  .filter((section) => section.examples.length > 0);
+  .slice(0, 6);
 
 /**
  * The hero's rotating stat — real counts, not marketing copy. Padded to exactly four slots
@@ -159,6 +164,29 @@ const cycleCategories =
   withOpenCounts.length > 0
     ? Array.from({ length: CYCLE_SLOTS }, (_, i) => withOpenCounts[i % withOpenCounts.length])
     : [];
+
+/**
+ * "48 ai challenge open now" is what the hero said on the live site.
+ *
+ * Two bugs in one interpolation: the count was never pluralised, and `.toLowerCase()` was
+ * applied to a name that can begin with an acronym. Category names are seeded in sentence case
+ * ("Hackathon", "AI challenge", "Conference call for papers"), so the rules are: add an `s`
+ * unless the name already ends in one, and lower the first letter unless the first two are
+ * both capitals — which is what tells an acronym from a capitalised word without a dictionary.
+ */
+const categoryPhrase = (name: string): string => {
+  const plural = name.endsWith("s") ? name : `${name}s`;
+  const acronym = /^[A-Z]{2}/.test(plural);
+  return acronym ? plural : plural.charAt(0).toLowerCase() + plural.slice(1);
+};
+
+/** "20 Sept" — the fact that makes a category worth opening today rather than a name. */
+const shortDate = (iso: string | null): string | null => {
+  if (!iso) return null;
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return null;
+  return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }).format(at);
+};
 
 /**
  * Who may cache this, and for how long.
@@ -232,37 +260,46 @@ const STATS = [
   jsonLd={jsonLd}
   feed={{ path: "/feeds/closing-soon.xml", title: "Closing this week" }}
 >
-  {/* ── HERO ──────────────────────────────────────────────────────────────────
-      Full-bleed photograph with the headline set directly over it — the "this is a real,
-      confident product" moment the page opens with — over a Ken Burns drift (tokens.css
-      `.hero-kenburns`) so it never sits static. Text enters staggered via [data-reveal].
-      In low-data mode there is no photograph at all: a plain, fast, text-only hero instead,
-      never a slow image pretending to be a fast one. */}
+  {/* ── HERO — a band, not a screen. ───────────────────────────────────────────
+      The old hero was 621px on a 664px phone: a full-height photograph carrying a
+      three-line headline, a five-line paragraph and a search field, with the first
+      opportunity another 488px below it. It established the product and then kept
+      establishing it.
+
+      This one does the same job in roughly half the height. The photograph stays — it is
+      the only place on the page where this reads as somewhere made for someone rather
+      than a database — but it is a band behind the words instead of a screen of its own,
+      the headline sits at a size a phone can hold in two lines, and the paragraph is one
+      sentence rather than five lines of the same sentence. What was cut: the "checked
+      against real sources" line, because the trust module below states it properly and a
+      promise made twice is not made twice as strongly.
+
+      In low-data mode there is no photograph at all — a plain, fast, text hero, never a
+      slow image pretending to be a fast one. */}
   {
     lowData ? (
       <section class="border-b border-line bg-surface">
-        <div class="mx-auto max-w-[1160px] px-4 pt-14 pb-10 lg:pt-20 lg:pb-16">
-          <h1 class="max-w-[16ch] text-balance text-[2.25rem] leading-[1.1] font-bold tracking-[-0.02em] lg:text-[3rem]">
+        <div class="mx-auto max-w-[1160px] px-4 pt-8 pb-7 lg:pt-12 lg:pb-10">
+          <h1 class="max-w-[18ch] text-balance text-[1.875rem] leading-[1.12] font-bold tracking-[-0.02em] lg:text-[2.75rem]">
             Opportunities worth your time.
           </h1>
-          <p class="prose-measure mt-4 text-[17px] leading-7 text-ink-2">
-            Mbele tracks scholarships, fellowships, hackathons and grants open to Africa, and
-            checks each one against its own source — so the deadline you see is the one
-            that's real.
+          <p class="prose-measure mt-2 text-[15px] leading-6 text-ink-2">
+            Scholarships, fellowships, hackathons and grants open to Africa — each checked
+            against its own source.
           </p>
-          <form method="get" action="/opportunities" class="mt-7 flex max-w-xl gap-2">
+          <form method="get" action="/opportunities" class="mt-5 flex max-w-xl gap-2">
             <label class="relative flex-1">
               <span class="sr-only">Search opportunities</span>
               <input
                 type="search"
                 name="q"
                 placeholder="Search scholarships, hackathons, grants…"
-                class="h-14 w-full rounded-sheet border border-line-strong bg-surface px-4 text-[15px]"
+                class="h-12 w-full rounded-sheet border border-line-strong bg-surface px-4 text-[15px]"
               />
             </label>
             <button
               type="submit"
-              class="h-14 shrink-0 rounded-sheet bg-brand px-6 text-dense font-semibold text-surface hover:bg-brand-ink"
+              class="h-12 shrink-0 rounded-sheet bg-brand px-5 text-dense font-semibold text-surface hover:bg-brand-ink"
             >
               Search
             </button>
@@ -270,7 +307,7 @@ const STATS = [
         </div>
       </section>
     ) : (
-      <section class="relative isolate min-h-[560px] overflow-hidden border-b border-line lg:min-h-[680px]">
+      <section class="relative isolate overflow-hidden border-b border-line">
         <Image
           src={heroImage}
           alt=""
@@ -281,16 +318,12 @@ const STATS = [
           fetchpriority="high"
           class="hero-kenburns absolute inset-0 -z-10 h-full w-full object-cover"
         />
-        <div class="absolute inset-0 -z-10 bg-gradient-to-t from-black/85 via-black/45 to-black/15" />
-        <div class="absolute inset-0 -z-10 bg-gradient-to-r from-black/55 via-black/10 to-transparent" />
+        <div class="absolute inset-0 -z-10 bg-gradient-to-t from-black/90 via-black/65 to-black/35" />
 
-        <div class="relative mx-auto flex min-h-[560px] max-w-[1160px] flex-col justify-end px-4 pt-28 pb-10 lg:min-h-[680px] lg:pb-16">
+        <div class="relative mx-auto max-w-[1160px] px-4 pt-7 pb-7 lg:pt-14 lg:pb-12">
           {
             cycleCategories.length === CYCLE_SLOTS && (
-              <p
-                data-reveal
-                class="inline-flex w-fit items-center gap-2 rounded-monogram border border-white/25 bg-white/10 px-3 py-1 text-meta font-semibold text-white shadow-card backdrop-blur-sm"
-              >
+              <p class="inline-flex w-fit items-center gap-2 rounded-monogram border border-white/25 bg-white/10 px-3 py-1 text-micro font-semibold text-white backdrop-blur-sm">
                 <span class="relative flex size-2 shrink-0">
                   <span class="absolute inline-flex h-full w-full animate-ping rounded-monogram bg-eligible opacity-75" />
                   <span class="relative inline-flex size-2 rounded-monogram bg-eligible" />
@@ -299,7 +332,7 @@ const STATS = [
                   <span class="word-cycle-track">
                     {cycleCategories.map((c) => (
                       <span>
-                        {c.open_count} {c.name.toLowerCase()} open now
+                        {c.open_count} {categoryPhrase(c.name)} open now
                       </span>
                     ))}
                   </span>
@@ -309,20 +342,18 @@ const STATS = [
           }
 
           <h1
-            data-reveal
-            class="reveal-d1 mt-4 max-w-[18ch] text-balance text-[2.5rem] leading-[1.05] font-bold tracking-[-0.025em] text-white lg:text-[4rem]"
+            class="mt-3 max-w-[15ch] text-balance text-[2rem] leading-[1.08] font-bold tracking-[-0.025em] text-white lg:text-[3.25rem]"
           >
             Opportunities worth your time.
           </h1>
-          <p data-reveal class="reveal-d2 prose-measure mt-4 text-[18px] leading-7 text-white/85">
-            Mbele tracks scholarships, fellowships, hackathons and grants open to Africa, and
-            checks each one against its own source — so the deadline you see is the one
-            that's real.
+          <p class="prose-measure mt-2 text-[15px] leading-6 text-white/80 lg:text-[17px]">
+            Scholarships, fellowships, hackathons and grants open to Africa — each checked
+            against its own source.
           </p>
 
           {/* A plain GET form to the list page: no JS, no autocomplete request, nothing
               typed leaves the device until the reader presses the button. */}
-          <form method="get" action="/opportunities" data-reveal class="reveal-d3 mt-8 flex max-w-xl gap-2">
+          <form method="get" action="/opportunities" class="mt-5 flex max-w-xl gap-2">
             <label class="relative flex-1">
               <span class="sr-only">Search opportunities</span>
               <Icon
@@ -334,47 +365,42 @@ const STATS = [
                 type="search"
                 name="q"
                 placeholder="Search scholarships, hackathons, grants…"
-                class="h-14 w-full rounded-sheet border-0 bg-surface pr-3 pl-11 text-[15px] shadow-[0_8px_30px_rgba(0,0,0,0.25)]"
+                class="h-12 w-full rounded-sheet border-0 bg-surface pr-3 pl-11 text-[15px] shadow-[0_8px_30px_rgba(0,0,0,0.25)]"
               />
             </label>
             <button
               type="submit"
-              class="h-14 shrink-0 rounded-sheet bg-brand px-6 text-dense font-semibold text-surface transition-colors hover:bg-brand-ink"
+              class="h-12 shrink-0 rounded-sheet bg-brand px-5 text-dense font-semibold text-surface transition-colors hover:bg-brand-ink"
             >
               Search
             </button>
           </form>
-
-          <p data-reveal class="reveal-d4 mt-4 flex items-center gap-2 text-meta text-white/70">
-            <Icon name="check" size={20} class="h-4 w-4 shrink-0 text-eligible" />
-            Checked against real sources — never scraped and forgotten.
-          </p>
         </div>
       </section>
     )
   }
 
-  {/* ── LOCATION PERSONALISATION — a product feature, not a stray form. ────── */}
+  {/* ── CONTEXT LINE — where the board is pointed, in one line. ────────────────
+      This was a 201px block: an icon in a 40px circle, a bold sentence, a second
+      explanatory sentence, and a full-width "Change location" button, for a fact that is
+      four words long. It is now a line of text with the control inline, because the fact
+      is small and the thing underneath it is the product. */}
   {
     country && (
       <div class="border-b border-line bg-sunken">
-        <div class="mx-auto max-w-[1160px] px-4 py-4">
-          <div class="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
-            <span class="flex size-10 shrink-0 items-center justify-center rounded-monogram bg-brand-wash text-brand">
-              <Icon name="globe" size={20} />
-            </span>
-            <p class="flex-1 text-dense">
-              <strong class="font-semibold">Opportunities for {country.name}.</strong>{" "}
-              <span class="text-ink-2">We've matched these to your location, plus everything open Africa-wide.</span>
-            </p>
-            <a
-              href="/?country=all"
-              class="inline-flex min-h-11 shrink-0 items-center justify-center rounded-row border border-line-strong bg-surface px-4 text-meta font-semibold text-ink no-underline hover:bg-surface/70 md:self-auto"
-            >
-              Change location
-            </a>
-          </div>
-        </div>
+        <p class="mx-auto flex max-w-[1160px] flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 text-meta text-ink-2">
+          <Icon name="globe" size={20} class="h-4 w-4 shrink-0 text-ink-3" />
+          <span>
+            Open to <strong class="font-semibold text-ink">{country.name}</strong> and
+            Africa-wide
+          </span>
+          <a
+            href="/?country=all"
+            class="inline-flex min-h-11 items-center font-semibold text-brand no-underline hover:underline"
+          >
+            Show everything
+          </a>
+        </p>
       </div>
     )
   }
@@ -382,41 +408,40 @@ const STATS = [
   {
     showAll && (
       <div class="border-b border-line bg-sunken">
-        <div class="mx-auto flex max-w-[1160px] flex-wrap items-center gap-3 px-4 py-4">
-          <p class="flex-1 text-dense text-ink-2">Showing every open opportunity across Africa.</p>
+        <p class="mx-auto flex max-w-[1160px] flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 text-meta text-ink-2">
+          <Icon name="globe" size={20} class="h-4 w-4 shrink-0 text-ink-3" />
+          <span>Every open opportunity across Africa</span>
           <a
             href="/"
-            class="inline-flex min-h-11 items-center rounded-row border border-line-strong bg-surface px-4 text-meta font-semibold text-ink no-underline hover:bg-surface/70"
+            class="inline-flex min-h-11 items-center font-semibold text-brand no-underline hover:underline"
           >
-            Use my location again
+            Use my location
           </a>
-        </div>
+        </p>
       </div>
     )
   }
 
-  {/* ── CLOSING SOON — a spotlight carousel, not a listing grid or a raw scroll strip.
-      Every row the query returned is in the DOM as its own complete, full-size card
-      ([data-slide]); without JavaScript they simply stack as an ordinary list — nothing is
-      truncated or hidden. motion.js turns the same markup into a real one-at-a-time deck
-      with dots, arrows, swipe and keyboard support the instant it runs. ────────────────── */}
-  <section class="mx-auto max-w-[1160px] px-4 pt-14" aria-labelledby="board" data-reveal>
-    <div class="flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <p class="eyebrow text-brand">Closing soonest</p>
-        <h2 id="board" class="mt-1 text-title font-bold tracking-[-0.015em]">
-          What needs you this week
-        </h2>
-        {/* The "Last updated" line of §2's offline state, rendered on every response
-            because the service worker serves this HTML back unchanged. */}
-        <p class="mt-1 text-meta text-ink-2">
-          Board as of {builtAt} UTC{rows.length > 0 ? ` · ${rows.length} open${country ? ` to ${country.name}` : ""}` : ""}
-        </p>
-      </div>
+  {/* ── THE FEED — the product, as a vertical list, starting in the first screen.
+      Every row the query returned is a card a reader can scan against the ones above and
+      below it: category, title, organiser, how it was checked, how long is left, and a
+      save control, all without opening anything.
+
+      It was a carousel. Eight cards were in the DOM and one was on screen, so comparing
+      two listings — the entire act of choosing what to apply for — meant remembering the
+      first while swiping to the second, and the controls for doing that were 8×8px dots.
+      A carousel is for things a reader browses one at a time and does not compare. A
+      deadline feed is the opposite of that. ────────────────────────────────────────── */}
+  <section class="mx-auto max-w-[1160px] px-4 pt-6" aria-labelledby="board">
+    <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+      <h2 id="board" class="text-subtitle font-bold tracking-[-0.015em]">Closing soonest</h2>
       {
         rows.length > 0 && (
-          <a href="/opportunities" class="shrink-0 text-dense font-semibold text-brand no-underline hover:underline">
-            View all open opportunities →
+          <a
+            href="/opportunities"
+            class="text-meta font-semibold text-brand no-underline hover:underline"
+          >
+            View all{published !== null && published > 0 ? ` ${published}` : ""} →
           </a>
         )
       }
@@ -424,17 +449,33 @@ const STATS = [
 
     {
       rows.length > 0 ? (
-        <div class="mx-auto mt-6 max-w-2xl" data-carousel>
-          {rows.map((o) => (
-            <div data-slide>
-              <OpportunityRow opportunity={o} lowData={lowData} />
-            </div>
-          ))}
-        </div>
+        <>
+          <ul class="mt-3 flex list-none flex-col gap-3 p-0">
+            {rows.map((o) => (
+              <li>
+                <OpportunityRow opportunity={o} lowData={lowData} />
+              </li>
+            ))}
+          </ul>
+
+          {/* Two jobs in one row: the way out to the full list, and the "Last updated"
+              line §2's offline state requires — rendered on every response, because the
+              service worker serves this HTML back unchanged and a timestamp written at
+              render time is the only one still true when it comes out of a cache. */}
+          <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <a
+              href="/opportunities"
+              class="inline-flex min-h-12 items-center rounded-row bg-brand px-5 text-dense font-semibold text-surface no-underline hover:bg-brand-ink"
+            >
+              View all open opportunities →
+            </a>
+            <p class="text-micro text-ink-3">Board as of {builtAt} UTC</p>
+          </div>
+        </>
       ) : (
         /* One sentence naming the situation, one action (DESIGN_SYSTEM.md §6.4).
            Never an illustration, never "Nothing here yet!". */
-        <div class="mt-5 rounded-sheet border border-line bg-surface p-5">
+        <div class="mt-3 rounded-sheet border border-line bg-surface p-5">
           {degraded ? (
             <>
               <p class="font-semibold">We can't load the board right now.</p>
@@ -465,118 +506,98 @@ const STATS = [
               </p>
             </>
           )}
+          <p class="mt-3 text-micro text-ink-3">Board as of {builtAt} UTC</p>
         </div>
       )
     }
   </section>
 
-  {/* ── CATEGORY FEATURES — two editorial blocks, alternating sides, not a repeated card
-      grid. Each names a real count and links to three real listings as plain text, then to
-      the category's own page for everything else. ─────────────────────────────────────── */}
+  {/* ── CATEGORIES — a directory, in the space a directory needs. ──────────────
+      Name, how many are open, and when the next one closes. That last fact is what makes
+      a category worth opening today, and it is the one the two photo features left out. */}
   {
-    featuredSections.map((section, i) => (
-      <section
-        class="mx-auto max-w-[1160px] px-4 pt-16"
-        aria-labelledby={`cat-${section.category.code}`}
-        data-reveal
-      >
-        <div class={`flex flex-col gap-8 lg:flex-row lg:items-center lg:gap-14 ${i % 2 === 1 ? "lg:flex-row-reverse" : ""}`}>
-          <div class="lg:w-1/2">
-            {!lowData && section.image && (
-              <Image
-                src={section.image}
-                alt=""
-                aria-hidden="true"
-                widths={[480, 800, 1000]}
-                sizes="(min-width: 1024px) 50vw, 100vw"
-                class="aspect-[4/3] w-full rounded-sheet object-cover shadow-card"
-              />
-            )}
-          </div>
-          <div class="lg:w-1/2">
-            <p class="eyebrow text-brand">Category</p>
-            <h2
-              id={`cat-${section.category.code}`}
-              class="mt-1 text-title font-bold tracking-[-0.015em] lg:text-display"
-            >
-              {section.category.name}s on {BRAND.name}
-            </h2>
-            <p class="mt-3 text-dense text-ink-2">
-              {section.category.open_count} open right now, each checked against its own
-              source and quoted for eligibility rather than summarised.
-            </p>
-            <ul class="mt-4 flex list-none flex-col gap-2 p-0">
-              {section.examples.map((o) => (
-                <li>
-                  <a
-                    href={`/opportunities/${o.slug}`}
-                    class="flex items-center gap-2 text-dense font-medium text-ink no-underline hover:text-brand hover:underline"
-                  >
-                    <Icon name="chevron" size={20} class="h-3.5 w-3.5 shrink-0 text-ink-3" />
-                    <span class="line-clamp-1">{o.title}</span>
-                  </a>
-                </li>
-              ))}
-            </ul>
-            <a
-              href={`/categories/${section.category.slug}`}
-              class="mt-5 inline-flex min-h-11 items-center rounded-row bg-brand px-5 text-dense font-semibold text-surface no-underline hover:bg-brand-ink"
-            >
-              Explore {section.category.name.toLowerCase()}s →
-            </a>
-          </div>
+    CATEGORY_TILES.length > 0 && (
+      <section class="mx-auto max-w-[1160px] px-4 pt-10" aria-labelledby="by-category">
+        <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <h2 id="by-category" class="text-subtitle font-bold tracking-[-0.015em]">
+            Browse by kind
+          </h2>
+          <a
+            href="/categories"
+            class="text-meta font-semibold text-brand no-underline hover:underline"
+          >
+            All categories →
+          </a>
         </div>
-      </section>
-    ))
-  }
 
-  <div class="mx-auto max-w-[1160px] px-4 pt-8" data-reveal>
-    <a href="/categories" class="text-dense font-semibold text-brand no-underline hover:underline">
-      See every category →
-    </a>
-  </div>
-
-  {/* ── NUMBERS — the emotional beat: this is a real, live catalogue, stated plainly and
-      big. Every figure is a live count with no "+" rounding (CONTENT_AND_LAUNCH.md §1). ── */}
-  {
-    STATS.length > 0 && (
-      <section class="mt-16 bg-ink py-14 text-surface" aria-labelledby="stats" data-reveal>
-        <h2 id="stats" class="sr-only">
-          {BRAND.name} by the numbers
-        </h2>
-        <div class="mx-auto grid max-w-[1160px] grid-cols-1 gap-8 px-4 sm:grid-cols-3">
-          {STATS.map((stat) => (
-            <div>
-              <p class="text-[2.5rem] font-bold tracking-[-0.02em] tabular-nums">
-                <span data-count-to={stat.value}>{stat.value.toLocaleString("en")}</span>
-              </p>
-              <p class="mt-1 text-dense text-surface/70">{stat.label}</p>
-            </div>
+        <ul class="mt-3 grid list-none grid-cols-2 gap-2 p-0 sm:grid-cols-3">
+          {CATEGORY_TILES.map((c) => (
+            <li>
+              <a
+                href={`/categories/${c.slug}`}
+                class="flex min-h-[76px] flex-col justify-between rounded-sheet border border-line bg-surface p-3 no-underline hover:border-line-strong hover:bg-sunken"
+              >
+                <span class="text-dense font-semibold text-ink">{c.name}</span>
+                <span class="mt-2 text-micro text-ink-2">
+                  {c.open_count} open
+                  {shortDate(c.soonest_deadline) && (
+                    <span class="text-ink-3"> · next {shortDate(c.soonest_deadline)}</span>
+                  )}
+                </span>
+              </a>
+            </li>
           ))}
-        </div>
+        </ul>
       </section>
     )
   }
 
-  {/* ── BROWSE BY LOCATION — compact, correctable, part of the product. ────── */}
+  {/* ── ELIGIBILITY — one row, not a card with an eyebrow and a paragraph. ───── */}
+  <section class="mx-auto max-w-[1160px] px-4 pt-10" aria-labelledby="can-i-apply">
+    <div class="flex flex-col gap-3 rounded-sheet border border-line bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h2 id="can-i-apply" class="text-dense font-semibold">
+          Every listing can tell you whether you can apply.
+        </h2>
+        <p class="mt-1 text-meta text-ink-2">
+          Save where you live and what you study. Where the wording is unclear, we say
+          unclear rather than guessing.
+        </p>
+      </div>
+      <a
+        href="/you/eligibility"
+        class="inline-flex min-h-12 shrink-0 items-center justify-center rounded-row bg-brand px-5 text-dense font-semibold text-surface no-underline transition-colors hover:bg-brand-ink"
+      >
+        {user ? "Your details" : "Add your details"}
+      </a>
+    </div>
+  </section>
+
+  {/* ── COUNTRIES — the heading says what it is; the chips are the content. ──── */}
   {
     entryPoints.countries.length > 0 && (
-      <section class="mx-auto max-w-[1160px] px-4 pt-14" aria-labelledby="by-country" data-reveal>
-        <p class="eyebrow text-brand">Explore</p>
-        <h2 id="by-country" class="mt-1 text-title font-bold tracking-[-0.015em]">
-          Browse by country
-        </h2>
-        <p class="mt-1 text-meta text-ink-2">Every African country is its own page here.</p>
+      <section class="mx-auto max-w-[1160px] px-4 pt-10" aria-labelledby="by-country">
+        <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <h2 id="by-country" class="text-subtitle font-bold tracking-[-0.015em]">
+            Browse by country
+          </h2>
+          <a
+            href="/countries"
+            class="text-meta font-semibold text-brand no-underline hover:underline"
+          >
+            All {entryPoints.countries.length} countries →
+          </a>
+        </div>
 
         {/* A `<details>` rather than a "show more" button: it needs no script, and the
             CSP carries no 'unsafe-inline'. The chips ARE the plain links in the HTML for
             a crawler and for a reader with no JavaScript. */}
-        <details class="group mt-4">
+        <details class="group mt-3">
           <summary class="inline-flex min-h-11 cursor-pointer list-none items-center gap-2 text-dense font-semibold text-brand [&::-webkit-details-marker]:hidden">
             Show all {entryPoints.countries.length} countries
             <Icon name="chevron" size={20} class="h-4 w-4 rotate-90 group-open:-rotate-90" />
           </summary>
-          <ul class="mt-3 flex list-none flex-wrap gap-2 p-0">
+          <ul class="mt-2 flex list-none flex-wrap gap-2 p-0">
             {entryPoints.countries.map((c) => (
               <li>
                 <a
@@ -593,74 +614,65 @@ const STATS = [
     )
   }
 
-  {/* ── CAN I APPLY? — the eligibility profile, framed as a core capability. ── */}
-  <section class="mx-auto max-w-[1160px] px-4 pt-14" aria-labelledby="can-i-apply" data-reveal>
-    <div class="flex flex-col gap-5 rounded-sheet border border-line bg-surface p-6 md:flex-row md:items-center">
-      <div class="flex-1">
-        <p class="eyebrow text-brand">Can you apply?</p>
-        <h2 id="can-i-apply" class="mt-1 text-subtitle font-semibold">
-          Tell us where you live, and we'll check every listing against it.
-        </h2>
-        <p class="mt-2 max-w-[56ch] text-dense text-ink-2">
-          Most rules turn on residence and what you're studying. With those saved, each
-          opportunity says whether you qualify — and where the wording is unclear, it says
-          unclear rather than guessing.
-        </p>
+  {/* ── TRUST — four promises, one block. ─────────────────────────────────────
+      This was 652px: an eyebrow, a display heading, and three bordered cards each with an
+      icon in a circle and a sentence of prose. The promises themselves are short, and
+      they are stronger stated plainly together than spaced out across three cards that
+      look like features.
+
+      MODERATION_AND_TRUST.md §2.1 rule 3's no-fee line is the last of them and is stated
+      here rather than in the footer, so it sits with the promises it belongs with. Base
+      passes `trustPanelAbove` to the footer so it is not repeated below. */}
+  <section class="mx-auto max-w-[1160px] px-4 pt-10" aria-labelledby="how-kept">
+    <div class="rounded-sheet border border-line bg-surface p-4">
+      <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h2 id="how-kept" class="text-dense font-semibold">How this list is kept</h2>
+        <a
+          href="/verification"
+          class="text-meta font-semibold text-brand no-underline hover:underline"
+        >
+          What verification means →
+        </a>
       </div>
-      <a
-        href="/you/eligibility"
-        class="inline-flex min-h-12 shrink-0 items-center justify-center rounded-row bg-brand px-5 text-dense font-semibold text-surface no-underline transition-colors hover:bg-brand-ink md:w-auto"
-      >
-        {user ? "Your eligibility details" : "Add your details"}
-      </a>
+      <ul class="mt-2 flex list-none flex-col gap-1.5 p-0 text-meta text-ink-2">
+        {
+          [
+            "Every listing links to the organiser's own page, and says when we last checked it.",
+            "Eligibility rules are quoted from the organiser's words, never paraphrased.",
+            "Where the wording is unclear, we say unclear rather than guessing.",
+            NO_FEE_STATEMENT,
+          ].map((promise) => (
+            <li class="flex gap-2">
+              <Icon name="check" size={20} class="mt-[2px] h-3.5 w-3.5 shrink-0 text-eligible" />
+              <span>{promise}</span>
+            </li>
+          ))
+        }
+      </ul>
     </div>
   </section>
 
-  {/* ── TRUST — "earns its place by being specific about what is and is not known."
-      MODERATION_AND_TRUST.md §2.1 rule 3's no-fee line is the third of these, stated
-      here rather than in the footer so it sits with the two promises it belongs with.
-      Base passes `trustPanelAbove` to the footer so it is not repeated below. */}
-  <section class="mx-auto max-w-[1160px] px-4 pt-14 pb-4" aria-labelledby="how-kept" data-reveal>
-    <p class="eyebrow text-brand">How this list is kept</p>
-    <h2 id="how-kept" class="mt-1 text-title font-bold tracking-[-0.015em]">
-      Nothing here is copied and forgotten.
-    </h2>
-    <div class="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
-      {
-        [
-          {
-            icon: "shield" as const,
-            text: "Every listing links to the organiser's own page, and we re-check it on a schedule. Each one says when it was last checked.",
-          },
-          {
-            icon: "check" as const,
-            text: "Eligibility rules are quoted from the organiser's words. Where the wording is unclear, we say unclear rather than guessing.",
-          },
-          { icon: "alert" as const, text: NO_FEE_STATEMENT },
-        ].map((item) => (
-          <div class="rounded-sheet border border-line bg-surface p-5">
-            <span class="flex size-9 items-center justify-center rounded-monogram bg-brand-wash text-brand">
-              <Icon name={item.icon} size={20} />
-            </span>
-            <p class="mt-3 text-dense text-ink-2">{item.text}</p>
-          </div>
-        ))
-      }
-    </div>
-  </section>
-
-  {/* §2 item 6: counts that are true. Both come from live queries, and each disappears
-      rather than showing a zero or a guess. */}
+  {/* ── NUMBERS — a band, not a chapter. Three live counts with no "+" rounding
+      (CONTENT_AND_LAUNCH.md §1), plus §2 item 6's freshness line, which belongs with them
+      because it is the number that says the others are current. ─────────────────────── */}
   {
-    (published !== null || lastVerifiedAt !== null) && (
-      <p class="mx-auto max-w-[1160px] px-4 pt-4 text-meta text-ink-3">
-        {published !== null && published > 0 && (
-          <span>
-            {published} {published === 1 ? "opportunity" : "opportunities"} published.{" "}
-          </span>
-        )}
-        {lastVerifiedAt !== null && <span>{freshnessLabel(lastVerifiedAt)} against the source.</span>}
-      </p>
+    STATS.length > 0 && (
+      <section class="mt-10 bg-ink py-6 text-surface" aria-labelledby="stats">
+        <h2 id="stats" class="sr-only">{BRAND.name} by the numbers</h2>
+        <div class="mx-auto flex max-w-[1160px] flex-wrap items-baseline gap-x-8 gap-y-3 px-4">
+          {STATS.map((stat) => (
+            <p class="flex items-baseline gap-2">
+              <span class="text-[1.5rem] font-bold tracking-[-0.02em] tabular-nums">
+                <span data-count-to={stat.value}>{stat.value.toLocaleString("en")}</span>
+              </span>
+              <span class="text-meta text-surface/70">{stat.label}</span>
+            </p>
+          ))}
+          {lastVerifiedAt !== null && (
+            <p class="text-meta text-surface/70">{freshnessLabel(lastVerifiedAt)} against the source.</p>
+          )}
+        </div>
+      </section>
     )
   }
 </Base>

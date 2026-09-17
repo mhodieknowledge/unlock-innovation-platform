@@ -185,9 +185,22 @@ describe("the board is the hero (UX_FLOWS.md §2)", () => {
     expect(html).not.toContain("astro-island");
   });
 
-  it("asks for exactly eight rows", async () => {
+  it("asks for twelve rows, because the feed is scrolled rather than swiped", async () => {
+    // It was eight, which was the right number for a carousel showing one at a time. A
+    // vertical feed is scanned: twelve is about three screens of scanning on a phone, long
+    // enough to read as a catalogue and short enough that "view all" still means something.
     await home();
-    expect(state.asked?.limit).toBe(8);
+    expect(state.asked?.limit).toBe(12);
+  });
+
+  it("renders every row it asked for, as a list and not one at a time", async () => {
+    // THE REGRESSION THIS EXISTS FOR. The rows were all in the DOM before too — inside a
+    // carousel, where seven of eight were off-screen and the controls for reaching them were
+    // 8×8px dots. Being in the HTML was never the question; being scannable was.
+    const html = await (await home()).text();
+    expect(html).not.toContain("data-carousel");
+    expect(html).not.toContain("data-slide");
+    for (const row of state.board) expect(html).toContain(row.title);
   });
 
   it("carries none of the fabricated content §2 always ruled out", async () => {
@@ -234,8 +247,13 @@ describe("the board is the hero (UX_FLOWS.md §2)", () => {
 describe("counts are true or absent (CONTENT_AND_LAUNCH.md §1)", () => {
   it("shows the live published count and the last verification", async () => {
     const html = plain(await (await home()).text());
-    expect(html).toContain("312 opportunities published");
+    // The count appears twice by design and is the same live number both times: once as the
+    // destination of the way out of the feed, once in the numbers band. Neither is rounded.
+    expect(html).toContain("View all 312");
+    expect(html).toContain("312");
+    expect(html).toContain("opportunities tracked");
     expect(html).toContain("Checked today against the source.");
+    expect(html).not.toMatch(/\b300\+|\b310\+/);
   });
 
   it("shows no number at all when nothing is published", async () => {
@@ -269,8 +287,8 @@ describe("the country strip and who may cache it (UX_FLOWS.md §2 item 4)", () =
     const html = plain(await response.text());
 
     expect(state.asked?.countryIso2).toBe("KE");
-    expect(html).toContain("Opportunities for Kenya");
-    expect(html).toContain("Change location");
+    expect(html).toContain("Open to <strong class=\"font-semibold text-ink\">Kenya</strong>");
+    expect(html).toContain("Show everything");
     expect(response.headers.get("cache-control")).toBe("private, max-age=0, must-revalidate");
     expect(response.headers.get("vary")).toContain("Cookie");
   });
@@ -280,7 +298,7 @@ describe("the country strip and who may cache it (UX_FLOWS.md §2 item 4)", () =
     const html = plain(await response.text());
 
     expect(state.asked?.countryIso2).toBe("ZW");
-    expect(html).toContain("Opportunities for Zimbabwe");
+    expect(html).toContain("Open to <strong class=\"font-semibold text-ink\">Zimbabwe</strong>");
     expect(response.headers.get("cache-control")).toBe(
       "public, s-maxage=300, stale-while-revalidate=600",
     );
@@ -294,7 +312,7 @@ describe("the country strip and who may cache it (UX_FLOWS.md §2 item 4)", () =
     const html = plain(await response.text());
 
     expect(state.asked?.countryIso2).toBe("ZW");
-    expect(html).toContain("Opportunities for Zimbabwe");
+    expect(html).toContain("Open to <strong class=\"font-semibold text-ink\">Zimbabwe</strong>");
     expect(response.headers.get("cache-control")).toBe("private, max-age=0, must-revalidate");
   });
 
@@ -304,7 +322,7 @@ describe("the country strip and who may cache it (UX_FLOWS.md §2 item 4)", () =
 
     expect(state.asked?.countryIso2).toBeUndefined();
     expect(html).not.toContain("Opportunities for Kenya");
-    expect(html).toContain("Use my location again");
+    expect(html).toContain("Use my location");
     // An explicit choice in the URL is shareable: it is the same page for everyone who
     // follows the link.
     expect(response.headers.get("cache-control")).toBe(

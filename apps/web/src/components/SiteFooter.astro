@@ -12,6 +12,8 @@
 
 import { BRAND, NO_FEE_STATEMENT } from "@mbele/config";
 
+import Icon from "./Icon.astro";
+
 interface Props {
   lowData?: boolean;
   pathname: string;
@@ -75,17 +77,43 @@ const GROUPS: { heading: string; links: { label: string; href: string }[] }[] = 
       )
     }
 
-    <div class="mt-9 grid grid-cols-2 gap-x-8 gap-y-8 md:grid-cols-4">
+    {/*
+      FOUR GROUPS, FOLDED ON A PHONE AND OPEN ON A DESKTOP.
+
+      Fourteen links in a two-column grid ran to 576px on a 664px phone — a screen of
+      footer under every page, most of it scrolled past. As `<details>` they are four
+      44px rows a reader can open, and the links are still in the HTML either way, so a
+      crawler and a reader without JavaScript see exactly what they saw before.
+
+      No script does this. `md:open-on-desktop` (tokens.css) overrides the browser's own
+      `details:not([open]) > *:not(summary) { display: none }` at the breakpoint and hides
+      the summary's marker, so the same markup is an accordion on a phone and four plain
+      columns above it — where 576px of footer was never the problem.
+
+      The touch targets are the links themselves, not the text inside them: a 20px link in
+      a list of fourteen is a target you miss, which is how a footer becomes decoration.
+    */}
+    <div class="mt-8 grid grid-cols-1 gap-y-1 md:mt-9 md:grid-cols-4 md:gap-x-8 md:gap-y-8">
       {
         GROUPS.map((group) => (
-          <nav aria-label={group.heading} class="flex flex-col gap-3">
-            <h2 class="eyebrow text-ink-3">{group.heading}</h2>
-            {group.links.map((link) => (
-              <a href={link.href} class="text-dense text-ink-2 no-underline hover:text-brand hover:underline">
-                {link.label}
-              </a>
-            ))}
-          </nav>
+          <details class="md:open-on-desktop group border-b border-line md:border-0">
+            <summary class="flex min-h-11 cursor-pointer list-none items-center justify-between text-dense font-semibold text-ink md:mb-1 md:cursor-default md:text-ink-3 md:font-normal md:uppercase md:tracking-[0.08em] md:text-micro [&::-webkit-details-marker]:hidden">
+              {group.heading}
+              <span class="text-ink-3 transition-transform group-open:rotate-180 md:hidden" aria-hidden="true">
+                <Icon name="chevron" size={20} class="h-4 w-4 rotate-90" />
+              </span>
+            </summary>
+            <nav aria-label={group.heading} class="flex flex-col pb-2 md:pb-0">
+              {group.links.map((link) => (
+                <a
+                  href={link.href}
+                  class="flex min-h-11 items-center text-dense text-ink-2 no-underline hover:text-brand hover:underline"
+                >
+                  {link.label}
+                </a>
+              ))}
+            </nav>
+          </details>
         ))
       }
     </div>

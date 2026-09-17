@@ -216,86 +216,30 @@
     animation: hero-kenburns 22s ease-in-out infinite alternate;
   }
 
-  /* A real slide carousel — [data-carousel] in the markup, motion.js does the rest. Until
-   * it runs, `.carousel-slide` is never applied (the JS is what adds it while moving each
-   * slide into the track), so the base state is just the [data-slide] children stacking as
-   * ordinary block content: a complete list, not a truncated preview. */
-  [data-carousel] {
-    position: relative;
-  }
-  [data-carousel].carousel-ready {
-    overflow: hidden;
-    border-radius: var(--radius-sheet);
-  }
-  .carousel-track {
-    display: flex;
-    transition: transform 0.5s cubic-bezier(0.22, 0.8, 0.2, 1);
-  }
-  .carousel-slide {
-    flex: 0 0 100%;
-    min-width: 0;
-  }
-  .carousel-dots {
-    display: flex;
-    justify-content: center;
-    gap: 8px;
-    margin-top: 16px;
-  }
-  .carousel-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 999px;
-    background: var(--color-line-strong);
-    border: 0;
-    padding: 0;
-    cursor: pointer;
-  }
-  .carousel-dot[aria-selected="true"] {
-    background: var(--color-brand);
-    width: 22px;
-  }
-  .carousel-dot,
-  .carousel-arrow {
-    transition:
-      width 0.25s ease,
-      background 0.2s ease;
-  }
-  .carousel-arrow {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 10;
-    display: flex;
-    width: 40px;
-    height: 40px;
-    align-items: center;
-    justify-content: center;
-    border-radius: 999px;
-    border: 1px solid var(--color-line);
-    background: var(--color-surface);
-    color: var(--color-ink);
-    cursor: pointer;
-    box-shadow: var(--shadow-card);
-  }
-  .carousel-arrow:hover {
-    background: var(--color-sunken);
-  }
-  .carousel-arrow-prev {
-    left: -14px;
-  }
-  .carousel-arrow-next {
-    right: -14px;
-  }
-  @media (max-width: 640px) {
-    .carousel-arrow {
+  /* A <details> that is an accordion on a phone and a plain open column above `md`.
+   *
+   * The browser's own UA rule is `details:not([open]) > *:not(summary) { display: none }`,
+   * and `[open]` is DOM state — a media query cannot set it. Overriding that declaration is
+   * what makes one piece of markup work as both, with no script and nothing hidden from a
+   * crawler either way. The summary stays in the flow as the column heading; only its
+   * affordances (pointer, marker) are dropped, because on a desktop it opens nothing. */
+  @media (min-width: 48rem) {
+    details.md\:open-on-desktop > *:not(summary) {
+      display: block;
+    }
+    details.md\:open-on-desktop > summary {
+      list-style: none;
+      pointer-events: none;
+    }
+    details.md\:open-on-desktop > summary::-webkit-details-marker {
       display: none;
     }
   }
 
-  /* The rotating category stat in the hero eyebrow. Four fixed steps because the homepage
-   * only ever features up to four categories there (index.astro's FEATURED_CATEGORY_CODES)
-   * — a static keyframe list keeps this out of a per-request inline <style>, which the CSP
-   * (style-src 'self', no unsafe-inline) does not allow. */
+  /* The rotating category stat in the hero eyebrow. Four fixed steps because the cycle is
+   * padded to exactly four slots (index.astro's CYCLE_SLOTS) — a static keyframe list keeps
+   * this out of a per-request inline <style>, which the CSP (style-src 'self', no
+   * unsafe-inline) does not allow. */
   @keyframes word-cycle-4 {
     0%,
     21% {
