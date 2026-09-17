@@ -149,13 +149,26 @@ const FEATURE_BANDS = categoryCounts
   .slice(0, 2);
 
 const bandResults = await Promise.all(
-  FEATURE_BANDS.map((c) => listOpportunities({ categoryCode: c.code, limit: 8, countryIso2 }, env)),
+  FEATURE_BANDS.map((c) => listOpportunities({ categoryCode: c.code, limit: 14, countryIso2 }, env)),
 );
+
+/**
+ * A band's rail does not repeat what the first rail already showed.
+ *
+ * The top rail is the soonest twelve overall and a band is the soonest of one category, so
+ * the most urgent hackathon is in both by definition. Twice on one screenful reads as a
+ * catalogue that has run out of things to show. Fourteen are fetched so that after the
+ * overlap is removed there are still eight — a rail of three is a rail that should have been
+ * a list.
+ */
+const shownAlready = new Set(rows.map((r) => r.id));
 
 const bands = FEATURE_BANDS.map((category, i) => ({
   category,
   image: CATEGORY_IMAGES[category.code],
-  rows: bandResults[i]?.ok ? bandResults[i].data : [],
+  rows: (bandResults[i]?.ok ? bandResults[i].data : [])
+    .filter((o) => !shownAlready.has(o.id))
+    .slice(0, 8),
 })).filter((band) => band.rows.length > 0);
 
 /** Every category shown in a band, so the card grid below does not repeat them. */
