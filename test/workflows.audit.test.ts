@@ -204,3 +204,59 @@ describe("the ai_providers task vocabulary", () => {
     expect(missing, "these prompts are loaded but no file exists").toEqual([]);
   });
 });
+
+/**
+ * A summary that does not say who wrote it.
+ *
+ * PRODUCT_SPEC.md §14's hard AI rules, marked [PR]: "Anything AI-derived and user-visible is
+ * labelled and carries its source quote", and the same list puts "AI-written opportunity
+ * descriptions presented as ours" under explicitly NOT built. The opportunity page rendered
+ * `summary` as an unlabelled paragraph under the title — the position and voice of an editorial
+ * standfirst — for every listing the pipeline has ever described.
+ *
+ * The label is conditional on `summary_source`, so it is only as true as that column. This
+ * asserts the column is written wherever the summary is: a write that sets one and not the
+ * other makes the page's label a guess, and it would be a silent one.
+ */
+describe("who wrote the summary", () => {
+  const runners = ["scripts/ingest.mjs", "scripts/reverify.mjs", "scripts/dedupe.mjs"];
+
+  it("is recorded by every statement that writes a summary", () => {
+    for (const file of runners) {
+      const text = readFileSync(join(ROOT, file), "utf8");
+      // Every SQL statement in these files is a template or plain string; a write to `summary`
+      // appears either as an INSERT column list or as `SET summary =`.
+      const writes = [
+        ...text.matchAll(/INSERT INTO opportunities[\s\S]{0,400}?\)/g),
+        ...text.matchAll(/UPDATE opportunities[\s\S]{0,200}?SET [\s\S]{0,200}?WHERE/g),
+      ].filter((match) => /\bsummary\b/.test(match[0]));
+
+      for (const write of writes) {
+        expect(
+          write[0],
+          `${file}: this writes summary without summary_source, so the page's label is a guess`,
+        ).toMatch(/summary_source/);
+      }
+    }
+  });
+
+  it("is rendered as a label on the page that shows the summary", () => {
+    const page = readFileSync(
+      join(ROOT, "apps", "web", "src", "pages", "opportunities", "[slug].astro"),
+      "utf8",
+    );
+    expect(page).toMatch(/summary_source/);
+    // The label says who wrote it and points at the organiser's own words, because "labelled"
+    // without a route to the source is a disclaimer rather than an attribution.
+    expect(page).toMatch(/not by the organiser/);
+    expect(page).toMatch(/Read their own description/);
+  });
+
+  it("is selected by the query that feeds that page", () => {
+    // The label cannot be conditional on a column the query does not ask for, and PostgREST
+    // returns undefined rather than failing for a field left out of the select list — so this
+    // would have rendered the label on every record, human-written ones included.
+    const db = readFileSync(join(ROOT, "apps", "web", "src", "lib", "db.ts"), "utf8");
+    expect(db).toMatch(/summary,\s*summary_source/);
+  });
+});

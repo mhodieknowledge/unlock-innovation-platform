@@ -987,14 +987,14 @@ async function writeCandidate({ source, doc, candidate, confidence, rules, rejec
 
   const { rows } = await client.query(
     `INSERT INTO opportunities
-       (slug, title, summary, category_id, organisation_id, source_id, raw_document_id,
+       (slug, title, summary, summary_source, category_id, organisation_id, source_id, raw_document_id,
         eligibility_scope, eligible_countries, participation_mode,
         deadline_at, deadline_precision, deadline_raw, deadline_timezone,
         starts_at, ends_at, team_required, team_size_min, team_size_max,
         prize_amount, prize_currency, cost, source_url, official_url,
         status, verification, extraction_confidence, last_verified_at,
         published_at, link_ok, link_checked_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8::eligibility_scope,$9,$10::participation_mode,
+     VALUES ($1,$2,$3,'model',$4,$5,$6,$7,$8::eligibility_scope,$9,$10::participation_mode,
              $11,$12::deadline_precision,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22::cost_kind,$23,$24,
              $25::opp_status,$26::opp_verification,$27,$28,$29,$30,$31)
      RETURNING id, slug`,
@@ -1233,7 +1233,12 @@ async function runSummaryBackfill() {
     }
 
     if (!DRY_RUN) {
-      await client.query("UPDATE opportunities SET summary = $2 WHERE id = $1", [row.id, summary]);
+      // summary_source alongside summary, always: PRODUCT_SPEC.md §14 requires the page to
+      // label AI-derived text, and it can only do that from a column that is written here.
+      await client.query(
+        "UPDATE opportunities SET summary = $2, summary_source = 'model' WHERE id = $1",
+        [row.id, summary],
+      );
     }
     written += 1;
     console.log(`  ✓ ${row.slug}: ${summary.slice(0, 72)}${summary.length > 72 ? "…" : ""}`);

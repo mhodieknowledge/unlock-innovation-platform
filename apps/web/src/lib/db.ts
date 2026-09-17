@@ -60,6 +60,11 @@ export interface OpportunityRow {
   slug: string;
   title: string;
   summary: string | null;
+  /**
+   * Who wrote `summary`. PRODUCT_SPEC.md §14's hard AI rules require anything AI-derived and
+   * user-visible to be labelled, and the page cannot label what it cannot see.
+   */
+  summary_source: string | null;
   description_md: string | null;
   deadline_at: string | null;
   deadline_precision: string;
@@ -91,7 +96,7 @@ export interface OpportunityRow {
 }
 
 const OPPORTUNITY_FIELDS = `
-  id, slug, title, summary, description_md,
+  id, slug, title, summary, summary_source, description_md,
   deadline_at, deadline_precision, deadline_raw, deadline_timezone,
   opens_at, starts_at, ends_at, is_rolling,
   participation_mode, eligibility_scope, eligible_countries,

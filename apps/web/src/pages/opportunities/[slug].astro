@@ -347,12 +347,34 @@ const factGrid: [string, string][] = opp
           </div>
         </div>
 
-        {/* ── ABOUT THIS OPPORTUNITY ──────────────────────────────────────── */}
+        {/*
+          ── ABOUT THIS OPPORTUNITY, AND WHO WROTE IT ──────────────────────
+
+          PRODUCT_SPEC.md §14's hard AI rules, marked [PR]: "Anything AI-derived and
+          user-visible is labelled." The same list puts "AI-written opportunity descriptions
+          presented as ours" under explicitly NOT built. Every summary in the database was
+          written by a model — extract.v1.md rule 1 asks for one on every page the crawler
+          reads, and the summarise task writes the rest — and under a heading reading "About
+          this opportunity" it is presented as ours.
+
+          The label is a footnote rather than a banner: provenance is a fact, not a warning,
+          and the reader's decision turns on the deadline and the eligibility rules, which do
+          carry the organiser's own words. It links to the source so anyone who wants the
+          organiser's wording can have it.
+        */}
         {
           opp.summary && (
             <section class="mt-8">
               <h2 class="text-subtitle font-semibold">About this opportunity</h2>
               <p class="prose-measure mt-2 text-body text-ink-2">{opp.summary}</p>
+              {opp.summary_source !== "human" && (
+                <p class="mt-2 text-micro text-ink-3">
+                  Written by our software from the source page, not by the organiser.{" "}
+                  <a class="underline" href={opp.official_url ?? opp.source_url ?? "#"}>
+                    Read their own description
+                  </a>.
+                </p>
+              )}
             </section>
           )
         }
