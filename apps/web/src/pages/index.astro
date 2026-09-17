@@ -138,10 +138,16 @@ const degraded = !board.ok;
  * The two category bands, and the rails beneath them.
  *
  * Ordered by what is actually open, so the page reflects the catalogue rather than a
- * hard-coded pair of favourites — but limited to categories we hold a photograph for, because
- * a band is a photograph and a band without one is a heading pretending to be a section.
- * `other` is excluded: it is where a listing goes when the taxonomy has no word for it, so as
- * a destination it promises nothing.
+ * hard-coded pair of favourites. `other` is excluded: it is where a listing goes when the
+ * taxonomy has no word for it, so as a destination it promises nothing.
+ *
+ * A PHOTOGRAPH IS NOT A REQUIREMENT, and making it one was a mistake worth recording. We hold
+ * four photographs; of those categories only hackathons clears the floor (grants 3,
+ * internships 3, scholarships 4), while AI challenges with forty-eight and fellowships with
+ * nine have none. Requiring a photograph therefore meant either one band and no rhythm, or a
+ * band spent on the fourth-largest category — both decided by what is in assets/marketing
+ * rather than by what the catalogue holds. A band without a photograph is a colour band with
+ * the same proportions, which is a deliberate variant rather than an absence.
  */
 /**
  * A band needs enough listings to fill the rail underneath it.
@@ -160,7 +166,7 @@ const degraded = !board.ok;
 const BAND_FLOOR = 6;
 
 const FEATURE_BANDS = categoryCounts
-  .filter((c) => c.open_count >= BAND_FLOOR && c.code !== "other" && CATEGORY_IMAGES[c.code])
+  .filter((c) => c.open_count >= BAND_FLOOR && c.code !== "other")
   .sort((a, b) => b.open_count - a.open_count)
   .slice(0, 2);
 
@@ -599,20 +605,28 @@ const STATS = [
     bands.map((band, i) => (
       <section class="pt-12" aria-labelledby={`band-${band.category.code}`}>
         <div class="relative isolate overflow-hidden">
-          <Image
-            src={band.image}
-            alt=""
-            aria-hidden="true"
-            widths={[480, 800, 1200, 1600]}
-            sizes="100vw"
-            loading="lazy"
-            class="absolute inset-0 -z-10 h-full w-full object-cover"
-          />
-          <div
-            class={`absolute inset-0 -z-10 bg-gradient-to-t from-black/90 via-black/60 to-black/30 ${
-              i % 2 === 1 ? "lg:bg-gradient-to-l" : "lg:bg-gradient-to-r"
-            }`}
-          />
+          {band.image && !lowData ? (
+            <>
+              <Image
+                src={band.image}
+                alt=""
+                aria-hidden="true"
+                widths={[480, 800, 1200, 1600]}
+                sizes="100vw"
+                loading="lazy"
+                class="absolute inset-0 -z-10 h-full w-full object-cover"
+              />
+              <div
+                class={`absolute inset-0 -z-10 bg-gradient-to-t from-black/90 via-black/60 to-black/30 ${
+                  i % 2 === 1 ? "lg:bg-gradient-to-l" : "lg:bg-gradient-to-r"
+                }`}
+              />
+            </>
+          ) : (
+            /* The same band, in ink instead of a photograph. Same proportions, same type, so
+               the rhythm does not stutter where the assets folder happens to stop. */
+            <div class="absolute inset-0 -z-10 bg-gradient-to-br from-brand-ink to-ink" />
+          )}
           <div
             class={`mx-auto flex max-w-[1160px] flex-col justify-end px-4 pt-24 pb-6 lg:pt-32 lg:pb-10 ${
               i % 2 === 1 ? "lg:items-end lg:text-right" : ""
