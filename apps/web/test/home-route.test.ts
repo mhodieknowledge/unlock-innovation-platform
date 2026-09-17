@@ -187,12 +187,17 @@ describe("the board is the hero (UX_FLOWS.md §2)", () => {
     expect(html).not.toContain("astro-island");
   });
 
-  it("asks for twelve rows, because the feed is scrolled rather than swiped", async () => {
-    // It was eight, which was the right number for a carousel showing one at a time. A
-    // vertical feed is scanned: twelve is about three screens of scanning on a phone, long
-    // enough to read as a catalogue and short enough that "view all" still means something.
+  it("asks for eight rows, because every row is now vertical space everyone pays for", async () => {
+    // This number has been wrong in both directions. Eight was too few for a CAROUSEL that
+    // showed one at a time. Twelve was right for a RAIL, where the eleven cards a reader
+    // does not want are off-screen sideways and cost them no scrolling at all.
+    //
+    // The board is a vertical list now, and there every row is ~120px of page on the way to
+    // the category sections and the trust panel below. Eight is §2 item 3's own number
+    // ("enough to prove the board is alive, above the fold"), and with two category sections
+    // under it the page still carries eighteen real listings.
     await home();
-    expect(state.asked?.limit).toBe(12);
+    expect(state.asked?.limit).toBe(8);
   });
 
   it("renders every row it asked for, as a list and not one at a time", async () => {
