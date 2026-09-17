@@ -15,35 +15,52 @@ export const prerender = true;
 ---
 
 <Base title="You're offline" noindex>
-  <h1 class="text-display font-bold">You're offline</h1>
+  <div class="mx-auto flex max-w-lg flex-col items-center py-14 text-center">
+    <h1 class="text-title font-bold tracking-[-0.015em]">You're offline</h1>
 
-  <p class="prose-measure mt-3 text-body">
-    This page wasn't saved to your device, so there's nothing to show you yet. Nothing is
-    broken and nothing you did has been lost.
-  </p>
+    <p class="prose-measure mt-3 text-dense text-ink-2">
+      This page wasn't saved to your device, so there's nothing to show you yet. Nothing is
+      broken and nothing you did has been lost.
+    </p>
 
-  <h2 class="mt-8 text-subtitle font-semibold">What still works</h2>
-  <ul class="prose-measure mt-2 list-disc space-y-1 pl-5 text-body">
-    <li>
-      <a href="/tracker" class="text-brand">Your tracker</a>, as it was the last time you
-      opened it.
-    </li>
-    <li>The last 50 opportunity pages you looked at.</li>
-    <li>
-      Changes you make to your tracker. They're saved on your device and sent the moment you
-      are back online — you'll see one line telling you when that happens.
-    </li>
-  </ul>
+    <a
+      href="/tracker"
+      class="mt-6 inline-flex min-h-12 items-center rounded-row bg-brand px-6 text-dense font-semibold text-surface no-underline hover:bg-brand-ink"
+    >
+      Go to your tracker
+    </a>
+  </div>
 
-  <h2 class="mt-8 text-subtitle font-semibold">What doesn't</h2>
-  <ul class="prose-measure mt-2 list-disc space-y-1 pl-5 text-body">
-    <li>Searching, which needs the catalogue.</li>
-    <li>Eligibility checks, which are worked out on our side and never guessed here.</li>
-    <li>Messages and requests — those involve somebody else, and a message sent hours late
-      into a conversation that moved on is worse than one that failed visibly.</li>
-  </ul>
+  <div class="mx-auto grid max-w-2xl grid-cols-1 gap-4 sm:grid-cols-2">
+    <div class="rounded-sheet border border-line bg-surface p-5">
+      <h2 class="text-subtitle font-semibold">What still works</h2>
+      <ul class="mt-2 list-disc space-y-1 pl-5 text-dense text-ink-2">
+        <li>
+          <a href="/tracker" class="font-semibold text-brand no-underline hover:underline">Your tracker</a>,
+          as it was the last time you opened it.
+        </li>
+        <li>The last 50 opportunity pages you looked at.</li>
+        <li>
+          Changes you make to your tracker. They're saved on your device and sent the moment you
+          are back online — you'll see one line telling you when that happens.
+        </li>
+      </ul>
+    </div>
 
-  <p class="mt-8 text-meta text-ink-2">
+    <div class="rounded-sheet border border-line bg-surface p-5">
+      <h2 class="text-subtitle font-semibold">What doesn't</h2>
+      <ul class="mt-2 list-disc space-y-1 pl-5 text-dense text-ink-2">
+        <li>Searching, which needs the catalogue.</li>
+        <li>Eligibility checks, which are worked out on our side and never guessed here.</li>
+        <li>
+          Messages and requests — those involve somebody else, and a message sent hours late
+          into a conversation that moved on is worse than one that failed visibly.
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <p class="mx-auto mt-6 max-w-lg text-center text-meta text-ink-2">
     Try again when you have a signal. This page cost you nothing to load.
   </p>
 </Base>

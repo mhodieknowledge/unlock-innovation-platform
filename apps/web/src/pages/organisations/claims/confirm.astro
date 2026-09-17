@@ -51,7 +51,7 @@ if (!result.ok) Astro.response.status = failed ? 503 : 400;
   {
     result.ok ? (
       <>
-        <h1 class="text-title font-semibold">{result.name} is yours.</h1>
+        <h1 class="text-title font-bold tracking-[-0.015em]">{result.name} is yours.</h1>
         <p class="prose-measure mt-3 text-body">
           The organisation is verified, and you're an owner of it here. You can correct its
           listings and publish new ones — they'll show as coming from the organisation rather
@@ -78,7 +78,7 @@ if (!result.ok) Astro.response.status = failed ? 503 : 400;
       </>
     ) : (
       <>
-        <h1 class="text-title font-semibold">
+        <h1 class="text-title font-bold tracking-[-0.015em]">
           {failed ? "We can't check that right now" : "That link didn't work"}
         </h1>
         <p class="prose-measure mt-3 text-body text-ink-2">

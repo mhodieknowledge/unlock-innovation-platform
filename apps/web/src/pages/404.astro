@@ -14,17 +14,25 @@ export const prerender = true;
 ---
 
 <Base title="Not found" noindex>
-  <h1 class="text-display font-bold">There's nothing at this address</h1>
+  <div class="mx-auto flex min-h-[55vh] max-w-md flex-col items-center py-14 text-center">
+    <h1 class="text-title font-bold tracking-[-0.015em]">There's nothing at this address</h1>
 
-  <p class="prose-measure mt-3 text-body text-ink-2">
-    The link may be mistyped, or the thing it pointed at may have been merged into another
-    listing. Nothing is broken on your side.
-  </p>
+    <p class="prose-measure mt-3 text-dense text-ink-2">
+      The link may be mistyped, or the thing it pointed at may have been merged into another
+      listing. Nothing is broken on your side.
+    </p>
 
-  <ul class="prose-measure mt-6 space-y-2 text-dense">
-    <li><a href="/opportunities" class="text-brand">Everything open right now</a></li>
-    <li><a href="/countries" class="text-brand">Browse by country</a></li>
-    <li><a href="/categories" class="text-brand">Browse by kind</a></li>
-    <li><a href="/" class="text-brand">Start from the board</a></li>
-  </ul>
+    <a
+      href="/opportunities"
+      class="mt-6 inline-flex min-h-12 items-center rounded-row bg-brand px-6 text-dense font-semibold text-surface no-underline hover:bg-brand-ink"
+    >
+      Browse opportunities
+    </a>
+
+    <p class="mt-5 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-meta">
+      <a href="/countries" class="font-semibold text-brand no-underline hover:underline">Browse by country</a>
+      <a href="/categories" class="font-semibold text-brand no-underline hover:underline">Browse by kind</a>
+      <a href="/" class="font-semibold text-brand no-underline hover:underline">Start from the board</a>
+    </p>
+  </div>
 </Base>

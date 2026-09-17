@@ -146,71 +146,71 @@
   );
 </script>
 
-<section class="mt-6" aria-labelledby="elig-heading">
-  <h2 id="elig-heading" class="text-subtitle font-semibold">Check if you can apply</h2>
-
+<div>
   {#if !result && status !== "degraded"}
-    <form class="mt-3 max-w-md space-y-3" onsubmit={check}>
-      <p class="text-meta text-ink-2">No account needed. Stays on your device.</p>
+    <form class="rounded-sheet border border-line bg-surface p-5" onsubmit={check}>
+      <p class="text-meta text-ink-2">No account needed. Your answers stay on this device.</p>
 
-      <label class="block">
-        <span class="block text-micro font-semibold text-ink-2">Country you live in</span>
-        <input
-          bind:value={country}
-          maxlength="2"
-          placeholder="ZW"
-          autocomplete="country"
-          class="mt-1 h-11 w-full rounded-row border border-line-strong px-3 uppercase"
-        />
-      </label>
+      <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <label class="block">
+          <span class="block text-meta font-semibold text-ink">Country you live in</span>
+          <input
+            bind:value={country}
+            maxlength="2"
+            placeholder="ZW"
+            autocomplete="country"
+            class="mt-[6px] h-12 w-full rounded-row border border-line-strong bg-surface px-3 uppercase focus:border-brand"
+          />
+        </label>
 
-      <label class="block">
-        <span class="block text-micro font-semibold text-ink-2">Student status</span>
-        <select
-          bind:value={studentStatus}
-          class="mt-1 h-11 w-full rounded-row border border-line-strong bg-surface px-3"
-        >
-          {#each STATUSES as [value, label] (value)}
-            <option {value}>{label}</option>
-          {/each}
-        </select>
-      </label>
+        <label class="block">
+          <span class="block text-meta font-semibold text-ink">Student status</span>
+          <select
+            bind:value={studentStatus}
+            class="mt-[6px] h-12 w-full rounded-row border border-line-strong bg-surface px-3 focus:border-brand"
+          >
+            {#each STATUSES as [value, label] (value)}
+              <option {value}>{label}</option>
+            {/each}
+          </select>
+        </label>
 
-      <label class="block">
-        <span class="block text-micro font-semibold text-ink-2">Birth year</span>
-        <input
-          bind:value={birthYear}
-          inputmode="numeric"
-          maxlength="4"
-          placeholder="2004"
-          class="mt-1 h-11 w-full rounded-row border border-line-strong px-3"
-        />
-        <span class="mt-1 block text-meta text-ink-2"
-          >We ask for the year only, never a full date of birth.</span
-        >
-      </label>
+        <label class="block sm:col-span-2">
+          <span class="block text-meta font-semibold text-ink">Birth year</span>
+          <input
+            bind:value={birthYear}
+            inputmode="numeric"
+            maxlength="4"
+            placeholder="2004"
+            class="mt-[6px] h-12 w-full max-w-[160px] rounded-row border border-line-strong bg-surface px-3 focus:border-brand"
+          />
+          <span class="mt-1 block text-meta text-ink-2"
+            >We ask for the year only, never a full date of birth.</span
+          >
+        </label>
+      </div>
 
-      <label class="flex items-center gap-2 text-meta text-ink-2">
-        <input type="checkbox" bind:checked={remember} class="h-4 w-4" />
+      <label class="mt-4 flex items-center gap-2 text-meta text-ink-2">
+        <input type="checkbox" bind:checked={remember} class="h-4 w-4 accent-brand" />
         Remember these on this device
       </label>
 
       <button
         type="submit"
         disabled={status === "checking"}
-        class="h-11 rounded-row bg-brand px-4 font-semibold text-surface disabled:opacity-70"
+        class="mt-4 inline-flex h-12 items-center rounded-row bg-brand px-5 text-dense font-semibold text-surface hover:bg-brand-ink disabled:opacity-70"
       >
-        {status === "checking" ? "Checking…" : "Check if you can apply"}
+        {status === "checking" ? "Checking…" : "Check eligibility"}
       </button>
 
       {#if status === "error"}
-        <p class="text-meta text-danger" role="alert">{errorMessage}</p>
+        <p class="mt-3 text-meta text-danger" role="alert">{errorMessage}</p>
       {/if}
     </form>
   {/if}
 
   {#if status === "degraded" && !result}
-    <div class="mt-3 border-l-[3px] border-line-strong bg-sunken p-4">
+    <div class="rounded-sheet border border-line bg-sunken p-5">
       <p class="font-semibold">
         <span aria-hidden="true">{RULE_OUTCOME_GLYPH.unparsed}</span>
         We haven't confirmed the eligibility rules for this one.
@@ -219,12 +219,12 @@
         Check the official page — it is the authority either way.
       </p>
       {#if officialUrl}
-        <p class="mt-2">
+        <p class="mt-3">
           <a
             href={officialUrl}
             rel="noopener noreferrer nofollow ugc"
             target="_blank"
-            class="text-brand">Open the official page</a
+            class="font-semibold text-brand no-underline hover:underline">Open the official page</a
           >
         </p>
       {/if}
@@ -232,26 +232,30 @@
   {/if}
 
   {#if result}
-    <div class="mt-3 border-l-[3px] {presentation.rail} {presentation.wash} p-4">
+    <div class="rounded-sheet border border-line {presentation.wash} p-5">
       <p class="sr-only" aria-live="polite">{announcement}</p>
 
-      <p class="{presentation.ink} text-subtitle font-semibold">
-        <span aria-hidden="true">{presentation.glyph}</span>
-        {presentation.label}
-      </p>
-      <p class="mt-1 text-dense text-ink-2">{presentation.summary}</p>
+      <div class="flex items-center gap-3">
+        <span class="flex size-10 shrink-0 items-center justify-center rounded-monogram bg-surface {presentation.ink} text-[18px]">
+          <span aria-hidden="true">{presentation.glyph}</span>
+        </span>
+        <p class="{presentation.ink} text-subtitle font-bold tracking-[-0.01em] uppercase">
+          {presentation.label}
+        </p>
+      </div>
+      <p class="mt-2 text-dense text-ink-2">{presentation.summary}</p>
 
       {#if result.rules.length > 0}
-        <ul class="mt-3 space-y-3">
+        <ul class="mt-4 flex flex-col gap-3">
           {#each result.rules as rule (rule.type + rule.source_quote)}
-            <li>
+            <li class="rounded-row bg-surface p-3">
               <p class="text-dense">
                 <span aria-hidden="true">{RULE_OUTCOME_GLYPH[rule.outcome] ?? "○"}</span>
                 {rule.explanation}
               </p>
               <!-- PRODUCT_SPEC.md §12.4: never state a verdict without the
                    sentence it came from. -->
-              <p class="mt-1 border-l border-line-strong pl-3 text-meta text-ink-2">
+              <p class="mt-1 border-l-2 border-line-strong pl-3 text-meta text-ink-2">
                 &ldquo;{rule.source_quote}&rdquo;
               </p>
             </li>
@@ -260,7 +264,7 @@
       {/if}
 
       {#if result.missing_fields.length > 0}
-        <p class="mt-3 text-dense">
+        <p class="mt-4 text-dense">
           Add your {result.missing_fields.map(fieldLabel).join(", ")} to resolve this.
         </p>
         <button
@@ -270,21 +274,21 @@
         >
       {/if}
 
-      <p class="mt-3 text-meta text-ink-2">
+      <p class="mt-4 text-meta text-ink-2">
         {result.disclaimer}
         {#if officialUrl}
           <a
             href={officialUrl}
             rel="noopener noreferrer nofollow ugc"
             target="_blank"
-            class="text-brand">Official page</a
+            class="font-semibold text-brand no-underline hover:underline">Official page</a
           >
         {/if}
       </p>
 
-      <button onclick={reopen} class="mt-2 inline-flex min-h-11 items-center text-meta text-brand underline"
+      <button onclick={reopen} class="mt-3 inline-flex min-h-11 items-center text-meta font-semibold text-brand underline"
         >Change my details</button
       >
     </div>
   {/if}
-</section>
+</div>

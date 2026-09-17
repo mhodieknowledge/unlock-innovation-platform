@@ -167,7 +167,7 @@ const nextPrompt = (p: ProjectRow): { label: string; field: string } | null => {
 {
   !project ? (
     <Base title="Project not found" noindex user={user}>
-      <h1 class="text-title font-semibold">
+      <h1 class="text-title font-bold tracking-[-0.015em]">
         {failed ? "We can't load this right now" : "That project isn't here"}
       </h1>
       <p class="prose-measure mt-3 text-body text-ink-2">
@@ -208,7 +208,7 @@ const nextPrompt = (p: ProjectRow): { label: string; field: string } | null => {
         )
       }
 
-      <h1 class="text-title font-semibold">{project.title}</h1>
+      <h1 class="text-title font-bold tracking-[-0.015em]">{project.title}</h1>
       {project.pitch && <p class="mt-2 max-w-prose text-body">{project.pitch}</p>}
 
       <p class="mt-2 text-meta text-ink-2">

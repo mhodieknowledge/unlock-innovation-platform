@@ -117,69 +117,71 @@ const VERIFICATION_COPY: Record<string, string> = {
       <!-- The monogram stands in for a logo. DESIGN_SYSTEM.md §10 requires the substitution
            in low-data mode; there is no logo pipeline yet, so it is this for everyone, which
            is the honest state rather than a broken image. -->
-      <div class="flex items-center gap-3">
-        <Monogram name={org.name} size="h-11 w-11 text-dense" />
-        <h1 class="text-display font-bold">{org.name}</h1>
+      <div class="flex items-center gap-4">
+        <Monogram name={org.name} size="h-14 w-14 text-subtitle" />
+        <div>
+          <h1 class="text-title font-bold tracking-[-0.015em] md:text-display">{org.name}</h1>
+          <p class="mt-1 text-meta text-ink-2">
+            <span class="rounded-row bg-sunken px-2 py-[3px] text-micro font-semibold text-ink-2">
+              {org.verification}
+            </span>
+            {
+              org.verified_at && (
+                <span>
+                  {" "}since{" "}
+                  <time datetime={org.verified_at}>
+                    {new Date(org.verified_at).toLocaleDateString("en-GB", {
+                      month: "long",
+                      year: "numeric",
+                    })}
+                  </time>
+                </span>
+              )
+            }
+          </p>
+        </div>
       </div>
 
-      <p class="mt-2 text-meta text-ink-2">
-        <span class="rounded-[2px] bg-sunken px-[6px] py-[2px] text-micro font-semibold">
-          {org.verification}
-        </span>
-        {
-          org.verified_at && (
-            <span>
-              {" "}since{" "}
-              <time datetime={org.verified_at}>
-                {new Date(org.verified_at).toLocaleDateString("en-GB", {
-                  month: "long",
-                  year: "numeric",
-                })}
-              </time>
-            </span>
-          )
-        }
-      </p>
-
-      <p class="mt-1 text-meta text-ink-2">
+      <p class="mt-3 text-dense text-ink-2">
         {VERIFICATION_COPY[org.verification] ?? ""}
       </p>
 
-      {org.description && <p class="prose-measure mt-4 text-body">{org.description}</p>}
+      {org.description && <p class="prose-measure mt-4 text-body text-ink-2">{org.description}</p>}
 
       {
         org.website_url && (
-          <p class="mt-3 text-dense">
+          <p class="mt-4">
             <a
               href={org.website_url}
               rel="noopener noreferrer nofollow ugc"
               target="_blank"
-              class="text-brand">Official website</a
+              class="inline-flex min-h-11 items-center rounded-row border border-line-strong bg-surface px-4 text-dense font-semibold text-ink no-underline hover:bg-sunken"
+              >Official website</a
             >
           </p>
         )
       }
 
       <!-- Counts are computed live and are true. CONTENT_AND_LAUNCH.md §1. -->
-      <dl class="mt-6 grid grid-cols-2 border-t border-line md:grid-cols-3">
-        <div class="border-b border-r border-line px-3 py-2">
-          <dt class="text-micro font-semibold text-ink-2">Open now</dt>
-          <dd class="text-dense">{open.length}</dd>
+      <dl class="mt-6 grid grid-cols-3 gap-3">
+        <div class="rounded-sheet border border-line bg-surface p-3">
+          <dt class="text-micro font-semibold text-ink-3">Open now</dt>
+          <dd class="mt-[2px] text-dense font-medium">{open.length}</dd>
         </div>
-        <div class="border-b border-r border-line px-3 py-2">
-          <dt class="text-micro font-semibold text-ink-2">Past</dt>
-          <dd class="text-dense">{past.length}</dd>
+        <div class="rounded-sheet border border-line bg-surface p-3">
+          <dt class="text-micro font-semibold text-ink-3">Past</dt>
+          <dd class="mt-[2px] text-dense font-medium">{past.length}</dd>
         </div>
-        <div class="border-b border-r border-line px-3 py-2">
-          <dt class="text-micro font-semibold text-ink-2">Country</dt>
-          <dd class="text-dense">{org.country_iso2 ?? "Not stated"}</dd>
+        <div class="rounded-sheet border border-line bg-surface p-3">
+          <dt class="text-micro font-semibold text-ink-3">Country</dt>
+          <dd class="mt-[2px] text-dense font-medium">{org.country_iso2 ?? "Not stated"}</dd>
         </div>
       </dl>
 
       <h2 class="mt-8 text-subtitle font-semibold">Open opportunities</h2>
       {
         open.length > 0 ? (
-          <div class="mt-3 border-t border-line">
+          <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {open.map((o) => (
               <OpportunityRow opportunity={o} lowData={lowData} />
             ))}
@@ -204,7 +206,7 @@ const VERIFICATION_COPY: Record<string, string> = {
               <summary class="cursor-pointer text-dense font-semibold">
                 Show {past.length} past {past.length === 1 ? "opportunity" : "opportunities"}
               </summary>
-              <div class="mt-2 border-t border-line">
+              <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {past.map((o) => (
                   <OpportunityRow opportunity={o} lowData={lowData} />
                 ))}

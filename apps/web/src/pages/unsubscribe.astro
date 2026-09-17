@@ -116,7 +116,7 @@ const canReduce = type === "digest" && frequency === "daily";
   {
     state === "no_token" && (
       <div class="max-w-prose">
-        <h1 class="text-title font-semibold">This link is incomplete</h1>
+        <h1 class="text-title font-bold tracking-[-0.015em]">This link is incomplete</h1>
         <p class="mt-2 text-dense text-ink-2">
           Open the link from the message again, or change everything at once in your settings.
         </p>
@@ -130,7 +130,7 @@ const canReduce = type === "digest" && frequency === "daily";
   {
     state === "unknown" && (
       <div class="max-w-prose">
-        <h1 class="text-title font-semibold">This link has expired</h1>
+        <h1 class="text-title font-bold tracking-[-0.015em]">This link has expired</h1>
         <p class="mt-2 text-dense text-ink-2">
           It may already have been used. You can change any of this in your settings — and if you
           cannot sign in, replying to the message reaches a person.
@@ -145,7 +145,7 @@ const canReduce = type === "digest" && frequency === "daily";
   {
     state === "failed" && (
       <div class="max-w-prose">
-        <h1 class="text-title font-semibold">We couldn't do that just now</h1>
+        <h1 class="text-title font-bold tracking-[-0.015em]">We couldn't do that just now</h1>
         <p class="mt-2 text-dense text-ink-2">
           Nothing was changed. Try the link again in a minute, or turn it off in your settings.
         </p>
@@ -159,7 +159,7 @@ const canReduce = type === "digest" && frequency === "daily";
   {
     state === "security" && (
       <div class="max-w-prose">
-        <h1 class="text-title font-semibold">Security messages stay on</h1>
+        <h1 class="text-title font-bold tracking-[-0.015em]">Security messages stay on</h1>
         <p class="mt-2 text-dense">
           These are only sent when something changes about your account — a new sign-in, a changed
           email address. Turning them off would mean you could not be told when someone else does
@@ -176,7 +176,7 @@ const canReduce = type === "digest" && frequency === "daily";
   {
     state === "unsubscribed" && (
       <div class="max-w-prose">
-        <h1 class="text-title font-semibold">Done — no more {what}</h1>
+        <h1 class="text-title font-bold tracking-[-0.015em]">Done — no more {what}</h1>
         <p class="mt-2 text-dense">
           That took effect immediately, including anything already queued. Nothing else changed, and
           we will not email to ask whether you meant it.
@@ -194,7 +194,7 @@ const canReduce = type === "digest" && frequency === "daily";
   {
     state === "reduced" && (
       <div class="max-w-prose">
-        <h1 class="text-title font-semibold">Changed to weekly</h1>
+        <h1 class="text-title font-bold tracking-[-0.015em]">Changed to weekly</h1>
         <p class="mt-2 text-dense">
           One digest a week instead of one a day. It is the default for a reason — a weekly one that
           is always worth reading beats a daily one that sometimes is not.
@@ -209,7 +209,7 @@ const canReduce = type === "digest" && frequency === "daily";
   {
     state === "ready" && type && (
       <div class="max-w-prose">
-        <h1 class="text-title font-semibold">Stop {what}?</h1>
+        <h1 class="text-title font-bold tracking-[-0.015em]">Stop {what}?</h1>
         <p class="mt-2 text-dense text-ink-2">
           You do not need to sign in. This affects {what} only — everything else stays exactly as it
           is, and you will still see it all in the app.

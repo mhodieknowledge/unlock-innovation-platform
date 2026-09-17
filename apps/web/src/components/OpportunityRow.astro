@@ -1,41 +1,26 @@
 ---
-// The primary object, rebuilt from design/Foundations.dc.html and design/Main.body.html.
+// The primary object, redesigned as a card. Kept in this file (and its Props
+// shape) unchanged so every existing call site — the homepage, the listing
+// page, categories, countries, organisation pages — picks up the new design
+// with no changes elsewhere.
 //
-// WHAT THE REDESIGN CHANGES, and the one sentence of reasoning behind it, from the
-// canvas annotation: "The facts keep their labels but lose the bordered cells. That grid
-// is what made a row read as a database. Four borders per row removed, on a page of
-// thirty rows."
-//
-// So the labels stay — DESIGN_SYSTEM.md §5.1 is right that an unlabelled middot string
-// is ambiguous, "Hybrid · 2–5" says nothing — and the cage around them goes.
-//
-// Three things are added, all of which give the reader something the old row withheld:
-//   * an eyebrow carrying the category, so the row says what KIND of thing it is before
-//     the title has to imply it;
-//   * the deadline as a DATE beside the countdown ("3 days left · closes Fri 19 Sept"),
-//     because "3 days" is not a thing you can write in a diary;
-//   * a bookmark glyph on Save, which is the one place §5.3 allows an icon on a button
-//     ("no icons unless the icon *is* the button") — it is the tracker's own mark.
-//
-// Unchanged and deliberate: no image, no logo, no shadow, no hover lift (§4.3), and the
-// status rail still renders NEUTRAL server-side because the page is cached identically
-// for every viewer and §1.2 says colour appearing means something was determined about
-// *you*.
+// The old row optimised for density: a fact grid of up to four cells on every
+// card, plus a separate "checked N days ago" line. That is exactly the
+// "database record" reading this redesign removes. A card now shows the
+// things a reader decides on — what it is, who runs it, when it closes, one
+// standout fact — and nothing else. Team size, format and the full
+// verification story move to the opportunity detail page, where there is
+// room to earn them.
 
 import type { OpportunityRow as Row } from "../lib/db";
-import { countdownLabel, countdownWeight, deadlineFacts, freshnessLabel } from "../lib/deadline";
-import { VERDICTS } from "../lib/verdict";
+import { countdownLabel, countdownWeight, deadlineFacts } from "../lib/deadline";
 import { verificationLabel } from "../lib/verification";
 
 import Icon from "./Icon.astro";
 
 interface Props {
   opportunity: Row;
-  /**
-   * DESIGN_SYSTEM.md §10. In low-data mode the row keeps the two facts a decision turns
-   * on and drops the rest, including the freshness line. Every cell dropped is real bytes
-   * on a metered connection.
-   */
+  /** Low-data mode drops the standout-fact badge; everything else is already minimal. */
   lowData?: boolean;
 }
 
@@ -49,24 +34,13 @@ const facts = deadlineFacts({
 });
 
 const closed = facts.state === "closed" || o.status === "expired";
+const urgent = !closed && facts.daysRemaining !== null && facts.daysRemaining <= 2;
 
-/**
- * "closes Fri 19 Sept" — the countdown says how long, this says when.
- *
- * Keyed off the PRECISION rather than `facts.narrowed`, which is true for `date_only`
- * as well: there the narrowing is only the time within the day, and the day itself is
- * exactly what the organiser stated. `month_only` is the case that must stay silent —
- * `effectiveAt` is the first of the month, a day the source never named, and printing
- * it would invent a deadline on a product whose whole promise is not to.
- */
 const closesOn =
   facts.effectiveAt && !closed && o.deadline_precision !== "month_only"
-    ? new Intl.DateTimeFormat("en-GB", {
-        weekday: "short",
-        day: "numeric",
-        month: "short",
-        timeZone: "UTC",
-      }).format(facts.effectiveAt)
+    ? new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }).format(
+        facts.effectiveAt,
+      )
     : null;
 
 const prize =
@@ -74,100 +48,82 @@ const prize =
     ? `${o.prize_currency} ${Number(o.prize_amount).toLocaleString("en")}`
     : null;
 
-const team =
-  o.team_size_min && o.team_size_max
-    ? `${o.team_size_min}–${o.team_size_max}`
-    : o.team_required === false
-      ? "Individual"
+// One standout fact, in priority order — a prize figure beats a plain "free", which
+// beats a paid notice. This is the single badge the brief asks for, not a grid of four.
+const standoutFact: string | null = prize
+  ? prize
+  : o.cost === "free"
+    ? "Free to apply"
+    : o.cost === "paid"
+      ? "Has a cost"
       : null;
 
-// A fact we do not have is omitted rather than rendered as an em dash: a cell you must
-// read to discover it is empty is worse than no cell.
-const candidates: ([string, string] | null)[] = [
-  o.participation_mode === "unknown" ? null : ["Format", o.participation_mode.replace(/_/g, " ")],
-  team ? ["Team", team] : null,
-  prize ? ["Prize", prize] : null,
-  o.cost === "free" ? ["Cost", "Free"] : o.cost === "paid" ? ["Cost", "Has a cost"] : null,
-];
-
-const known = candidates.filter((c): c is [string, string] => c !== null);
-
-// §10: the facts a decision turns on. Cost is the one invariant 13 turns on; format and
-// team size are context a reader paying by the kilobyte is choosing not to buy.
-const cells: [string, string][] = lowData ? known.filter(([label]) => label === "Cost") : known;
+const categoryLabel = o.categories?.name && o.categories.code !== "other" ? o.categories.name : null;
+const verLabel = verificationLabel(o.verification);
 ---
 
 <article
-  class={`flex bg-surface transition-colors hover:bg-sunken ${closed ? "opacity-60" : ""}`}
+  class={`group relative flex flex-col rounded-sheet border border-line bg-surface p-4 shadow-card transition-shadow hover:shadow-card-hover ${closed ? "opacity-60" : ""}`}
 >
-  {/* Status rail: 3px, full height, neutral until a verdict exists for this reader. */}
-  <span class={`w-[3px] shrink-0 ${VERDICTS.unknown.rail}`} aria-hidden="true"></span>
-
-  <div class={`min-w-0 flex-1 border-b border-line px-4 ${lowData ? "py-3" : "py-[14px]"}`}>
+  {/* Badge row: category + one standout fact. Neutral, not a colour wash — the brief's
+      restraint applies here too; colour is spent on the primary action only. */}
+  <div class="flex flex-wrap items-center gap-[6px]">
     {
-      /* The category, as an eyebrow. Only when we have one — filing a record under
-         "Other" and then announcing it is worse than saying nothing. */
-      o.categories?.name && o.categories.code !== "other" && (
-        <p class="eyebrow">{o.categories.name}</p>
+      categoryLabel && (
+        <span class="eyebrow rounded-row bg-sunken px-2 py-1 text-ink-2">{categoryLabel}</span>
       )
     }
+    {
+      !lowData && standoutFact && (
+        <span class="eyebrow rounded-row border border-line-strong px-2 py-1 text-ink-2">
+          {standoutFact}
+        </span>
+      )
+    }
+  </div>
 
-    <h3 class="mt-[3px] text-[16px] font-semibold leading-[22px] tracking-[-0.01em]">
-      {/* Whole row is the link; Save below has its own hit area. */}
-      <a href={`/opportunities/${o.slug}`} class="text-ink no-underline hover:underline">
-        {o.title}
-      </a>
-    </h3>
+  <h3 class="mt-[10px] line-clamp-2 text-[17px] leading-[23px] font-semibold tracking-[-0.01em]">
+    <a href={`/opportunities/${o.slug}`} class="text-ink no-underline after:absolute after:inset-0">
+      {o.title}
+    </a>
+  </h3>
 
-    <p class="mt-[3px] text-meta text-ink-2">
-      {o.organisations?.name ?? "Organisation not identified"}
-      {/* The label, never the enum. A row that reads "· auto" tells a reader nothing. */}
-      {verificationLabel(o.verification) && (
+  <p class="mt-1 truncate text-meta text-ink-2">
+    {o.organisations?.name ?? "Organisation not identified"}
+    {
+      verLabel && (
         <>
           <span aria-hidden="true"> · </span>
-          <span>{verificationLabel(o.verification)}</span>
+          <span class="inline-flex items-center gap-1">
+            <Icon name="check" size={20} class="-mt-px inline h-3 w-3 text-ink-3" />
+            {verLabel}
+          </span>
         </>
-      )}
-    </p>
+      )
+    }
+  </p>
 
-    {/* Countdown: black, tabular, weight by urgency — never a coloured pill (§5.5). */}
-    <p class="mt-[9px] flex flex-wrap items-baseline gap-x-2">
+  <div class="mt-auto flex items-end justify-between gap-3 pt-3">
+    <p class="flex flex-col">
       <span
-        class={`text-countdown-sm ${closed ? "text-ink-3 line-through" : "text-absolute"}`}
+        class={`text-countdown-sm ${closed ? "text-ink-3 line-through" : urgent ? "text-noteligible" : "text-ink"}`}
         style={`font-weight:${countdownWeight(facts.daysRemaining)}`}
       >
         {closed ? "Closed" : countdownLabel(facts)}
       </span>
-      {closesOn && <span class="text-meta text-ink-3">closes {closesOn}</span>}
+      {closesOn && <span class="text-meta text-ink-3">Closes {closesOn}</span>}
     </p>
 
     {
-      cells.length > 0 && (
-        <dl class="mt-[10px] flex flex-wrap gap-x-5">
-          {cells.map(([label, value]) => (
-            <div class="min-w-0">
-              <dt class="eyebrow tracking-[0.06em]">{label}</dt>
-              <dd class="text-dense capitalize">{value}</dd>
-            </div>
-          ))}
-        </dl>
+      !closed && (
+        <a
+          href={`/tracker?add=${o.slug}`}
+          class="relative z-10 inline-flex min-h-11 shrink-0 items-center gap-[6px] rounded-monogram border border-line-strong bg-surface px-3 text-meta font-semibold text-ink no-underline hover:bg-sunken"
+        >
+          <Icon name="tracker" size={20} class="h-[15px] w-[15px]" />
+          Save
+        </a>
       )
     }
-
-    <div class="mt-3 flex items-center justify-between gap-3">
-      {/* Freshness: monochrome, deliberately quiet, dropped in low-data mode. */}
-      <span class="text-meta text-ink-3">{lowData ? "" : freshnessLabel(o.last_verified_at)}</span>
-      {
-        !closed && (
-          <a
-            href={`/tracker?add=${o.slug}`}
-            class="inline-flex min-h-11 items-center gap-[6px] rounded-row border border-line-strong bg-surface px-3 text-meta font-semibold text-ink no-underline hover:bg-sunken"
-          >
-            <Icon name="tracker" size={20} class="h-[15px] w-[15px]" />
-            Save
-          </a>
-        )
-      }
-    </div>
   </div>
 </article>

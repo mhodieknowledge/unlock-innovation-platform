@@ -93,9 +93,10 @@ const SIGNS: [string, string][] = [
   jsonLd={[faqPage(FAQ)]}
 >
   <article class="max-w-prose">
-    <h1 class="text-title font-semibold">Spotting scams</h1>
+    <p class="eyebrow text-brand">Trust</p>
+    <h1 class="mt-1 text-title font-bold tracking-[-0.015em]">Spotting scams</h1>
 
-    <p class="mt-3 border-l-[3px] border-brand bg-brand-wash p-3 text-dense font-semibold">
+    <p class="mt-4 rounded-sheet border border-line bg-brand-wash p-4 text-dense font-semibold text-brand-ink">
       {NO_FEE_STATEMENT}
     </p>
 
@@ -135,7 +136,7 @@ const SIGNS: [string, string][] = [
     </p>
     <p class="mt-2 text-dense">
       If you get something claiming to be from {BRAND.name} that does not match that, it is not us.
-      Forward it to <a href={`mailto:${CONTACT.security}`} class="text-brand">{CONTACT.security}</a>.
+      Forward it to <a href={`mailto:${CONTACT.security}`} class="font-semibold text-brand no-underline hover:underline">{CONTACT.security}</a>.
     </p>
 
     <h2 class="mt-8 text-subtitle font-semibold">What we do on our side</h2>
@@ -168,7 +169,7 @@ const SIGNS: [string, string][] = [
     <h2 class="mt-8 text-subtitle font-semibold">Found one here?</h2>
     <p class="mt-2 text-dense">
       Tell us. Use the report link on the opportunity page, or write to
-      <a href={`mailto:${CONTACT.support}`} class="text-brand">{CONTACT.support}</a>. You do not
+      <a href={`mailto:${CONTACT.support}`} class="font-semibold text-brand no-underline hover:underline">{CONTACT.support}</a>. You do not
       need to be sure, and you do not need to explain yourself well — "this feels wrong" is a
       perfectly good report, and we would much rather check ten honest listings than miss one scam.
     </p>

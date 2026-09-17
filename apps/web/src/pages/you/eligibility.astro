@@ -188,10 +188,10 @@ const unlocks = (field: { resolves: number }) =>
 ---
 
 <Base title="Your eligibility details" noindex user={user}>
-  <h1 class="text-title font-semibold">Your eligibility details</h1>
+  <h1 class="text-title font-bold tracking-[-0.015em]">Your eligibility details</h1>
 
   <!-- UX_FLOWS.md §8.1 requires this stated explicitly at the top. -->
-  <p class="mt-2 border-l-[3px] border-brand bg-brand-wash p-3 text-dense">
+  <p class="mt-3 max-w-prose rounded-sheet border border-brand/30 bg-brand-wash p-4 text-dense">
     <strong class="font-semibold">Only you can see this.</strong> It is never shown to other users,
     never attached to your public profile, and never sent to any AI service. Administrators cannot
     read it either — there is no access path for them.
@@ -200,10 +200,10 @@ const unlocks = (field: { resolves: number }) =>
   {
     flash && (
       <p
-        class={`mt-3 border-l-[3px] p-3 text-dense ${
+        class={`mt-3 max-w-prose rounded-sheet border p-4 text-dense font-medium ${
           flashKind === "ok"
-            ? "border-eligible bg-eligible-wash text-eligible"
-            : "border-danger bg-noteligible-wash text-danger"
+            ? "border-eligible/30 bg-eligible-wash text-eligible"
+            : "border-danger/30 bg-noteligible-wash text-danger"
         }`}
         role="status"
       >
@@ -212,12 +212,12 @@ const unlocks = (field: { resolves: number }) =>
     )
   }
 
-  <section class="mt-6" aria-labelledby="completeness">
+  <section class="mt-6 max-w-md rounded-sheet border border-line bg-surface p-5" aria-labelledby="completeness">
     <h2 id="completeness" class="text-subtitle font-semibold">
       {completeness}% of what we can use
     </h2>
     <div
-      class="mt-2 h-2 w-full max-w-md overflow-hidden rounded-row bg-sunken"
+      class="mt-3 h-2 w-full overflow-hidden rounded-row bg-sunken"
       role="progressbar"
       aria-valuenow={completeness}
       aria-valuemin="0"
@@ -226,7 +226,7 @@ const unlocks = (field: { resolves: number }) =>
     >
       <div class="h-full bg-brand" style={`width:${completeness}%`}></div>
     </div>
-    <p class="mt-2 max-w-md text-dense text-ink-2">
+    <p class="mt-3 text-dense text-ink-2">
       {
         nextField
           ? `The one that would help most: ${nextField.label.toLowerCase()}. ${unlocks(nextField)}`
@@ -251,24 +251,24 @@ const unlocks = (field: { resolves: number }) =>
       <section
         id="prefill"
         hidden
-        class="mt-6 max-w-md border-l-[3px] border-brand bg-brand-wash p-3"
+        class="mt-6 max-w-md rounded-sheet border border-brand/30 bg-brand-wash p-4"
         aria-live="polite"
       >
         <p class="text-dense">
           You checked your eligibility earlier using details saved in this browser. Use them here?
         </p>
-        <p class="mt-2 flex flex-wrap gap-2">
+        <p class="mt-3 flex flex-wrap gap-2">
           <button
             type="button"
             id="prefill-use"
-            class="min-h-11 rounded-row bg-brand px-4 font-semibold text-surface"
+            class="min-h-11 rounded-row bg-brand px-4 font-semibold text-surface hover:bg-brand-ink"
           >
             Use those details
           </button>
           <button
             type="button"
             id="prefill-dismiss"
-            class="min-h-11 rounded-row border border-line px-4 text-dense"
+            class="min-h-11 rounded-row border border-line-strong bg-surface px-4 text-dense font-semibold text-ink hover:bg-sunken"
           >
             Start fresh
           </button>
@@ -320,16 +320,16 @@ const unlocks = (field: { resolves: number }) =>
     })();
   </script>
 
-  <form method="post" class="mt-8 max-w-md space-y-6">
+  <form method="post" class="mt-8 max-w-md space-y-6 rounded-sheet border border-line bg-surface p-5">
     <label class="block">
-      <span class="block text-micro font-semibold text-ink-2">Country you live in</span>
+      <span class="block text-meta font-semibold text-ink">Country you live in</span>
       <input
         name="country_of_residence"
         value={String(p["country_of_residence"] ?? "")}
         maxlength="2"
         placeholder="ZW"
         autocomplete="country"
-        class="mt-1 h-11 w-full rounded-row border border-line-strong px-3 uppercase"
+        class="mt-1 h-12 w-full rounded-row border border-line-strong bg-surface px-3 uppercase focus:border-brand"
       />
       <span class="mt-1 block text-meta text-ink-2">
         {unlocks(FIELDS[0]!)} Residency and nationality are different things and we keep them apart.
@@ -337,14 +337,14 @@ const unlocks = (field: { resolves: number }) =>
     </label>
 
     <label class="block">
-      <span class="block text-micro font-semibold text-ink-2">Birth year</span>
+      <span class="block text-meta font-semibold text-ink">Birth year</span>
       <input
         name="birth_year"
         value={String(p["birth_year"] ?? "")}
         inputmode="numeric"
         maxlength="4"
         placeholder="2004"
-        class="mt-1 h-11 w-full rounded-row border border-line-strong px-3"
+        class="mt-1 h-12 w-full rounded-row border border-line-strong bg-surface px-3 focus:border-brand"
       />
       <span class="mt-1 block text-meta text-ink-2">
         {unlocks(FIELDS[1]!)} We ask for the year only, never a full date of birth — which means a
@@ -353,10 +353,10 @@ const unlocks = (field: { resolves: number }) =>
     </label>
 
     <label class="block">
-      <span class="block text-micro font-semibold text-ink-2">Student status</span>
+      <span class="block text-meta font-semibold text-ink">Student status</span>
       <select
         name="student_status"
-        class="mt-1 h-11 w-full rounded-row border border-line-strong bg-surface px-3"
+        class="mt-1 h-12 w-full rounded-row border border-line-strong bg-surface px-3 focus:border-brand"
       >
         {
           STUDENT_STATUSES.map(([value, label]) => (
@@ -370,12 +370,12 @@ const unlocks = (field: { resolves: number }) =>
     </label>
 
     <label class="block">
-      <span class="block text-micro font-semibold text-ink-2">Nationality</span>
+      <span class="block text-meta font-semibold text-ink">Nationality</span>
       <input
         name="nationalities"
         value={(Array.isArray(p["nationalities"]) ? (p["nationalities"] as string[]) : []).join(", ")}
         placeholder="ZW, GB"
-        class="mt-1 h-11 w-full rounded-row border border-line-strong px-3 uppercase"
+        class="mt-1 h-12 w-full rounded-row border border-line-strong bg-surface px-3 uppercase focus:border-brand"
       />
       <span class="mt-1 block text-meta text-ink-2">
         {unlocks(FIELDS[3]!)} Two-letter codes, comma separated if you hold more than one.
@@ -383,22 +383,22 @@ const unlocks = (field: { resolves: number }) =>
     </label>
 
     <label class="block">
-      <span class="block text-micro font-semibold text-ink-2">Year of study</span>
+      <span class="block text-meta font-semibold text-ink">Year of study</span>
       <input
         name="year_of_study"
         value={String(p["year_of_study"] ?? "")}
         inputmode="numeric"
         maxlength="2"
-        class="mt-1 h-11 w-full rounded-row border border-line-strong px-3"
+        class="mt-1 h-12 w-full rounded-row border border-line-strong bg-surface px-3 focus:border-brand"
       />
       <span class="mt-1 block text-meta text-ink-2">{unlocks(FIELDS[4]!)}</span>
     </label>
 
     <label class="block">
-      <span class="block text-micro font-semibold text-ink-2">Institution type</span>
+      <span class="block text-meta font-semibold text-ink">Institution type</span>
       <select
         name="institution_type"
-        class="mt-1 h-11 w-full rounded-row border border-line-strong bg-surface px-3"
+        class="mt-1 h-12 w-full rounded-row border border-line-strong bg-surface px-3 focus:border-brand"
       >
         {
           INSTITUTION_TYPES.map(([value, label]) => (
@@ -412,12 +412,12 @@ const unlocks = (field: { resolves: number }) =>
     </label>
 
     <label class="block">
-      <span class="block text-micro font-semibold text-ink-2">Institution name</span>
+      <span class="block text-meta font-semibold text-ink">Institution name</span>
       <input
         name="institution_name"
         value={String(p["institution_name"] ?? "")}
         maxlength="200"
-        class="mt-1 h-11 w-full rounded-row border border-line-strong px-3"
+        class="mt-1 h-12 w-full rounded-row border border-line-strong bg-surface px-3 focus:border-brand"
       />
       <span class="mt-1 block text-meta text-ink-2">
         Optional. We never ask for a student ID, a transcript or any document.
@@ -425,33 +425,33 @@ const unlocks = (field: { resolves: number }) =>
     </label>
 
     <label class="block">
-      <span class="block text-micro font-semibold text-ink-2">Years of experience</span>
+      <span class="block text-meta font-semibold text-ink">Years of experience</span>
       <input
         name="years_experience"
         value={p["years_experience"] === null || p["years_experience"] === undefined ? "" : String(p["years_experience"])}
         inputmode="numeric"
         maxlength="2"
-        class="mt-1 h-11 w-full rounded-row border border-line-strong px-3"
+        class="mt-1 h-12 w-full rounded-row border border-line-strong bg-surface px-3 focus:border-brand"
       />
       <span class="mt-1 block text-meta text-ink-2">{unlocks(FIELDS[6]!)} Zero is a real answer.</span>
     </label>
 
     <label class="block">
-      <span class="block text-micro font-semibold text-ink-2">Languages you read</span>
+      <span class="block text-meta font-semibold text-ink">Languages you read</span>
       <input
         name="languages"
         value={(Array.isArray(p["languages"]) ? (p["languages"] as string[]) : []).join(", ")}
         placeholder="English, French"
-        class="mt-1 h-11 w-full rounded-row border border-line-strong px-3"
+        class="mt-1 h-12 w-full rounded-row border border-line-strong bg-surface px-3 focus:border-brand"
       />
       <span class="mt-1 block text-meta text-ink-2">{unlocks(FIELDS[7]!)}</span>
     </label>
 
     <label class="block">
-      <span class="block text-micro font-semibold text-ink-2">Can you travel?</span>
+      <span class="block text-meta font-semibold text-ink">Can you travel?</span>
       <select
         name="can_travel"
-        class="mt-1 h-11 w-full rounded-row border border-line-strong bg-surface px-3"
+        class="mt-1 h-12 w-full rounded-row border border-line-strong bg-surface px-3 focus:border-brand"
       >
         <option value="" selected={p["can_travel"] === null || p["can_travel"] === undefined}>
           Prefer not to say
@@ -466,14 +466,14 @@ const unlocks = (field: { resolves: number }) =>
     </label>
 
     <fieldset class="border-t border-line pt-4">
-      <legend class="text-micro font-semibold text-ink-2">Optional</legend>
+      <legend class="text-meta font-semibold text-ink">Optional</legend>
       <label class="mt-2 block">
         <span class="block text-dense">Gender</span>
         <input
           name="gender"
           value={String(p["gender"] ?? "")}
           maxlength="40"
-          class="mt-1 h-11 w-full rounded-row border border-line-strong px-3"
+          class="mt-1 h-12 w-full rounded-row border border-line-strong bg-surface px-3 focus:border-brand"
         />
         <span class="mt-1 block text-meta text-ink-2">
           Only used to evaluate programmes that are open to a specific group — women-in-tech
@@ -483,13 +483,13 @@ const unlocks = (field: { resolves: number }) =>
       </label>
     </fieldset>
 
-    <button type="submit" class="h-11 rounded-row bg-brand px-4 font-semibold text-surface">
+    <button type="submit" class="h-12 rounded-row bg-brand px-5 font-semibold text-surface hover:bg-brand-ink">
       Save details
     </button>
   </form>
 
-  <p class="mt-8 text-meta text-ink-2">
-    You can <a href="/api/v1/tracker/export?format=json" class="text-brand">export everything</a>
+  <p class="mt-8 max-w-prose text-meta text-ink-2">
+    You can <a href="/api/v1/tracker/export?format=json" class="font-semibold text-brand no-underline hover:underline">export everything</a>
     or delete your account at any time. Deleting the eligibility details alone is also possible —
     clear the fields and save.
   </p>

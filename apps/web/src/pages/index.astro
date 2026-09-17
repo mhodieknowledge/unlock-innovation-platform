@@ -146,9 +146,6 @@ const jsonLd = [
     : []),
 ];
 
-const scopeLine = country
-  ? `Open to ${country.name}, and open to everyone.`
-  : "Open to builders in all 54 African countries.";
 ---
 
 <Base
@@ -162,60 +159,56 @@ const scopeLine = country
   jsonLd={jsonLd}
   feed={{ path: "/feeds/closing-soon.xml", title: "Closing this week" }}
 >
-  {/* ── MASTHEAD ──────────────────────────────────────────────────────────────
-      design/Main.body.html: "one sentence, one search, four paths. Deliberately NOT a
-      marketing hero: 270px total, so the first live row is still above the fold."
-
-      UX_FLOWS.md §2 lists a hero image and a marketing hero among the things this page
-      deliberately does not have, because the live closing list IS the hero — and
-      home-route.test.ts asserts the board renders in the HTML rather than after a
-      script. The masthead earns its height by carrying the search and the four ways in,
-      not by carrying a picture. */}
+  {/* ── HERO ──────────────────────────────────────────────────────────────────
+      A real editorial hero — headline, supporting sentence, a search field that is
+      the dominant control on the page, and a small set of deliberate category
+      entry points. No image, no illustration: the promise ("checked against its
+      own source") is made in words because that is the actual product. */}
   <section class="border-b border-line bg-surface">
-    <div class="mx-auto max-w-[1160px] px-4 pt-[22px] pb-5">
-      <h1 class="text-display text-balance font-bold tracking-[-0.02em]">
+    <div class="mx-auto max-w-[1160px] px-4 pt-14 pb-10 lg:pt-20 lg:pb-14">
+      <h1 class="max-w-[16ch] text-balance text-[2.25rem] leading-[1.1] font-bold tracking-[-0.02em] lg:text-[3rem]">
         Opportunities worth your time.
       </h1>
-      <p class="prose-measure mt-2 text-meta text-ink-2">
-        Scholarships, fellowships, hackathons and grants open to Africa — each one checked
-        against its own source, with the deadline up front.
+      <p class="prose-measure mt-4 text-[17px] leading-7 text-ink-2">
+        Mbele tracks scholarships, fellowships, hackathons and grants open to Africa, and
+        checks each one against its own source — so the deadline you see is the one that's
+        real.
       </p>
 
       {/* A plain GET form to the list page: no JS, no autocomplete request, nothing
           typed leaves the device until the reader presses the button. */}
-      <form method="get" action="/opportunities" class="mt-4 flex gap-2">
+      <form method="get" action="/opportunities" class="mt-7 flex max-w-xl gap-2">
         <label class="relative flex-1">
           <span class="sr-only">Search opportunities</span>
           <Icon
             name="search"
             size={20}
-            class="pointer-events-none absolute top-1/2 left-[14px] h-[18px] w-[18px] -translate-y-1/2 text-ink-3"
+            class="pointer-events-none absolute top-1/2 left-4 h-[18px] w-[18px] -translate-y-1/2 text-ink-3"
           />
           <input
             type="search"
             name="q"
-            placeholder="remote AI hackathons open to Zimbabwe"
-            class="h-12 w-full rounded-row border border-line-strong bg-surface pr-3 pl-[42px] text-[15px]"
+            placeholder="Search scholarships, hackathons, grants…"
+            class="h-14 w-full rounded-sheet border border-line-strong bg-surface pr-3 pl-11 text-[15px] shadow-card"
           />
         </label>
         <button
           type="submit"
-          class="h-12 shrink-0 rounded-row bg-brand px-[18px] text-dense font-semibold text-surface"
+          class="h-14 shrink-0 rounded-sheet bg-brand px-6 text-dense font-semibold text-surface hover:bg-brand-ink"
         >
           Search
         </button>
       </form>
 
-      {/* The four paths. Chips rather than a second list: §5.4's shape, sized to §8's
-          44px target, and they disappear entirely when no category has anything in it. */}
+      {/* A small, deliberate set of paths in — not a wall of pills. */}
       {
         entryPoints.categories.length > 0 && (
-          <ul class="mt-3 flex list-none flex-wrap gap-2 p-0">
-            {entryPoints.categories.slice(0, 4).map((category) => (
+          <ul class="mt-4 flex list-none flex-wrap gap-2 p-0">
+            {entryPoints.categories.slice(0, 5).map((category) => (
               <li>
                 <a
                   href={`/categories/${category.slug}`}
-                  class="inline-flex min-h-11 items-center rounded-monogram border border-line-strong bg-surface px-3 text-meta font-medium text-ink no-underline hover:bg-sunken"
+                  class="inline-flex min-h-11 items-center rounded-monogram border border-line px-4 text-meta font-medium text-ink-2 no-underline hover:border-line-strong hover:bg-sunken hover:text-ink"
                 >
                   {category.name}
                 </a>
@@ -227,26 +220,26 @@ const scopeLine = country
     </div>
   </section>
 
-  {/* ── COUNTRY SCOPE — "quiet, correctable, never a modal." ──────────────── */}
+  {/* ── LOCATION PERSONALISATION — a product feature, not a stray form. ────── */}
   {
     country && (
       <div class="border-b border-line bg-sunken">
-        {/* Stacked until `md`, not `sm`. §4.2 puts sm at 381px — BELOW a 390px phone —
-            so an `sm:flex-row` here still ran side by side on the device this is designed
-            for, and squeezed the sentence into a four-word column beside a control whose
-            words the specification fixes. md is 600px, which is where there is room. */}
-        <div class="mx-auto flex max-w-[1160px] flex-col gap-1 px-4 py-[10px] md:flex-row md:items-center md:gap-[10px]">
-          <p class="flex-1 text-meta">
-            <strong class="font-semibold">Open to {country.name}</strong>
-            <span class="text-ink-2"> — plus everything open Africa-wide.</span>
-          </p>
-          {/* UX_FLOWS.md §2 item 4 quotes this control's words — 'a visible "not your
-              country?" control' — so they are kept verbatim even though the canvas
-              shortens them to "Change". The strip's shape is the redesign's; the
-              wording is the specification's. */}
-          <a href="/?country=all" class="text-meta font-semibold whitespace-nowrap">
-            Not your country? Show everything
-          </a>
+        <div class="mx-auto max-w-[1160px] px-4 py-4">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+            <span class="flex size-10 shrink-0 items-center justify-center rounded-monogram bg-brand-wash text-brand">
+              <Icon name="globe" size={20} />
+            </span>
+            <p class="flex-1 text-dense">
+              <strong class="font-semibold">Opportunities for {country.name}.</strong>{" "}
+              <span class="text-ink-2">We've matched these to your location, plus everything open Africa-wide.</span>
+            </p>
+            <a
+              href="/?country=all"
+              class="inline-flex min-h-11 shrink-0 items-center rounded-row border border-line-strong bg-surface px-4 text-meta font-semibold text-ink no-underline hover:bg-surface/70 sm:self-auto"
+            >
+              Change location
+            </a>
+          </div>
         </div>
       </div>
     )
@@ -255,240 +248,218 @@ const scopeLine = country
   {
     showAll && (
       <div class="border-b border-line bg-sunken">
-        <div class="mx-auto flex max-w-[1160px] items-center gap-[10px] px-4 py-[10px]">
-          <p class="flex-1 text-meta text-ink-2">Showing every open opportunity.</p>
-          <a href="/" class="text-meta font-semibold whitespace-nowrap">
-            Use my country again
+        <div class="mx-auto flex max-w-[1160px] flex-wrap items-center gap-3 px-4 py-4">
+          <p class="flex-1 text-dense text-ink-2">Showing every open opportunity across Africa.</p>
+          <a
+            href="/"
+            class="inline-flex min-h-11 items-center rounded-row border border-line-strong bg-surface px-4 text-meta font-semibold text-ink no-underline hover:bg-surface/70"
+          >
+            Use my location again
           </a>
         </div>
       </div>
     )
   }
 
-  {/* ── THE BOARD ─────────────────────────────────────────────────────────── */}
-  <section aria-labelledby="board">
-    <div class="mx-auto max-w-[1160px] px-4 pt-[22px] pb-[10px]">
-      <p class="eyebrow">Closing soonest</p>
-      <h2 id="board" class="mt-1 text-title font-bold tracking-[-0.015em]">
-        What needs you this week
-      </h2>
-      {/* The "Last updated" line of §2's offline state, rendered on every response
-          because the service worker serves this HTML back unchanged. */}
-      <p class="mt-1 text-meta text-ink-2">
-        Board as of {builtAt} UTC{rows.length > 0 ? ` · ${rows.length} open${country ? ` to ${country.name}` : ""}` : ""}
-      </p>
+  {/* ── CLOSING SOON ──────────────────────────────────────────────────────── */}
+  <section class="mx-auto max-w-[1160px] px-4 pt-12" aria-labelledby="board">
+    <div class="flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <p class="eyebrow text-brand">Closing soonest</p>
+        <h2 id="board" class="mt-1 text-title font-bold tracking-[-0.015em]">
+          What needs you this week
+        </h2>
+        {/* The "Last updated" line of §2's offline state, rendered on every response
+            because the service worker serves this HTML back unchanged. */}
+        <p class="mt-1 text-meta text-ink-2">
+          Board as of {builtAt} UTC{rows.length > 0 ? ` · ${rows.length} open${country ? ` to ${country.name}` : ""}` : ""}
+        </p>
+      </div>
+      {
+        rows.length > 0 && (
+          <a href="/opportunities" class="hidden shrink-0 text-dense font-semibold text-brand no-underline hover:underline sm:block">
+            View all closing soon →
+          </a>
+        )
+      }
     </div>
 
     {
       rows.length > 0 ? (
         <>
-          {/* The band bleeds; the rows inside it sit on the same 1160px measure as the
-              masthead. Without the inner container a row's text started at the window
-              edge on a desktop while the headline above it started at the gutter. */}
-          <div class="border-t border-line bg-surface">
-            <div class="mx-auto max-w-[1160px]">
-              {rows.map((o) => (
-                <OpportunityRow opportunity={o} lowData={lowData} />
-              ))}
-            </div>
+          <div class="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {rows.map((o) => (
+              <OpportunityRow opportunity={o} lowData={lowData} />
+            ))}
           </div>
-          <div class="border-b border-line bg-surface">
-            <div class="mx-auto max-w-[1160px] px-4 pt-[14px] pb-[26px]">
-              <a href="/opportunities" class="text-dense font-semibold">
-                See all open opportunities →
-              </a>
-            </div>
+          <div class="mt-5 pb-2 sm:hidden">
+            <a href="/opportunities" class="text-dense font-semibold text-brand no-underline">
+              View all closing soon →
+            </a>
           </div>
         </>
       ) : (
         /* One sentence naming the situation, one action (DESIGN_SYSTEM.md §6.4).
            Never an illustration, never "Nothing here yet!". */
-        <div class="mx-auto max-w-[1160px] px-4">
-          <div class="rounded-sheet border border-line bg-surface p-4">
-            {degraded ? (
-              <>
-                <p class="font-semibold">We can't load the board right now.</p>
-                <p class="mt-1 text-dense text-ink-2">
-                  Nothing is wrong with your connection as far as we can tell. Try again
-                  shortly, or search directly.
-                </p>
-                <p class="mt-2 text-dense">
-                  <a href="/opportunities">Search opportunities</a>
-                </p>
-              </>
-            ) : country ? (
-              <>
-                <p class="font-semibold">Nothing open to {country.name} is closing yet.</p>
-                <p class="mt-1 text-dense text-ink-2">
-                  That is the catalogue being honest, not a filter being clever.
-                </p>
-                <p class="mt-2 text-dense">
-                  <a href="/?country=all">Show everything</a>
-                </p>
-              </>
-            ) : (
-              <>
-                <p class="font-semibold">Nothing is published yet.</p>
-                <p class="mt-1 text-dense text-ink-2">
-                  The catalogue is still being built. We would rather show you an empty board
-                  than pad it with listings we cannot stand behind.
-                </p>
-              </>
-            )}
-          </div>
+        <div class="mt-5 rounded-sheet border border-line bg-surface p-5">
+          {degraded ? (
+            <>
+              <p class="font-semibold">We can't load the board right now.</p>
+              <p class="mt-1 text-dense text-ink-2">
+                Nothing is wrong with your connection as far as we can tell. Try again
+                shortly, or search directly.
+              </p>
+              <p class="mt-2 text-dense">
+                <a href="/opportunities" class="font-semibold text-brand">Search opportunities</a>
+              </p>
+            </>
+          ) : country ? (
+            <>
+              <p class="font-semibold">Nothing open to {country.name} is closing yet.</p>
+              <p class="mt-1 text-dense text-ink-2">
+                That is the catalogue being honest, not a filter being clever.
+              </p>
+              <p class="mt-2 text-dense">
+                <a href="/?country=all" class="font-semibold text-brand">Show everything</a>
+              </p>
+            </>
+          ) : (
+            <>
+              <p class="font-semibold">Nothing is published yet.</p>
+              <p class="mt-1 text-dense text-ink-2">
+                The catalogue is still being built. We would rather show you an empty board
+                than pad it with listings we cannot stand behind.
+              </p>
+            </>
+          )}
         </div>
       )
     }
   </section>
 
-  {/* ── EXPLORE — "density changes deliberately here: a list, not more cards." ──
-      §2 item 5 wants country and category entry points as plain links, and §28 makes
-      every African country a first-class page rather than a promoted subset. */}
+  {/* ── BROWSE BY CATEGORY — a discovery grid, not a database index. ───────── */}
   {
     entryPoints.categories.length > 0 && (
-      <section aria-labelledby="by-kind">
-        <div class="mx-auto max-w-[1160px] px-4 pt-[26px] pb-2">
-          <p class="eyebrow">Explore</p>
-          <h2 id="by-kind" class="mt-1 text-title font-bold tracking-[-0.015em]">
-            By what it is
-          </h2>
-        </div>
-        <ul class="mx-auto list-none border-y border-line bg-surface p-0 lg:max-w-[1160px]">
+      <section class="mx-auto max-w-[1160px] px-4 pt-14" aria-labelledby="by-kind">
+        <p class="eyebrow text-brand">Explore</p>
+        <h2 id="by-kind" class="mt-1 text-title font-bold tracking-[-0.015em]">
+          Browse by category
+        </h2>
+        <div class="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
           {entryPoints.categories.map((category) => {
             const open = categoryCounts.find((c) => c.code === category.code)?.open_count;
             return (
-              <li>
-                <a
-                  href={`/categories/${category.slug}`}
-                  class="flex min-h-11 items-center gap-3 border-b border-line px-4 py-[13px] text-ink no-underline last:border-b-0 hover:bg-sunken"
-                >
-                  <span class="flex-1 text-dense font-semibold">{category.name}</span>
-                  {/* A count only where there is one. "0 open" on a page the reader is
-                      being invited to open is worse than saying nothing. */}
-                  {open !== undefined && open > 0 && (
-                    <span class="text-meta text-ink-3">{open} open</span>
-                  )}
-                  <Icon name="chevron" size={20} class="h-4 w-4 shrink-0 text-ink-3" />
-                </a>
-              </li>
+              <a
+                href={`/categories/${category.slug}`}
+                class="flex flex-col gap-1 rounded-sheet border border-line bg-surface p-4 text-ink no-underline transition-colors hover:border-line-strong hover:bg-sunken"
+              >
+                <span class="text-dense font-semibold">{category.name}</span>
+                {/* A count only where there is one. "0 open" on a page the reader is
+                    being invited to open is worse than saying nothing. */}
+                <span class="text-meta text-ink-3">
+                  {open !== undefined && open > 0 ? `${open} open` : "Browse"}
+                </span>
+              </a>
             );
           })}
-        </ul>
-        <div class="mx-auto max-w-[1160px] px-4 pt-3">
-          <a href="/categories" class="text-dense font-semibold">
+        </div>
+        <p class="mt-4">
+          <a href="/categories" class="text-dense font-semibold text-brand no-underline hover:underline">
             All categories →
           </a>
-        </div>
+        </p>
       </section>
     )
   }
 
-  {/* ── WHAT WE CAN CHECK FOR YOU ─────────────────────────────────────────────
-      The eligibility profile is what turns a list of deadlines into an answer about the
-      reader, and it had become the hardest thing on the site to find: when the bottom
-      bar replaced the old header links, /you/eligibility was left reachable only from
-      /you. The menu now carries it first, and this is the other half — naming it on the
-      page where the question actually occurs to somebody.
-
-      It sits where fifty-four country links used to. That list ran to about 1,200px of
-      a phone screen — more than a viewport of blue text to scroll past — for an entry
-      point almost nobody uses twice. */}
-  <section class="mx-auto mt-7 max-w-[1160px] px-4" aria-labelledby="can-i-apply">
-    <div class="rounded-sheet border border-line bg-surface p-4">
-      <p class="eyebrow">Can you apply?</p>
-      <h2 id="can-i-apply" class="mt-[6px] text-subtitle font-semibold">
-        Tell us where you live, and we check every listing against it.
-      </h2>
-      <p class="mt-2 text-dense text-ink-2">
-        Most rules turn on residence and what you are studying. With those saved, each
-        opportunity says whether you qualify — and where the wording is unclear, it says
-        unclear rather than guessing.
-      </p>
-      <p class="mt-3">
-        <a
-          href="/you/eligibility"
-          class="inline-flex min-h-11 items-center rounded-row bg-brand px-4 text-dense font-semibold text-surface no-underline"
-        >
-          {user ? "Your eligibility details" : "Add your details"}
-        </a>
-      </p>
-    </div>
-  </section>
-
-  {/* ── BY COUNTRY, folded away ────────────────────────────────────────────────
-      §2 item 5 wants country entry points on this page and §28 makes every African
-      country a first-class page rather than a promoted subset — so all of them are
-      still here, and still plain links in the HTML for a crawler and for a reader with
-      no JavaScript. They are just no longer unrolled by default.
-
-      A `<details>` rather than a "show more" button for the same reason the menu is one:
-      it needs no script, and the CSP carries no 'unsafe-inline'. */}
+  {/* ── BROWSE BY LOCATION — compact, correctable, part of the product. ────── */}
   {
     entryPoints.countries.length > 0 && (
-      <section class="mx-auto mt-7 max-w-[1160px] px-4" aria-labelledby="by-country">
-        <details class="group rounded-sheet border border-line bg-surface">
-          <summary class="flex min-h-11 cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
-            <span class="flex-1">
-              <span class="eyebrow">Explore</span>
-              <span id="by-country" class="block text-dense font-semibold">
-                By where you live
-              </span>
-            </span>
-            <span class="text-meta text-ink-3">{entryPoints.countries.length} countries</span>
-            <Icon
-              name="chevron"
-              size={20}
-              class="h-4 w-4 shrink-0 rotate-90 text-ink-3 group-open:-rotate-90"
-            />
+      <section class="mx-auto max-w-[1160px] px-4 pt-14" aria-labelledby="by-country">
+        <p class="eyebrow text-brand">Explore</p>
+        <h2 id="by-country" class="mt-1 text-title font-bold tracking-[-0.015em]">
+          Browse by country
+        </h2>
+        <p class="mt-1 text-meta text-ink-2">Every African country is its own page here.</p>
+
+        {/* A `<details>` rather than a "show more" button: it needs no script, and the
+            CSP carries no 'unsafe-inline'. The chips ARE the plain links in the HTML for
+            a crawler and for a reader with no JavaScript. */}
+        <details class="group mt-4">
+          <summary class="inline-flex min-h-11 cursor-pointer list-none items-center gap-2 text-dense font-semibold text-brand [&::-webkit-details-marker]:hidden">
+            Show all {entryPoints.countries.length} countries
+            <Icon name="chevron" size={20} class="h-4 w-4 rotate-90 group-open:-rotate-90" />
           </summary>
-          <ul class="grid list-none grid-cols-2 gap-x-4 border-t border-line px-4 pt-2 pb-3 p-0 md:grid-cols-3 lg:grid-cols-4">
+          <ul class="mt-3 flex list-none flex-wrap gap-2 p-0">
             {entryPoints.countries.map((c) => (
               <li>
                 <a
                   href={`/countries/${c.slug}`}
-                  class="flex min-h-11 items-center border-b border-line text-dense no-underline hover:underline"
+                  class="inline-flex min-h-11 items-center rounded-monogram border border-line px-4 text-meta font-medium text-ink-2 no-underline hover:border-line-strong hover:bg-sunken hover:text-ink"
                 >
                   {c.name}
                 </a>
               </li>
             ))}
           </ul>
-          <p class="px-4 pb-3">
-            <a href="/countries" class="text-dense font-semibold">
-              All countries →
-            </a>
-          </p>
         </details>
       </section>
     )
   }
 
+  {/* ── CAN I APPLY? — the eligibility profile, framed as a core capability. ── */}
+  <section class="mx-auto max-w-[1160px] px-4 pt-14" aria-labelledby="can-i-apply">
+    <div class="flex flex-col gap-5 rounded-sheet border border-line bg-surface p-6 sm:flex-row sm:items-center">
+      <div class="flex-1">
+        <p class="eyebrow text-brand">Can you apply?</p>
+        <h2 id="can-i-apply" class="mt-1 text-subtitle font-semibold">
+          Tell us where you live, and we'll check every listing against it.
+        </h2>
+        <p class="mt-2 max-w-[56ch] text-dense text-ink-2">
+          Most rules turn on residence and what you're studying. With those saved, each
+          opportunity says whether you qualify — and where the wording is unclear, it says
+          unclear rather than guessing.
+        </p>
+      </div>
+      <a
+        href="/you/eligibility"
+        class="inline-flex min-h-12 shrink-0 items-center rounded-row bg-brand px-5 text-dense font-semibold text-surface no-underline hover:bg-brand-ink"
+      >
+        {user ? "Your eligibility details" : "Add your details"}
+      </a>
+    </div>
+  </section>
+
   {/* ── TRUST — "earns its place by being specific about what is and is not known."
       MODERATION_AND_TRUST.md §2.1 rule 3's no-fee line is the third of these, stated
       here rather than in the footer so it sits with the two promises it belongs with.
       Base passes `trustPanelAbove` to the footer so it is not repeated below. */}
-  <section class="mx-auto mt-7 max-w-[1160px] px-4" aria-labelledby="how-kept">
-    <div class="rounded-sheet bg-brand-wash p-4">
-      <p class="eyebrow text-brand-ink">How this list is kept</p>
-      <h2 id="how-kept" class="mt-[6px] text-subtitle font-semibold text-brand-ink">
-        Nothing here is copied and forgotten.
-      </h2>
-      <ul class="mt-[14px] flex list-none flex-col gap-[10px] p-0">
-        {
-          [
-            "Every listing links to the organiser's own page, and we re-check that page on a schedule. Each row says when it was last checked.",
-            "Eligibility rules are quoted from the organiser's words. Where the wording is unclear, we say unclear rather than guessing.",
-            NO_FEE_STATEMENT,
-          ].map((line) => (
-            <li class="flex gap-[10px] text-dense text-ink-2">
-              <span aria-hidden="true" class="font-bold text-brand">
-                —
-              </span>
-              <span>{line}</span>
-            </li>
-          ))
-        }
-      </ul>
+  <section class="mx-auto max-w-[1160px] px-4 pt-14 pb-4" aria-labelledby="how-kept">
+    <p class="eyebrow text-brand">How this list is kept</p>
+    <h2 id="how-kept" class="mt-1 text-title font-bold tracking-[-0.015em]">
+      Nothing here is copied and forgotten.
+    </h2>
+    <div class="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
+      {
+        [
+          {
+            icon: "shield" as const,
+            text: "Every listing links to the organiser's own page, and we re-check it on a schedule. Each one says when it was last checked.",
+          },
+          {
+            icon: "check" as const,
+            text: "Eligibility rules are quoted from the organiser's words. Where the wording is unclear, we say unclear rather than guessing.",
+          },
+          { icon: "alert" as const, text: NO_FEE_STATEMENT },
+        ].map((item) => (
+          <div class="rounded-sheet border border-line bg-surface p-5">
+            <span class="flex size-9 items-center justify-center rounded-monogram bg-brand-wash text-brand">
+              <Icon name={item.icon} size={20} />
+            </span>
+            <p class="mt-3 text-dense text-ink-2">{item.text}</p>
+          </div>
+        ))
+      }
     </div>
   </section>
 
@@ -496,7 +467,7 @@ const scopeLine = country
       rather than showing a zero or a guess. */}
   {
     (published !== null || lastVerifiedAt !== null) && (
-      <p class="mx-auto max-w-[1160px] px-4 pt-6 text-meta text-ink-3">
+      <p class="mx-auto max-w-[1160px] px-4 pt-4 text-meta text-ink-3">
         {published !== null && published > 0 && (
           <span>
             {published} {published === 1 ? "opportunity" : "opportunities"} published.{" "}

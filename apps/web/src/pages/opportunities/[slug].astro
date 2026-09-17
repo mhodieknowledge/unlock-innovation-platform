@@ -203,17 +203,26 @@ const factGrid: [string, string][] = opp
 {
   !opp ? (
     <Base user={user} title="Not found" noindex>
-      <h1 class="text-display font-bold">
-        {found.ok === false && found.reason === "unavailable"
-          ? "We can't load this right now"
-          : "That opportunity isn't here"}
-      </h1>
-      <p class="prose-measure mt-3 text-body text-ink-2">
-        {found.ok === false && found.reason === "unavailable"
-          ? "Something on our side is unavailable. Nothing is wrong with the link — try again shortly."
-          : "It may have been merged into another listing, or removed."}
-      </p>
-      <p class="mt-4"><a href="/opportunities" class="text-brand">Browse what's open</a></p>
+      <div class="mx-auto max-w-xl py-10 text-center">
+        <h1 class="text-title font-bold">
+          {found.ok === false && found.reason === "unavailable"
+            ? "We can't load this right now"
+            : "That opportunity isn't here"}
+        </h1>
+        <p class="prose-measure mx-auto mt-3 text-body text-ink-2">
+          {found.ok === false && found.reason === "unavailable"
+            ? "Something on our side is unavailable. Nothing is wrong with the link — try again shortly."
+            : "It may have been merged into another listing, or removed."}
+        </p>
+        <p class="mt-5">
+          <a
+            href="/opportunities"
+            class="inline-flex min-h-11 items-center rounded-row bg-brand px-5 text-dense font-semibold text-surface no-underline"
+          >
+            Browse what's open
+          </a>
+        </p>
+      </div>
     </Base>
   ) : (
     <Base
@@ -225,296 +234,296 @@ const factGrid: [string, string][] = opp
       lowData={lowData}
       offlineCapable
       ogType="article"
-      jsonLd={graphs}
+    jsonLd={graphs}
     >
-      {
-        isDisputed && (
-          <div class="mb-4 border-l-[3px] border-noteligible bg-noteligible-wash p-4">
-            <p class="font-semibold text-noteligible">
-              Someone reported a problem with this. We're checking.
-            </p>
-            <p class="mt-1 text-dense text-ink-2">
-              Until we've confirmed it, treat the details below with caution and verify on the
-              official page.
-            </p>
-          </div>
-        )
-      }
-
-      {
-        isExpired && (
-          <div class="mb-4 border-l-[3px] border-line-strong bg-sunken p-4">
-            <p class="font-semibold">This has closed.</p>
-            <p class="mt-1 text-dense text-ink-2">
-              It's kept here for reference, and stays on the organisation's page as history.
-            </p>
-          </div>
-        )
-      }
-
-      {/*
-        EDITORIAL HIERARCHY, not one enormous line. The title was `text-display` at every
-        width, which on a phone spent three lines and the whole first screen on the one thing
-        the reader already knew — they clicked it. The category above and the organisation
-        below do the work a 34px line was being asked to do alone, and the title steps up to
-        display only where there is room for it.
-      */}
-      <p class="text-micro font-semibold uppercase tracking-[0.08em] text-ink-3">
-        {opp.categories?.name ?? "Opportunity"}
-      </p>
-
-      <h1 class="mt-1 text-title font-bold text-balance md:text-display">{opp.title}</h1>
-
-      <p class="mt-1 text-meta text-ink-2">
+      <div class="mx-auto max-w-[720px]">
         {
-          opp.organisations ? (
-            <a href={`/organisations/${opp.organisations.slug}`} class="text-brand"
-              >{opp.organisations.name}</a
-            >
-          ) : (
-            <span>Organisation not identified</span>
+          isDisputed && (
+            <div class="mb-5 rounded-sheet border border-noteligible/30 bg-noteligible-wash p-4">
+              <p class="font-semibold text-noteligible">
+                Someone reported a problem with this. We're checking.
+              </p>
+              <p class="mt-1 text-dense text-ink-2">
+                Until we've confirmed it, treat the details below with caution and verify on the
+                official page.
+              </p>
+            </div>
           )
         }
-        <span aria-hidden="true"> · </span>
-        <span class="rounded-[2px] bg-sunken px-[6px] py-[2px] text-micro font-semibold">
-          {verificationLabel(opp.verification) ?? opp.verification}
-        </span>
-      </p>
 
-      {
-        opp.summary && (
-          <>
-                        <p class="prose-measure mt-4 text-body text-ink-2">{opp.summary}</p>
-          </>
-        )
-      }
+        {
+          isExpired && (
+            <div class="mb-5 rounded-sheet border border-line bg-sunken p-4">
+              <p class="font-semibold">This has closed.</p>
+              <p class="mt-1 text-dense text-ink-2">
+                It's kept here for reference, and stays on the organisation's page as history.
+              </p>
+            </div>
+          )
+        }
 
-      {/*
-        THE DECISION BLOCK. Countdown, the facts it turns on, then the two things a reader
-        can do — all before the eligibility island. The island used to come first, so the
-        page asked for a country, a student status and a birth year before it had said what
-        the opportunity was or when it closed.
-      */}
-      <!-- Countdown: black, tabular, weight by urgency. The one piece of
-           expressive typography in the system (DESIGN_SYSTEM.md §2.2). -->
-      <p
-        class="mt-4 text-countdown-lg text-absolute"
-        style={`font-weight:${countdownWeight(facts?.daysRemaining ?? null)}`}
-      >
-        {facts ? countdownLabel(facts) : "Deadline not stated"}
-      </p>
+        {/* ── HEADER — category, title, organisation, verification. ─────────── */}
+        <p class="eyebrow text-brand">{opp.categories?.name ?? "Opportunity"}</p>
 
-      {
-        opp.deadline_at && (
-          <p class="text-meta text-ink-2">
-            <time datetime={opp.deadline_at}>
-              {new Date(opp.deadline_at).toLocaleDateString("en-GB", {
-                day: "numeric",
-                month: "long",
-                year: "numeric",
-              })}
-            </time>
+        <h1 class="mt-2 text-title font-bold text-balance md:text-display">{opp.title}</h1>
+
+        <p class="mt-2 text-dense text-ink-2">
+          {
+            opp.organisations ? (
+              <a href={`/organisations/${opp.organisations.slug}`} class="font-medium text-ink no-underline hover:text-brand"
+                >{opp.organisations.name}</a
+              >
+            ) : (
+              <span>Organisation not identified</span>
+            )
+          }
+          <span aria-hidden="true"> · </span>
+          <span class="text-ink-2">{verificationLabel(opp.verification) ?? opp.verification}</span>
+        </p>
+
+        {/* ── DECISION STRIP — countdown, close date, and the two actions that
+            matter before anything else on the page. */}
+        <div class="mt-5 rounded-sheet border border-line bg-surface p-5">
+          <p
+            class="text-countdown-lg text-ink"
+            style={`font-weight:${countdownWeight(facts?.daysRemaining ?? null)}`}
+          >
+            {facts ? countdownLabel(facts) : "Deadline not stated"}
+          </p>
+          {
+            opp.deadline_at && (
+              <p class="mt-1 text-meta text-ink-2">
+                Closes{" "}
+                <time datetime={opp.deadline_at}>
+                  {new Date(opp.deadline_at).toLocaleDateString("en-GB", {
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                  })}
+                </time>
+                {
+                  /* PRODUCT_SPEC.md §11.3: when precision is coarser than exact_time,
+                     always show the raw source string so the reader can see exactly
+                     what the source said rather than only our narrowed reading. */
+                  opp.deadline_raw && facts?.narrowed && (
+                    <span> · &ldquo;{opp.deadline_raw}&rdquo;</span>
+                  )
+                }
+              </p>
+            )
+          }
+
+          <div class="mt-4 flex flex-wrap gap-3">
             {
-              /* PRODUCT_SPEC.md §11.3: when precision is coarser than exact_time,
-                 always show the raw source string so the reader can see exactly
-                 what the source said rather than only our narrowed reading. */
-              opp.deadline_raw && facts?.narrowed && (
-                <span> · &ldquo;{opp.deadline_raw}&rdquo;</span>
+              /*
+               * The link out, and it falls back rather than disappearing.
+               *
+               * The whole product is a signpost to somebody else's page; that link is the
+               * second most important thing here after the deadline, and it should never
+               * be absent when we hold any URL at all.
+               */
+              applyHref && !isExpired && (
+                <a
+                  href={applyHref}
+                  rel="noopener noreferrer nofollow ugc"
+                  target="_blank"
+                  class={`inline-flex min-h-12 items-center rounded-row px-5 text-dense font-semibold no-underline ${
+                    isDisputed
+                      ? "border border-line-strong bg-surface text-ink"
+                      : "bg-brand text-surface hover:bg-brand-ink"
+                  }`}
+                >
+                  {opp.apply_url ? "Apply on official site" : "Open the official page"}
+                </a>
               )
             }
-          </p>
-        )
-      }
-
-      <!-- Fact grid: labelled cells separated by hairlines, not a middle-dot
-           string (DESIGN_SYSTEM.md §5.6). -->
-      <dl class="mt-6 grid grid-cols-2 border-t border-line md:grid-cols-4">
-        {
-          factGrid.map(([label, value], i) => (
-            /* A last cell with nothing beside it spans the row instead of leaving a
-               half-drawn box: three facts in a two-column grid drew an empty fourth. */
-            <div
-              class={`border-b border-r border-line px-3 py-2 ${
-                i === factGrid.length - 1 && factGrid.length % 2 === 1 ? "col-span-2 md:col-span-1" : ""
-              }`}
-            >
-              <dt class="text-micro font-semibold text-ink-2">{label}</dt>
-              <dd class="text-dense">{value}</dd>
-            </div>
-          ))
-        }
-      </dl>
-
-      <p class="mt-6 flex flex-wrap gap-3">
-        {
-          /*
-           * The link out, and it falls back rather than disappearing.
-           *
-           * This rendered ONLY when `apply_url` was set, which most ingested records do not
-           * have — so on the live site the official page was reachable only as a small
-           * "Official source" text link at the foot of the page, under Freshness. The whole
-           * product is a signpost to somebody else's page; that link is the second most
-           * important thing here after the deadline, and it should never be absent when we
-           * hold any URL at all.
-           */
-          applyHref && !isExpired && (
+            {/* ?add=<slug> carries the intent through sign-in, so the save completes
+                on arrival rather than being lost. */}
             <a
-              href={applyHref}
-              rel="noopener noreferrer nofollow ugc"
-              target="_blank"
-              class={`inline-flex min-h-11 items-center rounded-row px-4 font-semibold ${
-                isDisputed
-                  ? "border border-line-strong bg-surface text-ink"
-                  : "bg-brand text-surface"
-              }`}
+              href={`/tracker?add=${opp.slug}`}
+              class="inline-flex min-h-12 items-center rounded-row border border-line-strong bg-surface px-5 text-dense font-semibold text-ink no-underline hover:bg-sunken"
+              >Save opportunity</a
             >
-              {opp.apply_url ? "Apply on official site" : "Open the official page"}
-            </a>
-          )
-        }
-        <!-- ?add=<slug> carries the intent through sign-in, so the save completes
-             on arrival rather than being lost (UX_FLOWS.md §17, and Phase 2's
-             "sign-in completes in under 3 taps FROM A SAVE ACTION"). -->
-        <a
-          href={`/tracker?add=${opp.slug}`}
-          class="inline-flex min-h-11 items-center rounded-row border border-line-strong bg-surface px-4 font-semibold"
-          >Save opportunity</a
-        >
-      </p>
+          </div>
+        </div>
 
-      <!-- The personal verdict. One island; the page HTML above and below is
-           identical for every viewer and stays cacheable. -->
-      <EligibilityCheck
-        client:idle
-        opportunityId={opp.id}
-        officialUrl={opp.official_url ?? opp.source_url ?? ""}
-      />
-
-      {
-        /* §2.3 `[PR]`: the count appears at 5 or more and NOT AT ALL below that.
-           intent_count_public() returns NULL rather than a number below the floor, so
-           there is no small number here to render by accident. */
-        intentCount !== null && (
-          <p class="mt-4 text-dense">
-            {intentCount} builders have said they're going for this.
-          </p>
-        )
-      }
-
-      {
-        !isExpired && room.state === "open" && (
-          <p class="mt-4">
-            <a href={`/opportunities/${opp.slug}/room`} class="text-brand font-semibold"
-              >Team room — see who else is going</a
-            >
-          </p>
-        )
-      }
-
-      {
-        !isExpired && room.state === "below_floor" && (
-          /* The room route rewrites HERE when it is below its floor, so this is the
-             "single CTA" the acceptance criterion asks for. One line, one action, no
-             empty list, and no count of how few people are here. */
-          <p class="mt-4">
-            <a href={`/opportunities/${opp.slug}/intent`} class="text-brand font-semibold"
-              >No one has said they're going for this yet. Say you're going</a
-            >
-          </p>
-        )
-      }
-
-      {
-        rules.length > 0 && (
-          <>
-            <h2 class="mt-8 text-subtitle font-semibold">Eligibility rules in full</h2>
-            <ul class="mt-3 space-y-4">
-              {rules.map((rule) => (
-                <li>
-                  <p class="text-dense font-semibold">
-                    {rule.rule_type.replace(/_/g, " ")}
-                  </p>
-                  <p class="mt-1 border-l border-line-strong pl-3 text-meta text-ink-2">
-                    &ldquo;{rule.source_quote}&rdquo;
-                  </p>
-                </li>
-              ))}
-            </ul>
-          </>
-        )
-      }
-
-      {
-        rules.length === 0 && (
-          <p class="mt-8 text-dense text-ink-2">
-            <span aria-hidden="true">{RULE_OUTCOME_GLYPH.unparsed}</span>
-            We haven't confirmed the eligibility rules for this one. Check the official page.
-          </p>
-        )
-      }
-
-      <!-- Freshness and provenance. Always visible, deliberately quiet
-           (DESIGN_SYSTEM.md §1.2, MODERATION_AND_TRUST.md §1). -->
-      <h2 class="mt-8 text-subtitle font-semibold">Freshness and source</h2>
-      <p class="mt-2 text-meta text-ink-2">
-        {freshnessLabel(opp.last_verified_at)}
+        {/* ── ABOUT THIS OPPORTUNITY ──────────────────────────────────────── */}
         {
-          isStale && (
-            <span> · We haven't been able to re-check this recently.</span>
+          opp.summary && (
+            <section class="mt-8">
+              <h2 class="text-subtitle font-semibold">About this opportunity</h2>
+              <p class="prose-measure mt-2 text-body text-ink-2">{opp.summary}</p>
+            </section>
           )
         }
-        {
-          (opp.source_url || opp.official_url) && (
-            <>
-              <span aria-hidden="true"> · </span>
-              <a
-                href={opp.official_url ?? opp.source_url ?? "#"}
-                rel="noopener noreferrer nofollow ugc"
-                target="_blank"
-                class="text-brand">Official source</a
-              >
-            </>
-          )
-        }
-      </p>
 
-      {
-        /* §1.6. Absent below three matching public projects, and absent entirely while its
-           flag is off — both halves, never either (§24). */
-        relatedProjects.length > 0 && (
-          <>
-            <h2 class="mt-8 text-subtitle font-semibold">Projects aiming at this</h2>
-            <p class="mt-1 text-meta text-ink-2">
-              Public projects whose subject overlaps this call. Their owners chose to show them.
+        {/* ── AT A GLANCE — a clean info grid, not a bordered table. ───────── */}
+        <section class="mt-8">
+          <h2 class="text-subtitle font-semibold">At a glance</h2>
+          <dl class="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+            {
+              factGrid.map(([label, value]) => (
+                <div class="rounded-sheet border border-line bg-surface p-3">
+                  <dt class="text-micro font-semibold text-ink-3">{label}</dt>
+                  <dd class="mt-[2px] text-dense font-medium">{value}</dd>
+                </div>
+              ))
+            }
+          </dl>
+        </section>
+
+        {/* ── CAN I APPLY? — the personal verdict. One island; the page HTML
+            above and below is identical for every viewer and stays cacheable. ── */}
+        <section class="mt-8" aria-labelledby="can-i-apply">
+          <h2 id="can-i-apply" class="text-subtitle font-semibold">Can I apply?</h2>
+          <p class="mt-1 text-dense text-ink-2">
+            Tell us where you live and we'll check this opportunity against your eligibility.
+          </p>
+          <div class="mt-3">
+            <EligibilityCheck
+              client:idle
+              opportunityId={opp.id}
+              officialUrl={opp.official_url ?? opp.source_url ?? ""}
+            />
+          </div>
+
+          {
+            /* §2.3 `[PR]`: the count appears at 5 or more and NOT AT ALL below that. */
+            intentCount !== null && (
+              <p class="mt-4 text-dense text-ink-2">
+                {intentCount} builders have said they're going for this.
+              </p>
+            )
+          }
+
+          {
+            !isExpired && room.state === "open" && (
+              <p class="mt-3">
+                <a href={`/opportunities/${opp.slug}/room`} class="text-dense font-semibold text-brand no-underline hover:underline"
+                  >Team room — see who else is going →</a
+                >
+              </p>
+            )
+          }
+
+          {
+            !isExpired && room.state === "below_floor" && (
+              /* The room route rewrites HERE when it is below its floor, so this is the
+                 "single CTA" the acceptance criterion asks for. */
+              <p class="mt-3">
+                <a href={`/opportunities/${opp.slug}/intent`} class="text-dense font-semibold text-brand no-underline hover:underline"
+                  >No one has said they're going for this yet. Say you're going →</a
+                >
+              </p>
+            )
+          }
+        </section>
+
+        {/* ── ELIGIBILITY RULES IN FULL ─────────────────────────────────────── */}
+        {
+          rules.length > 0 ? (
+            <section class="mt-8">
+              <h2 class="text-subtitle font-semibold">Eligibility rules in full</h2>
+              <ul class="mt-3 flex flex-col gap-3">
+                {rules.map((rule) => (
+                  <li class="rounded-sheet border border-line bg-surface p-4">
+                    <p class="text-dense font-semibold">{rule.rule_type.replace(/_/g, " ")}</p>
+                    <p class="mt-1 border-l-2 border-line-strong pl-3 text-meta text-ink-2">
+                      &ldquo;{rule.source_quote}&rdquo;
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : (
+            <p class="mt-8 text-dense text-ink-2">
+              <span aria-hidden="true">{RULE_OUTCOME_GLYPH.unparsed}</span>{" "}
+              We haven't confirmed the eligibility rules for this one. Check the official page.
             </p>
-            <ul class="mt-3 divide-y divide-line border-t border-line">
-              {relatedProjects.map((project) => (
-                <li class="py-3">
-                  <a href={`/projects/${project.slug}`} class="text-dense font-semibold text-brand"
-                    >{project.title}</a
-                  >
-                  <p class="text-micro text-ink-2">
-                    {stateLabel(project.state)}
-                    {project.country_iso2 ? ` · ${project.country_iso2}` : ""}
-                    {project.roles_needed.length > 0
-                      ? ` · looking for ${project.roles_needed.slice(0, 3).join(", ")}`
-                      : ""}
-                  </p>
-                  {project.pitch && <p class="mt-1 text-dense">{project.pitch}</p>}
-                </li>
-              ))}
-            </ul>
-          </>
-        )
-      }
+          )
+        }
 
-      <p class="mt-6 text-meta text-ink-2">{NO_FEE_STATEMENT}</p>
+        {/* ── SOURCE & VERIFICATION ─────────────────────────────────────────── */}
+        <section class="mt-8">
+          <h2 class="text-subtitle font-semibold">Source &amp; verification</h2>
+          <div class="mt-3 rounded-sheet border border-line bg-surface p-4">
+            <dl class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <dt class="text-micro font-semibold text-ink-3">Official source</dt>
+                <dd class="mt-[2px] text-dense">
+                  {
+                    (opp.source_url || opp.official_url) ? (
+                      <a
+                        href={opp.official_url ?? opp.source_url ?? "#"}
+                        rel="noopener noreferrer nofollow ugc"
+                        target="_blank"
+                        class="font-medium text-brand no-underline hover:underline"
+                      >
+                        View the organiser's page
+                      </a>
+                    ) : (
+                      "Not linked"
+                    )
+                  }
+                </dd>
+              </div>
+              <div>
+                <dt class="text-micro font-semibold text-ink-3">Last checked</dt>
+                <dd class="mt-[2px] text-dense">
+                  {freshnessLabel(opp.last_verified_at)}
+                  {isStale && " — we haven't been able to re-check this recently"}
+                </dd>
+              </div>
+            </dl>
+            <p class="mt-3 text-meta text-ink-2">
+              We check this listing against the organiser's own page on a schedule, and quote
+              their words for eligibility rules rather than paraphrasing them. Where the wording
+              is unclear, we say unclear rather than guessing.
+            </p>
+          </div>
+        </section>
 
-      <p class="mt-2 text-meta">
-        <a href={`/report?subject=${opp.slug}`} class="text-brand"
-          >Report a problem with this listing</a
-        >
-      </p>
+        {
+          /* §1.6. Absent below three matching public projects, and absent entirely while its
+             flag is off — both halves, never either (§24). */
+          relatedProjects.length > 0 && (
+            <section class="mt-8">
+              <h2 class="text-subtitle font-semibold">Projects aiming at this</h2>
+              <p class="mt-1 text-meta text-ink-2">
+                Public projects whose subject overlaps this call. Their owners chose to show them.
+              </p>
+              <ul class="mt-3 flex flex-col gap-3">
+                {relatedProjects.map((project) => (
+                  <li class="rounded-sheet border border-line bg-surface p-4">
+                    <a href={`/projects/${project.slug}`} class="text-dense font-semibold text-brand no-underline hover:underline"
+                      >{project.title}</a
+                    >
+                    <p class="mt-1 text-micro text-ink-2">
+                      {stateLabel(project.state)}
+                      {project.country_iso2 ? ` · ${project.country_iso2}` : ""}
+                      {project.roles_needed.length > 0
+                        ? ` · looking for ${project.roles_needed.slice(0, 3).join(", ")}`
+                        : ""}
+                    </p>
+                    {project.pitch && <p class="mt-2 text-dense">{project.pitch}</p>}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )
+        }
+
+        {/* ── SAFETY — the promise stays permanent and prominent. ────────────── */}
+        <section class="mt-8 mb-2 rounded-sheet border border-line bg-sunken p-4">
+          <h2 class="text-dense font-semibold">Safety</h2>
+          <p class="mt-1 text-dense text-ink-2">{NO_FEE_STATEMENT}</p>
+          <p class="mt-2 text-meta">
+            <a href={`/report?subject=${opp.slug}`} class="font-semibold text-brand no-underline hover:underline"
+              >Report a problem with this listing</a
+            >
+          </p>
+        </section>
+      </div>
     </Base>
   )
 }

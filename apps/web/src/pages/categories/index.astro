@@ -48,7 +48,7 @@ const jsonLd = [
   lowData={lowData}
   jsonLd={jsonLd}
 >
-  <h1 class="text-title font-semibold">Opportunities by kind</h1>
+  <h1 class="text-title font-bold tracking-[-0.015em]">Opportunities by kind</h1>
   <p class="prose-measure mt-2 text-dense text-ink-2">
     {
       open > 0
@@ -57,18 +57,19 @@ const jsonLd = [
     }
   </p>
 
-  <ul class="mt-6 border-t border-line">
+  <div class="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
     {
       categories.map((row) => (
-        <li class="flex items-baseline justify-between gap-4 border-b border-line py-2">
-          <a href={`/categories/${row.slug}`} class="text-dense font-semibold text-brand no-underline">
-            {row.name}
-          </a>
-          <span class="text-meta text-ink-2">
-            {row.open_count === 0 ? "nothing open yet" : `${row.open_count} open`}
+        <a
+          href={`/categories/${row.slug}`}
+          class="flex flex-col gap-1 rounded-sheet border border-line bg-surface p-4 text-ink no-underline transition-colors hover:border-line-strong hover:bg-sunken"
+        >
+          <span class="text-dense font-semibold">{row.name}</span>
+          <span class="text-meta text-ink-3">
+            {row.open_count === 0 ? "Nothing open yet" : `${row.open_count} open`}
           </span>
-        </li>
+        </a>
       ))
     }
-  </ul>
+  </div>
 </Base>

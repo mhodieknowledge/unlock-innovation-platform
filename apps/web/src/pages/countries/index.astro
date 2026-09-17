@@ -75,7 +75,7 @@ const jsonLd = [
   lowData={lowData}
   jsonLd={jsonLd}
 >
-  <h1 class="text-title font-semibold">Opportunities by country</h1>
+  <h1 class="text-title font-bold tracking-[-0.015em]">Opportunities by country</h1>
   <p class="prose-measure mt-2 text-dense text-ink-2">
     {
       total > 0
@@ -87,22 +87,23 @@ const jsonLd = [
   {
     [...grouped, ...(rest.length > 0 ? [{ region: "other", name: "Elsewhere in Africa", countries: rest }] : [])].map(
       (group) => (
-        <section class="mt-8" aria-labelledby={`region-${group.region}`}>
-          <h2 id={`region-${group.region}`} class="text-subtitle font-semibold">{group.name}</h2>
-          <ul class="mt-2 border-t border-line">
+        <section class="mt-9" aria-labelledby={`region-${group.region}`}>
+          <h2 id={`region-${group.region}`} class="eyebrow text-brand">{group.name}</h2>
+          <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {group.countries.map((row) => (
-              <li class="flex items-baseline justify-between gap-4 border-b border-line py-2">
-                <a href={`/countries/${row.slug}`} class="text-dense font-semibold text-brand no-underline">
-                  {row.name}
-                </a>
-                <span class="text-meta text-ink-2">
+              <a
+                href={`/countries/${row.slug}`}
+                class="flex items-center justify-between gap-3 rounded-row border border-line bg-surface px-4 py-3 text-ink no-underline hover:border-line-strong hover:bg-sunken"
+              >
+                <span class="text-dense font-semibold">{row.name}</span>
+                <span class="shrink-0 text-meta text-ink-3">
                   {row.open_count === 0
-                    ? "nothing open yet"
-                    : `${row.open_count} open${row.specific_count > 0 ? `, ${row.specific_count} named for ${row.name}` : ""}`}
+                    ? "Nothing open yet"
+                    : `${row.open_count} open`}
                 </span>
-              </li>
+              </a>
             ))}
-          </ul>
+          </div>
         </section>
       ),
     )

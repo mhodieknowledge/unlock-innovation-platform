@@ -69,21 +69,22 @@ const LEVELS: { level: string; means: string; checked: string }[] = [
   jsonLd={[faqPage(FAQ)]}
 >
   <article class="max-w-prose">
-    <h1 class="text-title font-semibold">What verification means</h1>
+    <p class="eyebrow text-brand">Trust</p>
+    <h1 class="mt-1 text-title font-bold tracking-[-0.015em]">What verification means</h1>
 
-    <p class="mt-3 text-dense">
+    <p class="mt-3 text-dense text-ink-2">
       Every opportunity here shows how well it has been checked and when. The date is not decoration:
       "verified" without a date would mean nothing, so no badge is ever shown without one.
     </p>
 
-    <dl class="mt-6 space-y-6">
+    <dl class="mt-6 flex flex-col gap-4">
       {
         LEVELS.map(({ level, means, checked }) => (
-          <div>
+          <div class="rounded-sheet border border-line bg-surface p-4">
             <dt class="text-subtitle font-semibold">{level}</dt>
             <dd class="mt-1 text-dense">{means}</dd>
             <dd class="mt-1 text-dense text-ink-2">
-              <span class="font-semibold">What that actually checked:</span> {checked}
+              <span class="font-semibold text-ink">What that actually checked:</span> {checked}
             </dd>
           </div>
         ))
@@ -121,7 +122,7 @@ const LEVELS: { level: string; means: string; checked: string }[] = [
     <h2 class="mt-8 text-subtitle font-semibold">Found something wrong?</h2>
     <p class="mt-2 text-dense">
       Report it from the opportunity page — one tap, no account needed — or write to
-      <a href={`mailto:${CONTACT.support}`} class="text-brand">{CONTACT.support}</a>. A wrong
+      <a href={`mailto:${CONTACT.support}`} class="font-semibold text-brand no-underline hover:underline">{CONTACT.support}</a>. A wrong
       deadline is worth telling us about even if you are not certain.
     </p>
   </article>
