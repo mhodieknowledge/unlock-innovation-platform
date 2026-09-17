@@ -279,7 +279,7 @@ const NEXT_STATES: Record<string, string[]> = {
         {closingSoon.length > 0 && (
           <section class="mt-7" aria-labelledby="closing-soon">
             <h2 id="closing-soon" class="text-subtitle font-semibold">Closing soon</h2>
-            <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
               {closingSoon.map(({ entry, facts }) => (
                 <article class="rounded-sheet border border-line bg-surface p-4">
                   <h3 class="text-dense font-semibold">
@@ -331,7 +331,7 @@ const NEXT_STATES: Record<string, string[]> = {
             <h2 id="everything-else" class="text-subtitle font-semibold">
               {closingSoon.length > 0 ? "Everything else" : "Tracked"}
             </h2>
-            <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
               {rest.map(({ entry, facts }) => (
                 <article class="rounded-sheet border border-line bg-surface p-4">
                   <h3 class="text-dense font-semibold">

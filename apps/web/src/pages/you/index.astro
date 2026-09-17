@@ -169,7 +169,7 @@ const today = new Date().toLocaleDateString("en-GB", {
           {isColdStart ? "Closing soon" : "Closing in the next 30 days"}
         </h2>
 
-        <ul class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <ul class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
           {windowItems.map((item) => {
             const facts = deadlineFacts({
               deadline_at: item.deadline_at,
