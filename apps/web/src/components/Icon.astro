@@ -51,6 +51,24 @@ const PATHS = {
   // open, so the control shows what it will do without a script deciding.
   menu: "M4 7h16M4 12h16M4 17h16",
   close: "M6 6l12 12M18 6L6 18",
+
+  // ── The category set ──────────────────────────────────────────────────────
+  // Added for the category grid, which used to be half photographs and half plain
+  // boxes. An icon is the honest treatment for a directory entry: it says WHAT KIND
+  // of thing this is without claiming to show one, which a photograph on a category
+  // card always slightly does. Same 24×24 box and 1.5 stroke as the rest, so the set
+  // still reads as drawn rather than collected.
+
+  // Building — a hackathon, a competition, a challenge: angle brackets and a slash.
+  code: "M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14",
+  // Money awarded against an application — a grant, a scholarship, a fellowship.
+  award: "M12 3a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM8.5 13.5 7 21l5-2.5L17 21l-1.5-7.5",
+  // A placement — an internship, a developer programme.
+  briefcase: "M3 8h18v11H3zM9 8V6a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M3 13h18",
+  // Something being grown — an accelerator, an incubator, a startup competition.
+  growth: "M4 19h16M7 19v-5M12 19V8M17 19v-9M7 14l5-6 5 3",
+  // Written and read — research, a call for papers, a bootcamp.
+  book: "M4 5a1 1 0 0 1 1-1h6v16H5a1 1 0 0 1-1-1V5ZM20 5a1 1 0 0 0-1-1h-6v16h6a1 1 0 0 0 1-1V5Z",
 } as const;
 
 const { name, size = 24, class: className = "", title } = Astro.props;

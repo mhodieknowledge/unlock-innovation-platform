@@ -38,9 +38,19 @@
    * sunlight, and it is spent on the single most decision-relevant number. */
   --color-absolute: #000000;
 
-  /* ── Brand (§3.2) — deep enamel blue from painted institutional signage ── */
-  --color-brand: #1c3f94;
-  --color-brand-ink: #14306f;
+  /* ── Brand (§3.2) — deep enamel navy from painted institutional signage ────
+   * ONE BLUE, EVERYWHERE IT MATTERS. The mobile pass found the product speaking in
+   * three blues at once: --brand on buttons and links, --brand-ink on their hover, and
+   * a near-black --ink on the heavy blocks (the numbers band, the category washes), so
+   * the page's loudest surfaces belonged to no brand at all. The ramp is now navy the
+   * whole way down, and the heavy blocks are painted in --brand rather than in ink.
+   *
+   * Deepened from #1c3f94 for that job: navy carries a full-bleed band without the
+   * electric-blue cast that the lighter value had at that size, and it buys contrast
+   * rather than spending it — 12.31:1 on white against the old 9.60:1, which is what
+   * lets white/70 secondary text sit on it at 6.44:1 (AA at every size). */
+  --color-brand: #17316f;
+  --color-brand-ink: #0e2350;
   --color-brand-wash: #eaeff9;
 
   /* ── Eligibility ramp (§3.3) — the ONLY semantic colour ──────────────── */
@@ -96,9 +106,20 @@
    * control via the same Tailwind class names (rounded-row/-sheet/-monogram)
    * so every existing call site inherits the new shape for free. */
   --radius-none: 0;
-  --radius-row: 10px; /* inputs, buttons, chips, badges */
-  --radius-sheet: 18px; /* cards, panels, sheets, modals */
-  --radius-monogram: 999px; /* pills, avatar/monogram */
+  /* ONE RADIUS, NOT A FAMILY OF THREE.
+   *
+   * 10px inputs and buttons inside an 18px card is a difference a reader cannot name but
+   * can see: the control never quite belongs to the panel holding it, and on a phone —
+   * where a card IS the screen width and its button sits flush inside it — the two arcs
+   * are 8px apart at the same corner. Both tokens are now 1rem, which is Tailwind's own
+   * `rounded-2xl`, so `rounded-row`, `rounded-sheet` and `rounded-2xl` are one shape and
+   * the 320-odd existing call sites inherit it without being touched.
+   *
+   * The names stay because they still say what a thing IS — a control or a surface —
+   * and that is worth keeping for the day the two want to diverge again on purpose. */
+  --radius-row: 1rem; /* inputs, buttons, chips, badges */
+  --radius-sheet: 1rem; /* cards, panels, sheets, modals */
+  --radius-monogram: 999px; /* pills, avatar/monogram — a circle is not a radius */
 
   /* Elevation is restrained: a whisper of depth on resting cards so they read
    * as distinct surfaces without the "everything floats" look, and a real
