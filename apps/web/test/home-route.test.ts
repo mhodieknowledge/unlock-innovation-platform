@@ -99,12 +99,17 @@ const state = {
 };
 
 vi.mock("../src/lib/db", () => ({
-  listOpportunities: vi.fn(async (options: { limit?: number; countryIso2?: string }) => {
-    state.asked = options;
-    return state.boardOk
-      ? { ok: true as const, data: state.board }
-      : { ok: false as const, reason: "unavailable" as const };
-  }),
+  listOpportunities: vi.fn(
+    async (options: { limit?: number; countryIso2?: string; categoryCode?: string }) => {
+      // The homepage also queries per-category examples for its featured category block;
+      // `state.asked` exists to assert what the MAIN board query was asked, so only that
+      // call (no categoryCode) is recorded here.
+      if (!options.categoryCode) state.asked = options;
+      return state.boardOk
+        ? { ok: true as const, data: state.board }
+        : { ok: false as const, reason: "unavailable" as const };
+    },
+  ),
   getCountry: vi.fn(async (iso2: string | null) =>
     iso2 === "ZW"
       ? { iso2: "ZW", name: "Zimbabwe", slug: "zimbabwe" }
@@ -117,12 +122,18 @@ vi.mock("../src/lib/db", () => ({
       { iso2: "KE", name: "Kenya", slug: "kenya" },
       { iso2: "ZW", name: "Zimbabwe", slug: "zimbabwe" },
     ],
-    categories: [{ code: "ai_challenge", name: "AI challenge", slug: "ai-challenges" }],
+    categories: [
+      { code: "ai_challenge", name: "AI challenge", slug: "ai-challenges" },
+      { code: "hackathon", name: "Hackathon", slug: "hackathons" },
+    ],
   })),
   getPublishedCount: vi.fn(async () => state.published),
-  // design/Main.body.html's Explore list shows "41 open" beside each kind.
+  // The homepage features the top category by open count as an editorial block, so the
+  // fixture needs one with a representative photo (index.astro's CATEGORY_IMAGES) and a
+  // real count to exercise that.
   getCategoryCounts: vi.fn(async () => [
     { code: "ai_challenge", name: "AI challenge", slug: "ai-challenges", open_count: 17, soonest_deadline: null },
+    { code: "hackathon", name: "Hackathon", slug: "hackathons", open_count: 9, soonest_deadline: null },
   ]),
   getLastVerifiedAt: vi.fn(async () => state.lastVerifiedAt),
 }));
@@ -202,7 +213,10 @@ describe("the board is the hero (UX_FLOWS.md §2)", () => {
     // The country and category PAGES, not filtered lists: a filtered view is noindex (SEO.md §1)
     // and the homepage's main entry points must not be links to pages we ask not to be indexed.
     expect(html).toContain('href="/countries/zimbabwe"');
-    expect(html).toContain('href="/categories/ai-challenges"');
+    // The category feature block links to the category's own page, not a filtered list —
+    // which one is featured is data-driven (the highest open count among the categories
+    // with a representative photo), so the fixture's hackathon entry is what earns it here.
+    expect(html).toContain('href="/categories/hackathons"');
     expect(html).toContain('href="/countries"');
     expect(html).toContain('href="/categories"');
     // Plain links, not a control that needs JavaScript to navigate.
