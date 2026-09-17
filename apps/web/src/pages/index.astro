@@ -208,15 +208,50 @@ const bands = FEATURE_BANDS.map((category, i) => ({
 const BANDED = new Set(bands.map((b) => b.category.code));
 
 /**
- * The rest of the directory, as cards. The four we hold photographs for lead with one; the
- * others are typographic, which is the honest treatment for a card with no picture rather
- * than a grey box standing in for one.
+ * WHAT KIND OF THING IT IS, DRAWN RATHER THAN PHOTOGRAPHED.
+ *
+ * The grid used to be two components wearing one heading: a photograph card for the four
+ * categories we hold a picture of, and a tinted box for the other seventeen. Scanning it
+ * meant scanning two visual languages at once, and the tinted boxes read as cards whose
+ * image had failed to load — which is the one thing a deliberate variant must never do.
+ *
+ * An icon has no such shortfall, because there is no missing asset to notice. Every card
+ * is now one object: white, hairline, one icon, the name, the count. The photographs are
+ * not lost — they still carry the feature bands above, where a picture is doing a
+ * compositional job rather than labelling a row in a directory.
+ *
+ * The map is by code with a fallback, so a category added to the taxonomy tomorrow gets
+ * the generic mark rather than nothing at all.
  */
+const CATEGORY_ICONS: Record<string, "code" | "award" | "briefcase" | "growth" | "book" | "you" | "categories"> = {
+  hackathon: "code",
+  coding_competition: "code",
+  ai_challenge: "code",
+  data_competition: "code",
+  innovation_challenge: "code",
+  open_source_program: "code",
+  grant: "award",
+  fellowship: "award",
+  scholarship: "award",
+  internship: "briefcase",
+  developer_program: "briefcase",
+  startup_competition: "growth",
+  pitch_competition: "growth",
+  accelerator: "growth",
+  incubator: "growth",
+  entrepreneurship_program: "growth",
+  research_opportunity: "book",
+  conference_cfp: "book",
+  bootcamp: "book",
+  community_challenge: "you",
+};
+
+/** The rest of the directory, as cards — one shape, one icon each. */
 const CATEGORY_CARDS = categoryCounts
   .filter((c) => c.open_count > 0 && c.code !== "other" && !BANDED.has(c.code))
   .sort((a, b) => b.open_count - a.open_count)
   .slice(0, 6)
-  .map((c) => ({ ...c, image: CATEGORY_IMAGES[c.code] ?? null }));
+  .map((c) => ({ ...c, icon: CATEGORY_ICONS[c.code] ?? ("categories" as const) }));
 
 /**
  * The hero's rotating stat — real counts, not marketing copy. Padded to exactly four slots
@@ -315,9 +350,16 @@ const jsonLd = [
 /** The stats band. Three numbers, all live, none rounded up with a "+" — CONTENT_AND_LAUNCH.md
  * §1 and apps/web/test/home-route.test.ts both rule out the marketing-rounding pattern. */
 const STATS = [
-  { value: published ?? 0, label: (published ?? 0) === 1 ? "opportunity tracked" : "opportunities tracked" },
-  { value: entryPoints.countries.length, label: "African countries covered" },
-  { value: entryPoints.categories.length, label: "categories tracked" },
+  {
+    value: published ?? 0,
+    label: (published ?? 0) === 1 ? "opportunity tracked" : "opportunities tracked",
+    // The icon names WHICH number this is, so three counts in a row on a phone stop
+    // reading as one long sentence of digits. §8's rule still holds — the label beside
+    // it carries the meaning and the icon is aria-hidden, so nothing is icon-only.
+    icon: "board" as const,
+  },
+  { value: entryPoints.countries.length, label: "African countries covered", icon: "globe" as const },
+  { value: entryPoints.categories.length, label: "categories tracked", icon: "categories" as const },
 ].filter((s) => s.value > 0);
 ---
 
@@ -359,19 +401,26 @@ const STATS = [
             Scholarships, fellowships, hackathons and grants open to Africa, each checked
             against its source.
           </p>
-          <form method="get" action="/opportunities" class="mt-5 flex max-w-xl gap-2">
-            <label class="relative flex-1">
+          {/* ONE CONTROL, NOT TWO NEXT TO EACH OTHER — see the note on the photographic
+              hero below. Same object here, minus the shadow: low-data mode gets the
+              plain version of everything, never a different shape. */}
+          <form
+            method="get"
+            action="/opportunities"
+            class="mt-5 flex h-12 max-w-xl items-stretch overflow-hidden rounded-sheet border border-line-strong bg-surface focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-brand"
+          >
+            <label class="flex min-w-0 flex-1 items-center">
               <span class="sr-only">Search opportunities</span>
               <input
                 type="search"
                 name="q"
                 placeholder="Search scholarships, hackathons, grants…"
-                class="h-12 w-full rounded-sheet border border-line-strong bg-surface px-4 text-[15px]"
+                class="h-full w-full min-w-0 border-0 bg-transparent px-4 text-[15px] outline-none"
               />
             </label>
             <button
               type="submit"
-              class="h-12 shrink-0 rounded-sheet bg-brand px-5 text-dense font-semibold text-surface hover:bg-brand-ink"
+              class="h-full shrink-0 border-l border-line bg-brand px-6 text-dense font-semibold text-surface hover:bg-brand-ink"
             >
               Search
             </button>
@@ -424,25 +473,47 @@ const STATS = [
           </p>
 
           {/* A plain GET form to the list page: no JS, no autocomplete request, nothing
-              typed leaves the device until the reader presses the button. */}
-          <form method="get" action="/opportunities" class="mt-5 flex max-w-xl gap-2">
-            <label class="relative flex-1">
+              typed leaves the device until the reader presses the button.
+
+              ONE CONTROL, NOT TWO NEXT TO EACH OTHER. The field and the button used to be
+              separate rounded objects with a 8px gap between them, each casting its own
+              shadow over the photograph — two controls where a reader sees one job. They
+              are now a single container: one radius, one shadow, one focus ring around
+              the whole thing, and a hairline where the button begins. The divider is what
+              makes it read as a search BAR rather than as a field that happens to have a
+              blue block glued to its right edge.
+
+              The focus ring is on the container (`focus-within`) rather than on the input,
+              because the visible boundary a reader must find is now the container's — the
+              input inside it has no edge of its own to ring. §8's "never removed" is
+              honoured, not bypassed: `outline-none` on the input hands its ring to the
+              wrapper, it does not delete it.
+
+              The button's padding is deliberately generous (px-6, and px-7 once there is
+              room): "Search" at 14px is a short word, and a short word in a tight box is
+              the difference between a button and a label. */}
+          <form
+            method="get"
+            action="/opportunities"
+            class="mt-5 flex h-12 max-w-xl items-stretch overflow-hidden rounded-sheet bg-surface shadow-[0_8px_30px_rgba(0,0,0,0.25)] focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-brand"
+          >
+            <label class="flex min-w-0 flex-1 items-center">
               <span class="sr-only">Search opportunities</span>
               <Icon
                 name="search"
                 size={20}
-                class="pointer-events-none absolute top-1/2 left-4 h-[18px] w-[18px] -translate-y-1/2 text-ink-3"
+                class="pointer-events-none ml-4 h-[18px] w-[18px] shrink-0 text-ink-3"
               />
               <input
                 type="search"
                 name="q"
                 placeholder="Search scholarships, hackathons, grants…"
-                class="h-12 w-full rounded-sheet border-0 bg-surface pr-3 pl-11 text-[15px] shadow-[0_8px_30px_rgba(0,0,0,0.25)]"
+                class="h-full w-full min-w-0 border-0 bg-transparent px-3 text-[15px] outline-none"
               />
             </label>
             <button
               type="submit"
-              class="h-12 shrink-0 rounded-sheet bg-brand px-5 text-dense font-semibold text-surface transition-colors hover:bg-brand-ink"
+              class="h-full shrink-0 border-l border-line bg-brand px-6 text-dense font-semibold text-surface transition-colors hover:bg-brand-ink md:px-7"
             >
               Search
             </button>
@@ -459,7 +530,13 @@ const STATS = [
       is small and the thing underneath it is the product. */}
   {
     country && (
-      <div class="border-b border-line bg-sunken">
+      /* A BRAND TINT, NOT ANOTHER GREY. This strip said "sunken" — the same neutral the
+         footer uses — so between the hero and the white board below it read as a seam
+         rather than as a statement about what the reader is looking at. A wash of the
+         brand blue separates it from the white content underneath without introducing a
+         fourth surface colour: it is --brand-wash, the tint the ramp already holds, at
+         half strength so it stays a whisper. */
+      <div class="border-b border-line bg-brand-wash/50">
         {/*
           ONE ROW, 44px TALL, INCLUDING THE CONTROL.
 
@@ -487,7 +564,10 @@ const STATS = [
 
   {
     showAll && (
-      <div class="border-b border-line bg-sunken">
+      /* The same strip, saying the other thing. Same tint, because it is the same fact
+         in the same place, and a reader who switches between them should see one
+         component change its words rather than two components trade places. */
+      <div class="border-b border-line bg-brand-wash/50">
         <p class="mx-auto flex max-w-[1160px] items-center gap-2 px-4 text-meta text-ink-2">
           <Icon name="globe" size={20} class="h-4 w-4 shrink-0 text-ink-3" />
           <span class="min-w-0 truncate">Every open opportunity across Africa</span>
@@ -691,52 +771,40 @@ const STATS = [
           {CATEGORY_CARDS.map((c) => (
             <li>
               {/*
-                ONE SHAPE, PHOTOGRAPH OR NOT.
+                ONE SHAPE, AND NOW ONE MEDIUM TOO.
 
-                We hold four category photographs and there are twenty-one categories, two of
-                which the bands above have already taken. So most cards have no picture, and
-                the first version rendered those as a shorter white box with the text floating
-                in the middle of it — beside a full-bleed photo card, it read as a component
-                that had failed to load rather than a deliberate variant.
+                The previous pass got half of this right: it made every card the same
+                OBJECT — same height, same text in the same place — but left them made of
+                two different materials. Four cards were a photograph under a black
+                gradient; the rest were a blue-grey wash. Side by side in a six-card grid
+                that is not a rhythm, it is a component that looks like it failed to
+                load, and the reader's eye goes to the dark cards because they are dark
+                rather than because they matter more.
 
-                Every card is now the same object: same height, same text in the same place at
-                the bottom. A card with a photograph gets the photograph; a card without gets a
-                wash in the brand tint. Neither pretends to be the other, and a reader scanning
-                the grid is reading a directory rather than wondering what is missing.
+                So the photographs come out of the grid entirely and the cards are white.
+                What distinguishes one from another is now the icon and the count — the
+                two things that actually differ — carried on a hairline-and-shadow card
+                that matches every other card in the product. The pictures still exist
+                where they earn their keep: the full-bleed bands above.
+
+                The icon sits in a brand wash tile rather than loose on the white, which
+                gives the card a fixed anchor point so six of them scan as a column of
+                names instead of six ragged blocks of text.
               */}
               <a
                 href={`/categories/${c.slug}`}
-                class="group relative flex h-full min-h-[128px] flex-col justify-end overflow-hidden rounded-sheet border border-line no-underline hover:border-line-strong"
+                class="group flex h-full min-h-[128px] flex-col justify-between gap-3 rounded-sheet border border-line bg-surface p-3 no-underline shadow-card transition-shadow hover:border-line-strong hover:shadow-card-hover"
               >
-                {c.image && !lowData ? (
-                  <>
-                    <Image
-                      src={c.image}
-                      alt=""
-                      aria-hidden="true"
-                      widths={[240, 400, 600]}
-                      sizes="(min-width: 1024px) 360px, 50vw"
-                      loading="lazy"
-                      class="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
-                    />
-                    <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/50 to-black/20" />
-                  </>
-                ) : (
-                  <div class="absolute inset-0 bg-gradient-to-br from-brand-wash to-sunken" />
-                )}
-                <div class="relative p-3">
-                  <span
-                    class={`block text-dense font-semibold ${c.image && !lowData ? "text-surface" : "text-ink"}`}
-                  >
-                    {c.name}
-                  </span>
-                  <span
-                    class={`mt-1 block text-micro ${c.image && !lowData ? "text-surface/80" : "text-ink-2"}`}
-                  >
+                <span class="flex size-10 shrink-0 items-center justify-center rounded-sheet bg-brand-wash text-brand">
+                  <Icon name={c.icon} size={20} class="h-5 w-5" />
+                </span>
+                <span class="block">
+                  <span class="block text-dense font-semibold text-ink">{c.name}</span>
+                  <span class="mt-1 block text-micro text-ink-2">
                     {c.open_count} open
                     {shortDate(c.soonest_deadline) && <span> · next {shortDate(c.soonest_deadline)}</span>}
                   </span>
-                </div>
+                </span>
               </a>
             </li>
           ))}
@@ -745,9 +813,22 @@ const STATS = [
     )
   }
 
-  {/* ── ELIGIBILITY — one row, not a card with an eyebrow and a paragraph. ───── */}
+  {/* ── ELIGIBILITY — one row, not a card with an eyebrow and a paragraph. ─────
+      READ, THEN ACT — WHICH ON A PHONE MEANS TOP, THEN BOTTOM.
+
+      `sm:flex-row` made this a row from 381px up. §4.2's `sm` is 381px, not Tailwind's
+      640px, and that four-pixel-wide window between "phone" and "row" is the whole bug:
+      EVERY phone this product is used on took the desktop layout. Measured at 390px the
+      two children split the card — the sentence wrapped to six lines in its half, and
+      "Add your details", the entire point of the block, sat in a shrink-wrapped box
+      beside it, narrower than the text it was losing to and pinned to the right edge
+      where a thumb is not.
+
+      The row now waits for `md` (600px), which is where two columns of this actually
+      fit. Below it the card stacks unconditionally: explanation on top, button
+      full-width underneath, which is the shape a reader's thumb is already holding. */}
   <section class="mx-auto max-w-[1160px] px-4 pt-10" aria-labelledby="can-i-apply">
-    <div class="flex flex-col gap-3 rounded-sheet border border-line bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex flex-col gap-4 rounded-sheet border border-line bg-surface p-4 shadow-card md:flex-row md:items-center md:justify-between md:gap-3">
       <div>
         <h2 id="can-i-apply" class="text-dense font-semibold">
           Every listing can tell you whether you can apply.
@@ -759,7 +840,7 @@ const STATS = [
       </div>
       <a
         href="/you/eligibility"
-        class="inline-flex min-h-12 shrink-0 items-center justify-center rounded-row bg-brand px-5 text-dense font-semibold text-surface no-underline transition-colors hover:bg-brand-ink"
+        class="inline-flex min-h-12 w-full shrink-0 items-center justify-center rounded-row bg-brand px-5 text-dense font-semibold text-surface no-underline transition-colors hover:bg-brand-ink md:w-auto"
       >
         {user ? "Your details" : "Add your details"}
       </a>
@@ -814,7 +895,7 @@ const STATS = [
       here rather than in the footer, so it sits with the promises it belongs with. Base
       passes `trustPanelAbove` to the footer so it is not repeated below. */}
   <section class="mx-auto max-w-[1160px] px-4 pt-10" aria-labelledby="how-kept">
-    <div class="rounded-sheet border border-line bg-surface p-4">
+    <div class="rounded-sheet border border-line bg-surface p-4 shadow-card">
       <div class="flex flex-wrap items-center justify-between gap-x-4">
         <h2 id="how-kept" class="text-dense font-semibold">How this list is kept</h2>
         <a
@@ -824,7 +905,20 @@ const STATS = [
           What verification means →
         </a>
       </div>
-      <ul class="mt-2 flex list-none flex-col gap-1.5 p-0 text-meta text-ink-2">
+      {/*
+        FOUR PROMISES, FOUR TICKS YOU CAN ACTUALLY SEE.
+
+        The mark was a 14px stroked check set flush against the sentence with 8px of gap:
+        at 13px type that is a tick the same weight as the text beside it, which makes a
+        list of promises read as a paragraph with punctuation in front of it. Each one now
+        gets a 20px disc in the eligible wash — the ramp's own green, the colour this
+        product already spends on "yes, you can" — and 12px of space before the words.
+
+        The gutter is what does the work: `gap-3` plus a fixed-size disc gives every
+        sentence the same left edge, so four promises scan as four rather than as prose.
+        The disc is `aria-hidden` and the sentence carries the meaning, per §8.
+      */}
+      <ul class="mt-3 flex list-none flex-col gap-2.5 p-0 text-meta text-ink-2">
         {
           [
             "Every listing links to the organiser's own page, and says when we last checked it.",
@@ -832,8 +926,10 @@ const STATS = [
             "Where the wording is unclear, we say unclear rather than guessing.",
             NO_FEE_STATEMENT,
           ].map((promise) => (
-            <li class="flex gap-2">
-              <Icon name="check" size={20} class="mt-[2px] h-3.5 w-3.5 shrink-0 text-eligible" />
+            <li class="flex items-start gap-3">
+              <span class="mt-px flex size-5 shrink-0 items-center justify-center rounded-monogram bg-eligible-wash text-eligible">
+                <Icon name="check" size={20} class="h-3 w-3" />
+              </span>
               <span>{promise}</span>
             </li>
           ))
@@ -847,19 +943,44 @@ const STATS = [
       because it is the number that says the others are current. ─────────────────────── */}
   {
     STATS.length > 0 && (
-      <section class="mt-10 bg-ink py-6 text-surface" aria-labelledby="stats">
+      /*
+        NAVY, NOT NEAR-BLACK — AND THE NUMBERS SAY WHAT THEY COUNT.
+
+        This band was `bg-ink`: #101214, the colour reserved for TYPE. A full-bleed strip
+        of it is the heaviest thing on the page and it belonged to no part of the brand —
+        between a white board above and a grey footer below it read as a gap in the page
+        rather than as a statement in it. It is now --brand, which is the same weight of
+        mark in a colour the product actually owns.
+
+        White at 70% on the navy measures 6.44:1, comfortably past AA at this size, which
+        is what the deepened brand value bought (the old blue would have put it at 5.02:1
+        — passing, but with nothing to spare on a cheap panel in sunlight).
+
+        The icons are the second half of the fix. Three bare numbers wrapping on a 390px
+        screen ran together into one line of digits; a mark before each gives the eye a
+        place to break, and says which of the three it is about to read. They are
+        `aria-hidden` and the label carries the meaning, per §8 — nothing here is
+        conveyed by an icon alone.
+      */
+      <section class="mt-10 bg-brand py-7 text-surface" aria-labelledby="stats">
         <h2 id="stats" class="sr-only">{BRAND.name} by the numbers</h2>
-        <div class="mx-auto flex max-w-[1160px] flex-wrap items-baseline gap-x-8 gap-y-3 px-4">
+        <div class="mx-auto flex max-w-[1160px] flex-wrap items-center gap-x-8 gap-y-4 px-4">
           {STATS.map((stat) => (
-            <p class="flex items-baseline gap-2">
-              <span class="text-[1.5rem] font-bold tracking-[-0.02em] tabular-nums">
-                <span data-count-to={stat.value}>{stat.value.toLocaleString("en")}</span>
+            <p class="flex items-center gap-2.5">
+              <Icon name={stat.icon} size={20} class="h-5 w-5 shrink-0 text-surface/60" />
+              <span class="flex flex-col">
+                <span class="text-[1.5rem] leading-7 font-bold tracking-[-0.02em] tabular-nums">
+                  <span data-count-to={stat.value}>{stat.value.toLocaleString("en")}</span>
+                </span>
+                <span class="text-meta text-surface/70">{stat.label}</span>
               </span>
-              <span class="text-meta text-surface/70">{stat.label}</span>
             </p>
           ))}
           {lastVerifiedAt !== null && (
-            <p class="text-meta text-surface/70">{freshnessLabel(lastVerifiedAt)} against the source.</p>
+            <p class="flex items-center gap-2.5 text-meta text-surface/70">
+              <Icon name="clock" size={20} class="h-5 w-5 shrink-0 text-surface/60" />
+              <span>{freshnessLabel(lastVerifiedAt)} against the source.</span>
+            </p>
           )}
         </div>
       </section>

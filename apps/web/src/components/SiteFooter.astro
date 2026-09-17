@@ -97,7 +97,25 @@ const GROUPS: { heading: string; links: { label: string; href: string }[] }[] = 
       {
         GROUPS.map((group) => (
           <details class="md:open-on-desktop group border-b border-line md:border-0">
-            <summary class="flex min-h-11 cursor-pointer list-none items-center justify-between text-dense font-semibold text-ink md:mb-1 md:cursor-default md:text-ink-3 md:font-normal md:uppercase md:tracking-[0.08em] md:text-micro [&::-webkit-details-marker]:hidden">
+            {/*
+              44px WAS THE FLOOR, NOT THE TARGET.
+
+              `min-h-11` gave these rows exactly the minimum and nothing more, so four
+              accordion headings and fourteen links sat in a stack of touching 44px
+              boxes with no space between one target and the next. A target you hit is
+              not the same as a target you hit CONFIDENTLY: at the bottom of a page,
+              one-handed, the row above is always half a thumb away.
+
+              `py-4` puts real padding inside each row — the heading lands near 52px and
+              carries its own breathing room, which is what separates one tap target
+              from its neighbour. The minimum stays declared alongside it: padding is
+              what the row looks like, `min-h-11` is what it is guaranteed to be if the
+              text inside it is ever shorter than expected.
+
+              Above `md` the accordion is four plain columns, so the padding comes back
+              off the links — there, generous rows are just a tall footer.
+            */}
+            <summary class="flex min-h-11 cursor-pointer list-none items-center justify-between py-4 text-dense font-semibold text-ink md:mb-1 md:cursor-default md:py-0 md:text-micro md:font-normal md:uppercase md:tracking-[0.08em] md:text-ink-3 [&::-webkit-details-marker]:hidden">
               {group.heading}
               <span class="text-ink-3 transition-transform group-open:rotate-180 md:hidden" aria-hidden="true">
                 <Icon name="chevron" size={20} class="h-4 w-4 rotate-90" />
@@ -107,7 +125,7 @@ const GROUPS: { heading: string; links: { label: string; href: string }[] }[] = 
               {group.links.map((link) => (
                 <a
                   href={link.href}
-                  class="flex min-h-11 items-center text-dense text-ink-2 no-underline hover:text-brand hover:underline"
+                  class="flex min-h-11 items-center py-4 text-dense text-ink-2 no-underline hover:text-brand hover:underline md:py-2"
                 >
                   {link.label}
                 </a>

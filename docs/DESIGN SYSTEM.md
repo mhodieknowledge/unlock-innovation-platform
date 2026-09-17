@@ -104,11 +104,13 @@ Base 16px. Modular, close to a minor third at the top and tightening below, beca
 ### 3.2 Brand
 | Token | Value | Use |
 |---|---|---|
-| `--brand` | `#1C3F94` | Primary buttons, links, focus rings, logotype |
-| `--brand-ink` | `#14306F` | Hover/active |
-| `--brand-wash` | `#EAEFF9` | Selected filter chips, brand-tinted surfaces |
+| `--brand` | `#17316F` | Primary buttons, links, focus rings, logotype, heavy informational blocks |
+| `--brand-ink` | `#0E2350` | Hover/active |
+| `--brand-wash` | `#EAEFF9` | Selected filter chips, brand-tinted surfaces, context strips |
 
-A deep enamel blue, taken from painted institutional signage rather than software convention. Dark enough for 7.4:1 on paper, and clearly separate from every status hue.
+A deep enamel navy, taken from painted institutional signage rather than software convention. 12.3:1 on white and 11.9:1 on paper, and clearly separate from every status hue.
+
+Deepened from `#1C3F94` in the mobile pass, for a reason that is about surfaces rather than about taste. `--brand` now paints **heavy informational blocks** as well as controls — the numbers band on the board was `--ink`, the near-black reserved for type, which made the loudest strip on the page the one part of it that belonged to no brand. A full-bleed band wants a colour with no electric cast to it at that size, and it wants headroom for secondary text laid over it: white at 70% measures 6.44:1 on the navy against 5.02:1 on the old blue.
 
 ### 3.3 Eligibility ramp — the only semantic colour
 | Verdict | Ink | Wash | Rail |
@@ -149,7 +151,11 @@ Every text/background pair meets WCAG AA (4.5:1 body, 3:1 large). Verified pairs
 Content is left-aligned throughout. Nothing is centred except empty-state blocks and modal chrome — centred text is harder to scan and this product is scanned.
 
 ### 4.3 Radius and elevation
-Radius: `0` (hairlines, rails), `4px` (rows, inputs, buttons, chips), `8px` (sheets, modals), `999px` (avatar monogram only).
+Radius: `0` (hairlines, rails), `1rem` (everything with a boundary — cards, panels, sheets, modals, inputs, buttons, chips), `999px` (pills and the avatar monogram only).
+
+**One radius, not a family.** The scale was 4px controls inside 8px sheets, then 10px inside 18px; either way a button never quite belonged to the card holding it, and on a phone — where the card IS the screen width and the button sits flush inside it — the two arcs meet at the same corner and the mismatch is the first thing the eye finds. `1rem` is Tailwind's own `rounded-2xl`, so `rounded-row`, `rounded-sheet` and `rounded-2xl` are one shape.
+
+The token NAMES survive the merge (`--radius-row`, `--radius-sheet`), because they say what a thing is — a control or a surface — and every call site already speaks in them. Changing the value in `tokens.css` is what changes the product.
 
 **Elevation exists only where something floats above the page**: bottom sheets, modals, dropdowns, toasts. A single shadow token, `0 8px 24px rgba(16,18,20,0.14)`. Rows and cards are separated by hairlines, never by shadow — shadows on a list of 40 rows are visual noise and a rendering cost on low-end GPUs.
 
