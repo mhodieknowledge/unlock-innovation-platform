@@ -970,6 +970,17 @@ async function writeCandidate({ source, doc, candidate, confidence, rules, rejec
               deadline_raw = coalesce($4, deadline_raw),
               starts_at = coalesce($5, starts_at),
               ends_at = coalesce($6, ends_at),
+              -- THE PICTURE HAS TO BE ON THE REFRESH PATH TOO, and leaving it off the first
+              -- time was a defect with a very quiet failure mode: every listing in the
+              -- catalogue already exists, so every one of them takes this branch rather than
+              -- the INSERT below. The column shipped, the card shipped, and all 164 rows
+              -- stayed NULL through as many re-crawls as anyone cared to run.
+              --
+              -- coalesce, not a plain assignment: a page that has stopped publishing an
+              -- og:image, or one we fetched through a renderer that dropped the <head>, must
+              -- not blank a picture we already have. Losing one is a regression a reader sees;
+              -- keeping a slightly old one is not.
+              image_url = coalesce($7, image_url),
               last_verified_at = now(),
               link_ok = true,
               link_checked_at = now(),
@@ -982,6 +993,7 @@ async function writeCandidate({ source, doc, candidate, confidence, rules, rejec
         candidate.deadline_raw ?? null,
         candidate.starts_at ?? null,
         candidate.ends_at ?? null,
+        candidate.image_url ?? null,
       ],
     );
     return {

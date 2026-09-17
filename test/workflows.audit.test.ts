@@ -260,3 +260,85 @@ describe("who wrote the summary", () => {
     expect(db).toMatch(/summary,\s*summary_source/);
   });
 });
+
+/**
+ * A COLUMN THE INSERT WRITES AND THE REFRESH PATH DOES NOT.
+ *
+ * `image_url` (migration 0038) shipped written only by the INSERT in scripts/ingest.mjs. Every
+ * record in the catalogue already existed, so every crawl took the `refreshed` branch instead
+ * — the UPDATE a few lines above it — and all of them stayed NULL through as many re-crawls as
+ * anyone cared to run. The column was there, the card was there, and the board showed category
+ * panels for every listing. Nothing failed; it just never filled.
+ *
+ * That is the shape of the bug worth a test: a write path that exists, runs, succeeds, and
+ * quietly omits a field. The summary_source suite above guards the same class for a different
+ * column, and this one generalises it — any column the INSERT sets must be set somewhere on the
+ * refresh path too, or be listed here as deliberately insert-only with the reason.
+ */
+describe("what the refresh path forgets", () => {
+  /**
+   * Columns an INSERT sets that a refresh must NOT re-set, with why. Anything else the INSERT
+   * writes has to appear in the UPDATE, or this fails.
+   */
+  const INSERT_ONLY: Record<string, string> = {
+    slug: "a slug is an identity and a URL; changing it on refresh breaks every link to it",
+    title: "renaming a listing under a reader is worse than a stale title; a real retitle is a moderation decision",
+    summary: "written once by the model; re-writing it on every crawl would re-run the copy check against a moving target",
+    summary_source: "travels with summary, which is insert-only",
+    category_id: "recategorisation is its own job (--recategorise), with its own acceptance rules",
+    organisation_id: "re-attributing a listing to a different body is a moderation decision, not a crawl outcome",
+    source_id: "the source that found it does not change",
+    raw_document_id: "points at the fetch that created the record",
+    eligibility_scope: "changed only through the diff path in reverify, which notifies trackers",
+    eligible_countries: "same as eligibility_scope",
+    participation_mode: "not re-extracted on the refresh path",
+    deadline_timezone: "set from the first extraction; a later crawl has no better answer",
+    team_required: "not re-extracted on the refresh path",
+    team_size_min: "not re-extracted on the refresh path",
+    team_size_max: "not re-extracted on the refresh path",
+    prize_amount: "not re-extracted on the refresh path",
+    prize_currency: "not re-extracted on the refresh path",
+    cost: "invariant 13: a cost change is a moderation event, handled in reverify",
+    source_url: "the URL this record was found at; it is the match key for the refresh itself",
+    official_url: "not re-extracted on the refresh path",
+    status: "publishing and un-publishing are decisions, not crawl outcomes",
+    verification: "a verification state is set by the verification pipeline",
+    extraction_confidence: "describes the extraction that created the record",
+    published_at: "the moment it was published, which does not recur",
+  };
+
+  it("sets every column the insert sets, or says why not", () => {
+    const text = readFileSync(join(ROOT, "scripts/ingest.mjs"), "utf8");
+
+    const insert = /INSERT INTO opportunities\s*\(([\s\S]*?)\)\s*VALUES/.exec(text);
+    expect(insert, "the INSERT into opportunities moved; this test cannot find it").toBeTruthy();
+    const inserted = insert![1]!
+      .split(",")
+      .map((c) => c.replace(/--.*$/gm, "").trim())
+      .filter((c) => /^[a-z_]+$/.test(c));
+    expect(inserted.length, "parsed no columns out of the INSERT").toBeGreaterThan(20);
+
+    // The refresh branch: the UPDATE that runs when the crawler re-sees a record it has.
+    const update = /UPDATE opportunities\s+SET([\s\S]*?)WHERE id = \$1/.exec(text);
+    expect(update, "the refresh UPDATE moved; this test cannot find it").toBeTruthy();
+    const refreshed = update![1]!;
+
+    const forgotten = inserted.filter(
+      (column) => !INSERT_ONLY[column] && !new RegExp(`\\b${column}\\s*=`).test(refreshed),
+    );
+    expect(
+      forgotten,
+      `scripts/ingest.mjs: the refresh path never writes these, so they stay at whatever the\n`
+        + `first crawl found — forever, for every record that already exists:\n  ${forgotten.join("\n  ")}\n\n`
+        + `Either write them in the refresh UPDATE, or add them to INSERT_ONLY with the reason.`,
+    ).toEqual([]);
+  });
+
+  it("captures a listing's picture on a path that visits records it already has", () => {
+    // The INSERT alone reaches only records nobody has seen before. On a catalogue that
+    // predates the column, that is none of them.
+    const reverify = readFileSync(join(ROOT, "scripts/reverify.mjs"), "utf8");
+    expect(reverify, "reverify never captures an og:image").toMatch(/extractImageUrl/);
+    expect(reverify, "no backfill job for records that predate the column").toMatch(/image_url IS NULL/);
+  });
+});
