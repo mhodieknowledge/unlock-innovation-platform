@@ -201,77 +201,95 @@
     --reveal-delay: 360ms;
   }
 
-  /* Horizontal, swipeable rows — native scroll-snap, no JS required to use at all.
-   * motion.js's [data-autoscroll] is an optional layer on top of this, never a
-   * replacement for it. */
-  .scroll-row {
-    display: flex;
-    gap: 1rem;
-    overflow-x: auto;
-    scroll-snap-type: x proximity;
-    scroll-padding-inline: 1rem;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
-    scrollbar-color: var(--color-line-strong) transparent;
+  /* Hero Ken Burns: a slow, continuous drift-zoom on the full-bleed hero photograph —
+   * the one place sustained motion earns its keep, because it is the first thing on the
+   * page and the product's single most "this is a real, alive product" cue. */
+  @keyframes hero-kenburns {
+    0% {
+      transform: scale(1) translate(0, 0);
+    }
+    100% {
+      transform: scale(1.09) translate(-1%, -1%);
+    }
   }
-  .scroll-row::-webkit-scrollbar {
-    height: 6px;
-  }
-  .scroll-row::-webkit-scrollbar-thumb {
-    background: var(--color-line-strong);
-    border-radius: 999px;
-  }
-  .scroll-row > * {
-    scroll-snap-align: start;
-    flex: 0 0 auto;
+  .hero-kenburns {
+    animation: hero-kenburns 22s ease-in-out infinite alternate;
   }
 
-  /* Hero aurora: two slow-drifting blurred blobs behind the hero content. Brand-wash
-   * only — §1.2's colour discipline extends to motion too; nothing here introduces a
-   * new hue, it just moves the one the product already uses. */
-  @keyframes aurora-drift-a {
-    0%,
-    100% {
-      transform: translate(-8%, -6%) scale(1);
-    }
-    50% {
-      transform: translate(6%, 8%) scale(1.15);
-    }
+  /* A real slide carousel — [data-carousel] in the markup, motion.js does the rest. Until
+   * it runs, `.carousel-slide` is never applied (the JS is what adds it while moving each
+   * slide into the track), so the base state is just the [data-slide] children stacking as
+   * ordinary block content: a complete list, not a truncated preview. */
+  [data-carousel] {
+    position: relative;
   }
-  @keyframes aurora-drift-b {
-    0%,
-    100% {
-      transform: translate(6%, 4%) scale(1.1);
-    }
-    50% {
-      transform: translate(-8%, -8%) scale(1);
-    }
+  [data-carousel].carousel-ready {
+    overflow: hidden;
+    border-radius: var(--radius-sheet);
   }
-  .hero-aurora::before,
-  .hero-aurora::after {
-    content: "";
-    position: absolute;
+  .carousel-track {
+    display: flex;
+    transition: transform 0.5s cubic-bezier(0.22, 0.8, 0.2, 1);
+  }
+  .carousel-slide {
+    flex: 0 0 100%;
+    min-width: 0;
+  }
+  .carousel-dots {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .carousel-dot {
+    width: 8px;
+    height: 8px;
     border-radius: 999px;
-    filter: blur(60px);
-    pointer-events: none;
-    z-index: 0;
+    background: var(--color-line-strong);
+    border: 0;
+    padding: 0;
+    cursor: pointer;
   }
-  .hero-aurora::before {
-    top: -10%;
-    left: -5%;
-    width: 55%;
-    height: 70%;
-    background: var(--color-brand-wash);
-    animation: aurora-drift-a 16s ease-in-out infinite;
+  .carousel-dot[aria-selected="true"] {
+    background: var(--color-brand);
+    width: 22px;
   }
-  .hero-aurora::after {
-    bottom: -20%;
-    right: -8%;
-    width: 45%;
-    height: 60%;
-    background: var(--color-brand-wash);
-    opacity: 0.7;
-    animation: aurora-drift-b 20s ease-in-out infinite;
+  .carousel-dot,
+  .carousel-arrow {
+    transition:
+      width 0.25s ease,
+      background 0.2s ease;
+  }
+  .carousel-arrow {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 10;
+    display: flex;
+    width: 40px;
+    height: 40px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    border: 1px solid var(--color-line);
+    background: var(--color-surface);
+    color: var(--color-ink);
+    cursor: pointer;
+    box-shadow: var(--shadow-card);
+  }
+  .carousel-arrow:hover {
+    background: var(--color-sunken);
+  }
+  .carousel-arrow-prev {
+    left: -14px;
+  }
+  .carousel-arrow-next {
+    right: -14px;
+  }
+  @media (max-width: 640px) {
+    .carousel-arrow {
+      display: none;
+    }
   }
 
   /* The rotating category stat in the hero eyebrow. Four fixed steps because the homepage
