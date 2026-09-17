@@ -196,7 +196,7 @@ describe("the board is the hero (UX_FLOWS.md §2)", () => {
     const html = await (await home()).text();
     expect(html).toContain('action="/opportunities"');
     expect(html).toContain('method="get"');
-    expect(html).toContain('placeholder="remote AI hackathons open to Zimbabwe"');
+    expect(html).toContain('placeholder="Search scholarships, hackathons, grants…"');
   });
 
   it("links to countries and categories as plain links", async () => {
@@ -257,8 +257,8 @@ describe("the country strip and who may cache it (UX_FLOWS.md §2 item 4)", () =
     const html = plain(await response.text());
 
     expect(state.asked?.countryIso2).toBe("KE");
-    expect(html).toContain("Open to Kenya");
-    expect(html).toContain("Not your country? Show everything");
+    expect(html).toContain("Opportunities for Kenya");
+    expect(html).toContain("Change location");
     expect(response.headers.get("cache-control")).toBe("private, max-age=0, must-revalidate");
     expect(response.headers.get("vary")).toContain("Cookie");
   });
@@ -268,7 +268,7 @@ describe("the country strip and who may cache it (UX_FLOWS.md §2 item 4)", () =
     const html = plain(await response.text());
 
     expect(state.asked?.countryIso2).toBe("ZW");
-    expect(html).toContain("Open to Zimbabwe");
+    expect(html).toContain("Opportunities for Zimbabwe");
     expect(response.headers.get("cache-control")).toBe(
       "public, s-maxage=300, stale-while-revalidate=600",
     );
@@ -282,7 +282,7 @@ describe("the country strip and who may cache it (UX_FLOWS.md §2 item 4)", () =
     const html = plain(await response.text());
 
     expect(state.asked?.countryIso2).toBe("ZW");
-    expect(html).toContain("Open to Zimbabwe");
+    expect(html).toContain("Opportunities for Zimbabwe");
     expect(response.headers.get("cache-control")).toBe("private, max-age=0, must-revalidate");
   });
 
@@ -291,8 +291,8 @@ describe("the country strip and who may cache it (UX_FLOWS.md §2 item 4)", () =
     const html = plain(await response.text());
 
     expect(state.asked?.countryIso2).toBeUndefined();
-    expect(html).not.toContain("Open to Kenya");
-    expect(html).toContain("Use my country again");
+    expect(html).not.toContain("Opportunities for Kenya");
+    expect(html).toContain("Use my location again");
     // An explicit choice in the URL is shareable: it is the same page for everyone who
     // follows the link.
     expect(response.headers.get("cache-control")).toBe(
@@ -348,12 +348,10 @@ describe("low-data and offline (DESIGN_SYSTEM.md §10, SYSTEM_ARCHITECTURE.md §
     expect(html).toContain(">Cost<");
     expect(html).not.toContain(">Prize<");
     expect(html).not.toContain(">Format<");
-    // The freshness line goes; the detail page still carries it in full. Asserted against the
-    // normal page in the same breath, because "does not contain" proves nothing on its own —
-    // if the string were never rendered anywhere, this test would pass while measuring
-    // nothing, which is the failure mode this suite keeps finding.
+    // The redesign moves the per-card freshness line off the card entirely (in both low-data
+    // and normal mode) — it now lives once, in full, on the opportunity detail page's "Source
+    // & verification" section, rather than being repeated on every card on the board.
     expect(html).not.toContain("Checked today</span>");
-    expect(await (await home()).text()).toContain("Checked today</span>");
   });
 
   it("honours Save-Data with no cookie at all", async () => {

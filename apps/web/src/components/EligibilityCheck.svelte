@@ -200,7 +200,7 @@
         disabled={status === "checking"}
         class="mt-4 inline-flex h-12 items-center rounded-row bg-brand px-5 text-dense font-semibold text-surface hover:bg-brand-ink disabled:opacity-70"
       >
-        {status === "checking" ? "Checking…" : "Check eligibility"}
+        {status === "checking" ? "Checking…" : "Check if you can apply"}
       </button>
 
       {#if status === "error"}

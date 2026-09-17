@@ -80,6 +80,15 @@ const verLabel = verificationLabel(o.verification);
         </span>
       )
     }
+    {
+      /* §10: one fact cell, not four. Cost is the only one a decision turns on, so it is the
+         one kept when every other byte is being counted. */
+      lowData && (
+        <span class="eyebrow rounded-row bg-sunken px-2 py-1 text-ink-2">
+          <span>Cost</span>: {o.cost === "free" ? "Free" : o.cost === "paid" ? "Has a cost" : "Not stated"}
+        </span>
+      )
+    }
   </div>
 
   <h3 class="mt-[10px] line-clamp-2 text-[17px] leading-[23px] font-semibold tracking-[-0.01em]">

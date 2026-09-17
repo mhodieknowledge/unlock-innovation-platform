@@ -47,7 +47,7 @@ const dateOf = (iso: string) =>
 ---
 
 <Base title="Your projects" noindex user={user}>
-  <h1 class="text-title font-semibold">Your projects</h1>
+  <h1 class="text-title font-bold tracking-[-0.015em]">Your projects</h1>
   <p class="mt-2 max-w-prose text-dense text-ink-2">
     A project here is a matching key, not a portfolio page: we compare it against every open
     call and tell you which ones you're eligible for. Private is the default and private still
@@ -56,7 +56,7 @@ const dateOf = (iso: string) =>
 
   {
     deleted && (
-      <p class="mt-4 max-w-prose border-l-[3px] border-line-strong bg-sunken p-3 text-dense">
+      <p class="mt-4 max-w-prose rounded-sheet border border-line bg-sunken p-4 text-dense">
         Deleted.
       </p>
     )
@@ -64,7 +64,7 @@ const dateOf = (iso: string) =>
 
   {
     failed && (
-      <p class="mt-4 max-w-prose border-l-[3px] border-danger bg-noteligible-wash p-3 text-dense">
+      <p class="mt-4 max-w-prose rounded-sheet border border-danger/30 bg-noteligible-wash p-4 text-dense text-danger">
         We couldn't load your projects just now. Nothing has been lost — try again in a moment.
       </p>
     )
@@ -72,7 +72,7 @@ const dateOf = (iso: string) =>
 
   {
     !failed && projects.length === 0 && (
-      <div class="mt-6 max-w-prose rounded-sheet border border-line bg-surface p-4">
+      <div class="mt-6 max-w-prose rounded-sheet border border-line bg-surface p-5">
         <p class="text-dense font-semibold">Nothing yet.</p>
         <p class="mt-1 text-dense text-ink-2">
           Two fields and you'll see which open calls match it — usually within a few seconds.
@@ -80,7 +80,7 @@ const dateOf = (iso: string) =>
         <p class="mt-3">
           <a
             href="/projects/new"
-            class="inline-flex min-h-11 items-center rounded-row bg-brand px-4 font-semibold text-surface"
+            class="inline-flex min-h-11 items-center rounded-row bg-brand px-4 font-semibold text-surface no-underline hover:bg-brand-ink"
             >Start a project</a
           >
         </p>
@@ -91,13 +91,13 @@ const dateOf = (iso: string) =>
   {
     projects.length > 0 && (
       <>
-        <ul class="mt-6 max-w-prose divide-y divide-line border-y border-line">
+        <ul class="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {projects.map((project) => (
-            <li class="py-4">
+            <li class="rounded-sheet border border-line bg-surface p-4">
               <p class="text-dense font-semibold">
-                <a href={`/projects/${project.slug}`} class="text-ink">{project.title}</a>
+                <a href={`/projects/${project.slug}`} class="text-ink no-underline hover:underline">{project.title}</a>
               </p>
-              <p class="text-micro text-ink-2">
+              <p class="mt-1 text-micro text-ink-2">
                 {stateLabel(project.state)}
                 <span aria-hidden="true"> · </span>
                 {project.visibility === "private"
@@ -118,7 +118,7 @@ const dateOf = (iso: string) =>
         <p class="mt-6">
           <a
             href="/projects/new"
-            class="inline-flex min-h-11 items-center rounded-row border border-line-strong bg-surface px-4 font-semibold"
+            class="inline-flex min-h-11 items-center rounded-row border border-line-strong bg-surface px-4 font-semibold text-ink no-underline hover:bg-sunken"
             >Start another</a
           >
         </p>
