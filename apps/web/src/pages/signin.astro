@@ -110,108 +110,113 @@ if (Astro.request.method === "POST" && client) {
 ---
 
 <Base title="Sign in" noindex>
-  <div class="max-w-md">
-    <h1 class="text-title font-semibold">Save this and get a reminder before it closes</h1>
-    <p class="mt-2 text-dense text-ink-2">
-      You can browse everything and check your eligibility without an account. Signing in is only
-      for the things that are yours: saved opportunities, reminders, and your eligibility details.
-    </p>
+  <div class="mx-auto max-w-md py-8 sm:py-14">
+    <div class="rounded-sheet border border-line bg-surface p-6 shadow-card sm:p-8">
+      <h1 class="text-title font-bold tracking-[-0.015em]">Save this and get a reminder before it closes</h1>
+      <p class="mt-2 text-dense text-ink-2">
+        You can browse everything and check your eligibility without an account. Signing in is
+        only for the things that are yours: saved opportunities, reminders, and your eligibility
+        details.
+      </p>
 
-    {
-      state === "unavailable" && (
-        <p class="mt-4 border-l-[3px] border-line-strong bg-sunken p-3 text-dense">
-          Sign-in isn't available right now. Everything you can read without an account still
-          works.
-        </p>
-      )
-    }
+      {
+        state === "unavailable" && (
+          <div class="mt-5 rounded-sheet border border-line bg-sunken p-4">
+            <p class="text-dense">
+              Sign-in isn't available right now. Everything you can read without an account still
+              works.
+            </p>
+          </div>
+        )
+      }
 
-    {
-      state === "otp_sent" ? (
-        <div class="mt-4 border-l-[3px] border-eligible bg-eligible-wash p-4">
-          <p class="font-semibold text-eligible">
-            <span aria-hidden="true">●</span> Check your email
-          </p>
-          <p class="mt-1 text-dense text-ink-2">
-            We sent a sign-in link to {emailUsed}. It works once and expires in 10 minutes.
-          </p>
-        </div>
-      ) : (
-        state !== "unavailable" && (
-          <>
-            {state === "error" && (
-              <p
-                class="mt-4 border-l-[3px] border-danger bg-noteligible-wash p-3 text-dense text-danger"
-                role="alert"
-              >
-                {message}
-              </p>
-            )}
+      {
+        state === "otp_sent" ? (
+          <div class="mt-5 rounded-sheet border border-eligible/30 bg-eligible-wash p-4">
+            <p class="font-semibold text-eligible">
+              <span aria-hidden="true">●</span> Check your email
+            </p>
+            <p class="mt-1 text-dense text-ink-2">
+              We sent a sign-in link to {emailUsed}. It works once and expires in 10 minutes.
+            </p>
+          </div>
+        ) : (
+          state !== "unavailable" && (
+            <>
+              {state === "error" && (
+                <div
+                  class="mt-5 rounded-sheet border border-danger/30 bg-noteligible-wash p-4"
+                  role="alert"
+                >
+                  <p class="text-dense text-danger">{message}</p>
+                </div>
+              )}
 
-            <form method="post" class="mt-5 space-y-4">
-              <!-- Required, and checked server-side. A checkbox is not a
-                   verification, and PRODUCT_SPEC.md §22.1 says so: age is
-                   self-asserted. The gate is a policy boundary, and the
-                   limitation is stated rather than hidden. -->
-              <label class="flex items-start gap-2 text-dense">
-                <input type="checkbox" name="age_confirmed" class="mt-1 h-4 w-4" required />
-                <span>
-                  I'm 18 or over.
-                  <span class="block text-meta text-ink-2">
-                    Opportunities open to under-18s stay fully readable without an account — you
-                    just can't track or join them here.
+              <form method="post" class="mt-6 space-y-4">
+                <!-- Required, and checked server-side. A checkbox is not a
+                     verification, and PRODUCT_SPEC.md §22.1 says so: age is
+                     self-asserted. The gate is a policy boundary, and the
+                     limitation is stated rather than hidden. -->
+                <label class="flex items-start gap-2 text-dense">
+                  <input type="checkbox" name="age_confirmed" class="mt-1 h-4 w-4" required />
+                  <span>
+                    I'm 18 or over.
+                    <span class="block text-meta text-ink-2">
+                      Opportunities open to under-18s stay fully readable without an account — you
+                      just can't track or join them here.
+                    </span>
                   </span>
-                </span>
-              </label>
-
-              <button
-                type="submit"
-                name="provider"
-                value="github"
-                class="h-11 w-full rounded-row bg-brand px-4 font-semibold text-surface"
-              >
-                Continue with GitHub
-              </button>
-
-              <button
-                type="submit"
-                name="provider"
-                value="google"
-                class="h-11 w-full rounded-row border border-line-strong bg-surface px-4 font-semibold"
-              >
-                Continue with Google
-              </button>
-
-              <div class="border-t border-line pt-4">
-                <label class="block">
-                  <span class="block text-micro font-semibold text-ink-2">Or use email</span>
-                  <input
-                    type="email"
-                    name="email"
-                    value={emailUsed}
-                    autocomplete="email"
-                    placeholder="you@example.com"
-                    class="mt-1 h-11 w-full rounded-row border border-line-strong px-3"
-                  />
                 </label>
+
                 <button
                   type="submit"
                   name="provider"
-                  value="email"
-                  class="mt-2 h-11 w-full rounded-row border border-line-strong bg-surface px-4 font-semibold"
+                  value="github"
+                  class="min-h-11 w-full rounded-row bg-brand px-5 text-dense font-semibold text-surface hover:bg-brand-ink"
                 >
-                  Email me a sign-in link
+                  Continue with GitHub
                 </button>
-              </div>
-            </form>
 
-            <p class="mt-4 text-meta text-ink-2">
-              We never ask for a password. Your eligibility details are visible only to you, and
-              are never sent to any AI service.
-            </p>
-          </>
+                <button
+                  type="submit"
+                  name="provider"
+                  value="google"
+                  class="min-h-11 w-full rounded-row border border-line-strong bg-surface px-4 font-semibold text-ink hover:bg-sunken"
+                >
+                  Continue with Google
+                </button>
+
+                <div class="border-t border-line pt-4">
+                  <label class="block">
+                    <span class="block text-micro font-semibold text-ink-2">Or use email</span>
+                    <input
+                      type="email"
+                      name="email"
+                      value={emailUsed}
+                      autocomplete="email"
+                      placeholder="you@example.com"
+                      class="mt-1 h-11 w-full rounded-row border border-line-strong px-3"
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    name="provider"
+                    value="email"
+                    class="mt-2 min-h-11 w-full rounded-row border border-line-strong bg-surface px-4 font-semibold text-ink hover:bg-sunken"
+                  >
+                    Email me a sign-in link
+                  </button>
+                </div>
+              </form>
+
+              <p class="mt-5 text-meta text-ink-2">
+                We never ask for a password. Your eligibility details are visible only to you, and
+                are never sent to any AI service.
+              </p>
+            </>
+          )
         )
-      )
-    }
+      }
+    </div>
   </div>
 </Base>

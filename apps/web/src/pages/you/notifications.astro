@@ -213,10 +213,10 @@ const pad = (h: number) => `${String(h).padStart(2, "0")}:00`;
 ---
 
 <Base title="Notifications" noindex user={user}>
-  <h1 class="text-title font-semibold">Notifications</h1>
+  <h1 class="text-title font-bold tracking-[-0.015em]">Notifications</h1>
 
   <!-- §8: the caps, stated visibly. -->
-  <p class="mt-2 max-w-prose border-l-[3px] border-brand bg-brand-wash p-3 text-dense">
+  <p class="mt-3 max-w-prose rounded-sheet border border-brand/30 bg-brand-wash p-4 text-dense">
     At most <strong class="font-semibold">one digest a day</strong> and
     <strong class="font-semibold">three other messages</strong>. We never send anything to get your
     attention back — no streaks, no unread counts, no notifications about other people's activity
@@ -226,10 +226,10 @@ const pad = (h: number) => `${String(h).padStart(2, "0")}:00`;
   {
     flash && (
       <p
-        class={`mt-3 max-w-prose border-l-[3px] p-3 text-dense ${
+        class={`mt-3 max-w-prose rounded-sheet border p-4 text-dense font-medium ${
           flashKind === "ok"
-            ? "border-eligible bg-eligible-wash text-eligible"
-            : "border-danger bg-noteligible-wash text-danger"
+            ? "border-eligible/30 bg-eligible-wash text-eligible"
+            : "border-danger/30 bg-noteligible-wash text-danger"
         }`}
         role="status"
       >
@@ -240,14 +240,16 @@ const pad = (h: number) => `${String(h).padStart(2, "0")}:00`;
 
   {
     isPaused && (
-      <p class="mt-3 max-w-prose border-l-[3px] border-unclear bg-unclear-wash p-3 text-dense">
-        Everything is paused until {pausedUntil!.toLocaleDateString("en-GB", { dateStyle: "long" })}.
-        You will still see everything in the app, and security messages still come through.
+      <div class="mt-3 max-w-prose rounded-sheet border border-unclear/30 bg-unclear-wash p-4 text-dense">
+        <p>
+          Everything is paused until {pausedUntil!.toLocaleDateString("en-GB", { dateStyle: "long" })}.
+          You will still see everything in the app, and security messages still come through.
+        </p>
         <form method="post" class="mt-2">
           <input type="hidden" name="action" value="resume_all" />
-          <button type="submit" class="inline-flex min-h-11 items-center underline">Turn messages back on</button>
+          <button type="submit" class="inline-flex min-h-11 items-center font-semibold underline">Turn messages back on</button>
         </form>
-      </p>
+      </div>
     )
   }
 
