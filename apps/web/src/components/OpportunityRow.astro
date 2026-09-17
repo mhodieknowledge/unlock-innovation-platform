@@ -97,17 +97,26 @@ const verLabel = verificationLabel(o.verification);
     </a>
   </h3>
 
-  <p class="mt-1 truncate text-meta text-ink-2">
-    {o.organisations?.name ?? "Organisation not identified"}
+  {/*
+    ORGANISER AND HOW IT WAS CHECKED, on one line, with only the organiser allowed to
+    truncate.
+
+    `truncate` used to be on the whole line, which sets `white-space: nowrap` and an
+    ellipsis on everything inside it — so a long organiser name ate the verification. On
+    the live board "African Leadership Institute (AFLI) Archbishop Tutu Fellowship"
+    rendered with no verification at all, and it is one of the two facts that tell a
+    reader whether this listing has been looked at. A flex row with `min-w-0` on the name
+    and `shrink-0` on the status truncates the part that can afford it.
+  */}
+  <p class="mt-1 flex items-center gap-1 text-meta text-ink-2">
+    <span class="min-w-0 truncate">{o.organisations?.name ?? "Organisation not identified"}</span>
     {
       verLabel && (
-        <>
-          <span aria-hidden="true"> · </span>
-          <span class="inline-flex items-center gap-1">
-            <Icon name="check" size={20} class="-mt-px inline h-3 w-3 text-ink-3" />
-            {verLabel}
-          </span>
-        </>
+        <span class="flex shrink-0 items-center gap-1 text-ink-3">
+          <span aria-hidden="true">·</span>
+          <Icon name="check" size={20} class="h-3 w-3" />
+          <span class="whitespace-nowrap">{verLabel}</span>
+        </span>
       )
     }
   </p>
