@@ -148,8 +148,19 @@ const FEATURE_BANDS = categoryCounts
   .sort((a, b) => b.open_count - a.open_count)
   .slice(0, 2);
 
+/**
+ * THE BANDS ARE NOT COUNTRY-FILTERED, AND THE FIRST RAIL IS. That is a deliberate division,
+ * and getting it wrong was visible on the live page: a band headed "79 open now" — the count
+ * comes from `category_open_counts`, which is global — sat above a rail of TWO, because the
+ * rail was filtered to the reader's country and the heading was not. A number over a row that
+ * contradicts it is worse than no number.
+ *
+ * So the top rail is the personal one ("open to Zimbabwe and Africa-wide") and the bands are
+ * the catalogue: their count, their rail and the category page they link to now all describe
+ * the same set. Anyone who wants the personal view of a category has the filter on that page.
+ */
 const bandResults = await Promise.all(
-  FEATURE_BANDS.map((c) => listOpportunities({ categoryCode: c.code, limit: 14, countryIso2 }, env)),
+  FEATURE_BANDS.map((c) => listOpportunities({ categoryCode: c.code, limit: 14 }, env)),
 );
 
 /**
