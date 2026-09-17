@@ -216,6 +216,53 @@
     animation: hero-kenburns 22s ease-in-out infinite alternate;
   }
 
+  /* A HORIZONTAL RAIL — a row of cards that scrolls sideways, with the next one peeking.
+   *
+   * This is NOT the carousel that used to be here, and the difference is the whole point. That
+   * was a slide deck: one card filled the width, seven were off-screen with no sign they
+   * existed, and reaching them meant JavaScript and 8×8px dots. A rail shows the next card cut
+   * off at the edge — which is the only affordance a horizontal list needs, because a cut-off
+   * card is a promise of more — and it is native overflow scrolling, so it works with no
+   * script at all, takes a two-finger trackpad swipe, a touch drag, and arrow keys once the
+   * region has focus.
+   *
+   * `scroll-padding-left` matches the page gutter so a snapped card lines up with the heading
+   * above it rather than with the screen edge. */
+  .rail {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scroll-padding-left: 16px;
+    padding-bottom: 4px;
+  }
+  .rail > * {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+    width: min(78vw, 300px);
+  }
+  @media (min-width: 48rem) {
+    .rail > * {
+      width: 320px;
+    }
+  }
+  /* The scrollbar is the one part of this that should not be loud: the peeking card already
+   * says there is more, and a permanent bar under every rail is four grey lines down the page.
+   * It stays reachable — this hides the track, not the behaviour. */
+  .rail {
+    scrollbar-width: none;
+  }
+  .rail::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Cards in a rail stretch to the tallest, so a two-line title does not leave its neighbour
+   * short and the countdowns line up across the row. */
+  .rail > * > * {
+    height: 100%;
+  }
+
   /* A <details> that is an accordion on a phone and a plain open column above `md`.
    *
    * The browser's own UA rule is `details:not([open]) > *:not(summary) { display: none }`,

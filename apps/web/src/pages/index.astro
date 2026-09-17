@@ -2,41 +2,31 @@
 // The board. UX_FLOWS.md §2.
 //
 // "The most characteristic thing in this product's world is a live list of things about to
-// close." This page has been rebuilt three times, and the third time is the one that took
-// that sentence literally: the opportunities ARE the product, so they are the page, and
-// everything else earns its place around them.
+// close." This page is that list, arranged so it reads as a home screen rather than a feed.
 //
-// WHAT THE PREVIOUS COMPOSITION COST, measured on an iPhone 13 (390×664) against the live
-// site rather than estimated:
+// THE SHAPE IS A RHYTHM: rail, band, rail, band. A horizontal rail of listings, then a
+// full-bleed category band with a photograph, then that category's own rail, then the next
+// band. Three rails and two bands put roughly twenty real opportunities on the page and keep
+// it feeling composed — which a single long vertical list does not, however good the cards
+// are. A page where every section is the same shape reads as a search result; a page that
+// changes shape between sections reads as somewhere that was designed.
 //
-//   header          69px
-//   hero           621px   0.93 of the viewport, and not one opportunity in it
-//   location strip 201px   one sentence and a full-width button
-//   the board      417px   EIGHT cards in the DOM, ONE visible — a carousel
-//   category ×2    613px each — 1.85 viewports spent on five links
-//   stats/countries/eligibility/trust  1418px
-//   footer         576px
-//   ──────────────────────
-//   4764px total = 7.2 viewports, first opportunity at y=1109 (1.67 viewports down)
+// WHAT CHANGED TWICE, AND WHY THE SECOND CHANGE IS NOT THE FIRST ONE UNDONE. The version
+// before last put the board in a CAROUSEL — a slide deck, one card filling the width, seven
+// off-screen with nothing to say they existed, reached through JavaScript and 8×8px dots.
+// Measured on an iPhone 13 that was one visible listing, 1.67 viewports down the page. So the
+// deck went, and with it went the horizontal arrangement and the photography — and that was an
+// overcorrection, because the deck was the defect, not the direction.
 //
-// A reader on a phone scrolled past a screen and two thirds of photograph and prose to reach
-// one listing, which they then could not compare with the seven behind it. The carousel's own
-// controls were 8×8px dots, a quarter of the 44px minimum, on the primary feed of an
-// opportunity product.
+// A RAIL IS NOT A DECK. Its cards are ~78vw, so the next one is always cut off at the edge,
+// and a cut-off card is the only affordance a horizontal list needs. It is native overflow
+// scrolling: no script, a touch drag, a trackpad swipe, arrow keys once focused, and a
+// `tabindex` so a keyboard can reach it at all (the thing the deck's dots were pretending to
+// do). Nothing is hidden from a crawler or from a reader without JavaScript — every card is in
+// the HTML either way.
 //
-// THE FEED IS NOW A VERTICAL LIST AND IT STARTS INSIDE THE FIRST SCREEN. Everything else
-// answers a question in order — what is this (hero), what is open to me (context line), what
-// is closing (the feed), what else is there (categories, countries), why believe it (trust) —
-// and each answers it once. Where the old page used "eyebrow + big heading + paragraph + list
-// + button" six times, sections now carry a heading and the content itself: a reader who can
-// see 79 hackathons open does not need a paragraph saying there are hackathons.
-//
-// The two photographic category features are gone. The photography was generic and
-// category-level by necessity — attaching stock photography to a specific real listing is
-// exactly the unverifiable claim this product refuses to make — which also means it carried no
-// information. 269px of stock photograph for three links is decoration standing where content
-// should be. One photograph survives, in the hero, because the page should still feel like a
-// place made for someone.
+// Photography comes back with it, and stays honest: category-level and generic, never attached
+// to a specific listing. A photograph of one real opportunity is a claim we cannot check.
 //
 // CONTENT_AND_LAUNCH.md §1: every number here is true and computed live, and disappears when
 // it comes back empty rather than being padded to look like a launch.
@@ -46,6 +36,10 @@ import Base from "../layouts/Base.astro";
 import Icon from "../components/Icon.astro";
 import OpportunityRow from "../components/OpportunityRow.astro";
 import heroImage from "../assets/marketing/hero-collab.jpg";
+import catHackathon from "../assets/marketing/cat-hackathon.jpg";
+import catScholarship from "../assets/marketing/cat-scholarship.jpg";
+import catGrant from "../assets/marketing/cat-grant.jpg";
+import catInternship from "../assets/marketing/cat-internship.jpg";
 import {
   getCategoryCounts,
   getCountry,
@@ -60,6 +54,18 @@ import { resolveLowData } from "../lib/lowdata";
 import { itemList, website } from "../lib/seo";
 import { BRAND, NO_FEE_STATEMENT } from "@mbele/config";
 import { runtimeEnv } from "~/lib/runtime";
+
+/**
+ * One representative photograph per category, for the feature bands and the category cards.
+ * Never rendered on an individual opportunity, which has no photograph of its own — and could
+ * not honestly be given one.
+ */
+const CATEGORY_IMAGES: Record<string, ImageMetadata> = {
+  hackathon: catHackathon,
+  scholarship: catScholarship,
+  grant: catGrant,
+  internship: catInternship,
+};
 
 export const prerender = false;
 
@@ -129,27 +135,42 @@ const rows = board.ok ? board.data : [];
 const degraded = !board.ok;
 
 /**
- * Categories as a compact directory, not two photo essays.
+ * The two category bands, and the rails beneath them.
  *
- * The old page told the category story as two full-viewport editorial features: a 269px
- * photograph, an eyebrow, a display heading, a paragraph, three plain links and a filled
- * button, twice. 1226px on a phone to reach five listings, and the photographs were generic
- * stock — they had to be, because a photograph of a specific real opportunity is a claim we
- * cannot check.
- *
- * What a reader actually wants from this section is WHERE THE THINGS ARE AND HOW MANY, and
- * that is two facts per category. Six tiles carrying a name, a live count and the next
- * deadline give more information than two features did, in a quarter of the height, and the
- * soonest date is the fact that makes a category worth opening today rather than a name.
- *
- * Ordered by what is open, so the directory reflects the catalogue instead of a hard-coded
- * list of favourites. `other` is excluded: it is where a listing goes when the taxonomy has no
- * word for it, so as a browsing destination it promises nothing.
+ * Ordered by what is actually open, so the page reflects the catalogue rather than a
+ * hard-coded pair of favourites — but limited to categories we hold a photograph for, because
+ * a band is a photograph and a band without one is a heading pretending to be a section.
+ * `other` is excluded: it is where a listing goes when the taxonomy has no word for it, so as
+ * a destination it promises nothing.
  */
-const CATEGORY_TILES = categoryCounts
-  .filter((c) => c.open_count > 0 && c.code !== "other")
+const FEATURE_BANDS = categoryCounts
+  .filter((c) => c.open_count > 0 && c.code !== "other" && CATEGORY_IMAGES[c.code])
   .sort((a, b) => b.open_count - a.open_count)
-  .slice(0, 6);
+  .slice(0, 2);
+
+const bandResults = await Promise.all(
+  FEATURE_BANDS.map((c) => listOpportunities({ categoryCode: c.code, limit: 8, countryIso2 }, env)),
+);
+
+const bands = FEATURE_BANDS.map((category, i) => ({
+  category,
+  image: CATEGORY_IMAGES[category.code],
+  rows: bandResults[i]?.ok ? bandResults[i].data : [],
+})).filter((band) => band.rows.length > 0);
+
+/** Every category shown in a band, so the card grid below does not repeat them. */
+const BANDED = new Set(bands.map((b) => b.category.code));
+
+/**
+ * The rest of the directory, as cards. The four we hold photographs for lead with one; the
+ * others are typographic, which is the honest treatment for a card with no picture rather
+ * than a grey box standing in for one.
+ */
+const CATEGORY_CARDS = categoryCounts
+  .filter((c) => c.open_count > 0 && c.code !== "other" && !BANDED.has(c.code))
+  .sort((a, b) => b.open_count - a.open_count)
+  .slice(0, 6)
+  .map((c) => ({ ...c, image: CATEGORY_IMAGES[c.code] ?? null }));
 
 /**
  * The hero's rotating stat — real counts, not marketing copy. Padded to exactly four slots
@@ -159,7 +180,9 @@ const CATEGORY_TILES = categoryCounts
  * 'self', no unsafe-inline).
  */
 const CYCLE_SLOTS = 4;
-const withOpenCounts = categoryCounts.filter((c) => c.open_count > 0).sort((a, b) => b.open_count - a.open_count);
+const withOpenCounts = categoryCounts
+  .filter((c) => c.open_count > 0)
+  .sort((a, b) => b.open_count - a.open_count);
 const cycleCategories =
   withOpenCounts.length > 0
     ? Array.from({ length: CYCLE_SLOTS }, (_, i) => withOpenCounts[i % withOpenCounts.length])
@@ -430,24 +453,16 @@ const STATS = [
     )
   }
 
-  {/* ── THE FEED — the product, as a vertical list, starting in the first screen.
-      Every row the query returned is a card a reader can scan against the ones above and
-      below it: category, title, organiser, how it was checked, how long is left, and a
-      save control, all without opening anything.
-
-      It was a carousel. Eight cards were in the DOM and one was on screen, so comparing
-      two listings — the entire act of choosing what to apply for — meant remembering the
-      first while swiping to the second, and the controls for doing that were 8×8px dots.
-      A carousel is for things a reader browses one at a time and does not compare. A
-      deadline feed is the opposite of that. ────────────────────────────────────────── */}
+  {/* ── RAIL ONE — what is closing, as a rail. ────────────────────────────────
+      Twelve cards, the next always cut off at the right edge. The cut is the affordance:
+      it says there is more without a control to say it, which is what the old deck's
+      8×8px dots were for. Native overflow scrolling, so it needs no script — and
+      `tabindex` makes the region reachable by keyboard, which a scrollable area is not by
+      default (axe calls this scrollable-region-focusable, and the deck failed it too). ── */}
   <section class="mx-auto max-w-[1160px] px-4 pt-6" aria-labelledby="board">
     <div class="flex flex-wrap items-center justify-between gap-x-4">
-      <h2 id="board" class="text-subtitle font-bold tracking-[-0.015em]">Closing soonest</h2>
+      <h2 id="board" class="text-title font-bold tracking-[-0.015em]">Closing soonest</h2>
       {
-        /* DESIGN_SYSTEM.md §329: targets are 44px. A "see all" link set in meta type is 18px
-           tall, which is what this row and the two below it were — and what the page they
-           replaced was too ("See every category →" measured 169×16). The link fills the
-           heading's row height rather than adding a row of its own. */
         rows.length > 0 && (
           <a
             href="/opportunities"
@@ -458,32 +473,26 @@ const STATS = [
         )
       }
     </div>
+    <p class="text-meta text-ink-2">
+      Board as of {builtAt} UTC{country ? ` · open to ${country.name}` : ""}
+    </p>
 
     {
       rows.length > 0 ? (
-        <>
-          <ul class="mt-3 flex list-none flex-col gap-3 p-0">
-            {rows.map((o) => (
-              <li>
-                <OpportunityRow opportunity={o} lowData={lowData} />
-              </li>
-            ))}
-          </ul>
-
-          {/* Two jobs in one row: the way out to the full list, and the "Last updated"
-              line §2's offline state requires — rendered on every response, because the
-              service worker serves this HTML back unchanged and a timestamp written at
-              render time is the only one still true when it comes out of a cache. */}
-          <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
-            <a
-              href="/opportunities"
-              class="inline-flex min-h-12 items-center rounded-row bg-brand px-5 text-dense font-semibold text-surface no-underline hover:bg-brand-ink"
-            >
-              View all open opportunities →
-            </a>
-            <p class="text-micro text-ink-3">Board as of {builtAt} UTC</p>
-          </div>
-        </>
+        /* `tabindex` and a label, but NOT `role="group"`: that replaces the <ul>'s implicit
+           list role and orphans every <li> inside it, which is what axe caught on the first
+           run of this. A labelled, focusable list is already the right thing. */
+        <ul
+          class="rail mt-3 -mx-4 list-none px-4"
+          tabindex="0"
+          aria-label="Opportunities closing soonest"
+        >
+          {rows.map((o) => (
+            <li>
+              <OpportunityRow opportunity={o} lowData={lowData} />
+            </li>
+          ))}
+        </ul>
       ) : (
         /* One sentence naming the situation, one action (DESIGN_SYSTEM.md §6.4).
            Never an illustration, never "Nothing here yet!". */
@@ -528,20 +537,89 @@ const STATS = [
               </p>
             </>
           )}
-          <p class="mt-3 text-micro text-ink-3">Board as of {builtAt} UTC</p>
         </div>
       )
     }
   </section>
 
-  {/* ── CATEGORIES — a directory, in the space a directory needs. ──────────────
-      Name, how many are open, and when the next one closes. That last fact is what makes
-      a category worth opening today, and it is the one the two photo features left out. */}
+  {/* ── BAND + RAIL, TWICE — the rhythm. ──────────────────────────────────────
+      A full-bleed photograph with the category's name and its live count set over it, then
+      that category's own listings as a rail beneath. The band is the beat between two
+      rails: it changes the page's shape, which is what stops a home screen reading as a
+      search result, and it carries a real number rather than a slogan.
+
+      The photograph is generic and category-level by necessity — a photograph attached to a
+      specific listing would be a claim we cannot check — so it is doing a compositional job
+      and is marked `aria-hidden`, because it says nothing a screen reader needs.
+
+      Bands alternate their overlay side on desktop so two in a row do not read as a
+      repeated template. On a phone there is only one side, so they simply differ in the
+      photograph. ────────────────────────────────────────────────────────────────────── */}
   {
-    CATEGORY_TILES.length > 0 && (
-      <section class="mx-auto max-w-[1160px] px-4 pt-10" aria-labelledby="by-category">
+    bands.map((band, i) => (
+      <section class="pt-12" aria-labelledby={`band-${band.category.code}`}>
+        <div class="relative isolate overflow-hidden">
+          <Image
+            src={band.image}
+            alt=""
+            aria-hidden="true"
+            widths={[480, 800, 1200, 1600]}
+            sizes="100vw"
+            loading="lazy"
+            class="absolute inset-0 -z-10 h-full w-full object-cover"
+          />
+          <div
+            class={`absolute inset-0 -z-10 bg-gradient-to-t from-black/90 via-black/60 to-black/30 ${
+              i % 2 === 1 ? "lg:bg-gradient-to-l" : "lg:bg-gradient-to-r"
+            }`}
+          />
+          <div
+            class={`mx-auto flex max-w-[1160px] flex-col justify-end px-4 pt-24 pb-6 lg:pt-32 lg:pb-10 ${
+              i % 2 === 1 ? "lg:items-end lg:text-right" : ""
+            }`}
+          >
+            <p class="eyebrow text-white/70">{band.category.open_count} open now</p>
+            <h2
+              id={`band-${band.category.code}`}
+              class="mt-1 text-title font-bold tracking-[-0.02em] text-white lg:text-display"
+            >
+              {band.category.name}s
+            </h2>
+          </div>
+        </div>
+
+        <div class="mx-auto max-w-[1160px] px-4 pt-4">
+          <ul
+            class="rail -mx-4 list-none px-4"
+            tabindex="0"
+            aria-label={`${band.category.name}s closing soonest`}
+          >
+            {band.rows.map((o) => (
+              <li>
+                <OpportunityRow opportunity={o} lowData={lowData} />
+              </li>
+            ))}
+          </ul>
+          <a
+            href={`/categories/${band.category.slug}`}
+            class="mt-4 inline-flex min-h-12 items-center rounded-row border border-line-strong bg-surface px-5 text-dense font-semibold text-ink no-underline hover:bg-sunken"
+          >
+            All {band.category.open_count} {band.category.name.toLowerCase()}s →
+          </a>
+        </div>
+      </section>
+    ))
+  }
+
+  {/* ── CATEGORY CARDS — the rest of the directory, with a picture where we have one.
+      Name, live count and the next deadline, which is the fact that decides whether a
+      category is worth opening today. A card with no photograph is typographic rather than
+      given a grey box: the absence of a picture is not something to paper over. ───────── */}
+  {
+    CATEGORY_CARDS.length > 0 && (
+      <section class="mx-auto max-w-[1160px] px-4 pt-12" aria-labelledby="by-category">
         <div class="flex flex-wrap items-center justify-between gap-x-4">
-          <h2 id="by-category" class="text-subtitle font-bold tracking-[-0.015em]">
+          <h2 id="by-category" class="text-title font-bold tracking-[-0.015em]">
             Browse by kind
           </h2>
           <a
@@ -552,20 +630,36 @@ const STATS = [
           </a>
         </div>
 
-        <ul class="mt-3 grid list-none grid-cols-2 gap-2 p-0 sm:grid-cols-3">
-          {CATEGORY_TILES.map((c) => (
+        <ul class="mt-3 grid list-none grid-cols-2 gap-3 p-0 lg:grid-cols-3">
+          {CATEGORY_CARDS.map((c) => (
             <li>
               <a
                 href={`/categories/${c.slug}`}
-                class="flex min-h-[76px] flex-col justify-between rounded-sheet border border-line bg-surface p-3 no-underline hover:border-line-strong hover:bg-sunken"
+                class="group relative flex h-full flex-col justify-end overflow-hidden rounded-sheet border border-line bg-surface no-underline hover:border-line-strong"
               >
-                <span class="text-dense font-semibold text-ink">{c.name}</span>
-                <span class="mt-2 text-micro text-ink-2">
-                  {c.open_count} open
-                  {shortDate(c.soonest_deadline) && (
-                    <span class="text-ink-3"> · next {shortDate(c.soonest_deadline)}</span>
-                  )}
-                </span>
+                {c.image && !lowData && (
+                  <>
+                    <Image
+                      src={c.image}
+                      alt=""
+                      aria-hidden="true"
+                      widths={[240, 400, 600]}
+                      sizes="(min-width: 1024px) 360px, 50vw"
+                      loading="lazy"
+                      class="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+                    />
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/45 to-black/10" />
+                  </>
+                )}
+                <div class={`relative p-3 ${c.image && !lowData ? "pt-16 text-surface" : "pt-10"}`}>
+                  <span class={`block text-dense font-semibold ${c.image && !lowData ? "" : "text-ink"}`}>
+                    {c.name}
+                  </span>
+                  <span class={`mt-1 block text-micro ${c.image && !lowData ? "text-surface/75" : "text-ink-2"}`}>
+                    {c.open_count} open
+                    {shortDate(c.soonest_deadline) && <span> · next {shortDate(c.soonest_deadline)}</span>}
+                  </span>
+                </div>
               </a>
             </li>
           ))}
