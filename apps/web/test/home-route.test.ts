@@ -18,6 +18,8 @@
 
 import { experimental_AstroContainer as AstroContainer } from "astro/container";
 import svelteRenderer from "@astrojs/svelte/server.js";
+import { readFileSync } from "node:fs";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const SESSION_USER = {
@@ -236,6 +238,30 @@ describe("the board is the hero (UX_FLOWS.md §2)", () => {
     expect(html).not.toMatch(/<select[^>]*name="country"/);
   });
 
+  it("gives every standalone link a 44px target, per DESIGN_SYSTEM.md §329", () => {
+    /*
+     * WHAT THIS MEASURES, AND WHAT IT DOES NOT. It reads the source for the class that sets
+     * the height; it cannot compute layout, so it cannot prove the rendered pixel height.
+     * That was measured once in a real Chromium at 390×664 on 2026-09-17 — before the fix,
+     * this page's "see all" links rendered at 18px and the old page's at 16-20px — and this
+     * assertion is what stops the class being removed again.
+     *
+     * The card links are deliberately not in scope: an OpportunityRow's title link stretches
+     * its hit area over the whole card (`after:absolute after:inset-0`), so its target is the
+     * card, not the text.
+     */
+    const page = readFileSync(
+      new URL("../src/pages/index.astro", import.meta.url).pathname,
+      "utf8",
+    );
+    const linkTags = page.match(/<a\b[^>]*class="[^"]*"[^>]*>/g) ?? [];
+    const standalone = linkTags.filter((tag) => /text-brand/.test(tag) && !/after:absolute/.test(tag));
+    expect(standalone.length, "the page should have standalone links to check").toBeGreaterThan(2);
+    for (const tag of standalone) {
+      expect(tag, `this link sets no minimum height: ${tag.slice(0, 90)}`).toMatch(/min-h-1[12]/);
+    }
+  });
+
   it("carries the 'Last updated' line §2's offline state needs", async () => {
     // The page is served back from the cache unchanged, so the only timestamp that is still
     // true offline is one written at render time.
@@ -288,7 +314,7 @@ describe("the country strip and who may cache it (UX_FLOWS.md §2 item 4)", () =
 
     expect(state.asked?.countryIso2).toBe("KE");
     expect(html).toContain("Open to <strong class=\"font-semibold text-ink\">Kenya</strong>");
-    expect(html).toContain("Show everything");
+    expect(html).toContain("Show all");
     expect(response.headers.get("cache-control")).toBe("private, max-age=0, must-revalidate");
     expect(response.headers.get("vary")).toContain("Cookie");
   });

@@ -284,8 +284,8 @@ const STATS = [
             Opportunities worth your time.
           </h1>
           <p class="prose-measure mt-2 text-[15px] leading-6 text-ink-2">
-            Scholarships, fellowships, hackathons and grants open to Africa — each checked
-            against its own source.
+            Scholarships, fellowships, hackathons and grants open to Africa, each checked
+            against its source.
           </p>
           <form method="get" action="/opportunities" class="mt-5 flex max-w-xl gap-2">
             <label class="relative flex-1">
@@ -347,8 +347,8 @@ const STATS = [
             Opportunities worth your time.
           </h1>
           <p class="prose-measure mt-2 text-[15px] leading-6 text-white/80 lg:text-[17px]">
-            Scholarships, fellowships, hackathons and grants open to Africa — each checked
-            against its own source.
+            Scholarships, fellowships, hackathons and grants open to Africa, each checked
+            against its source.
           </p>
 
           {/* A plain GET form to the list page: no JS, no autocomplete request, nothing
@@ -388,17 +388,25 @@ const STATS = [
   {
     country && (
       <div class="border-b border-line bg-sunken">
-        <p class="mx-auto flex max-w-[1160px] flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 text-meta text-ink-2">
+        {/*
+          ONE ROW, 44px TALL, INCLUDING THE CONTROL.
+
+          The first attempt put `min-h-11` on the link inside a wrapping flex row, which is
+          how a one-line fact became an 83px two-line block on a 390px screen: the link
+          claimed its 44px and then wrapped below the sentence. The row itself is the 44px
+          now — DESIGN_SYSTEM.md §329's rule is about the TARGET, and a link that fills the
+          row's height with negative margin is a 44px target inside a 44px strip.
+        */}
+        <p class="mx-auto flex max-w-[1160px] items-center gap-2 px-4 text-meta text-ink-2">
           <Icon name="globe" size={20} class="h-4 w-4 shrink-0 text-ink-3" />
-          <span>
-            Open to <strong class="font-semibold text-ink">{country.name}</strong> and
-            Africa-wide
+          <span class="min-w-0 truncate">
+            Open to <strong class="font-semibold text-ink">{country.name}</strong> and Africa-wide
           </span>
           <a
             href="/?country=all"
-            class="inline-flex min-h-11 items-center font-semibold text-brand no-underline hover:underline"
+            class="ml-auto inline-flex min-h-11 shrink-0 items-center font-semibold text-brand no-underline hover:underline"
           >
-            Show everything
+            Show all
           </a>
         </p>
       </div>
@@ -408,12 +416,12 @@ const STATS = [
   {
     showAll && (
       <div class="border-b border-line bg-sunken">
-        <p class="mx-auto flex max-w-[1160px] flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 text-meta text-ink-2">
+        <p class="mx-auto flex max-w-[1160px] items-center gap-2 px-4 text-meta text-ink-2">
           <Icon name="globe" size={20} class="h-4 w-4 shrink-0 text-ink-3" />
-          <span>Every open opportunity across Africa</span>
+          <span class="min-w-0 truncate">Every open opportunity across Africa</span>
           <a
             href="/"
-            class="inline-flex min-h-11 items-center font-semibold text-brand no-underline hover:underline"
+            class="ml-auto inline-flex min-h-11 shrink-0 items-center font-semibold text-brand no-underline hover:underline"
           >
             Use my location
           </a>
@@ -433,13 +441,17 @@ const STATS = [
       A carousel is for things a reader browses one at a time and does not compare. A
       deadline feed is the opposite of that. ────────────────────────────────────────── */}
   <section class="mx-auto max-w-[1160px] px-4 pt-6" aria-labelledby="board">
-    <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+    <div class="flex flex-wrap items-center justify-between gap-x-4">
       <h2 id="board" class="text-subtitle font-bold tracking-[-0.015em]">Closing soonest</h2>
       {
+        /* DESIGN_SYSTEM.md §329: targets are 44px. A "see all" link set in meta type is 18px
+           tall, which is what this row and the two below it were — and what the page they
+           replaced was too ("See every category →" measured 169×16). The link fills the
+           heading's row height rather than adding a row of its own. */
         rows.length > 0 && (
           <a
             href="/opportunities"
-            class="text-meta font-semibold text-brand no-underline hover:underline"
+            class="inline-flex min-h-11 items-center text-meta font-semibold text-brand no-underline hover:underline"
           >
             View all{published !== null && published > 0 ? ` ${published}` : ""} →
           </a>
@@ -484,7 +496,12 @@ const STATS = [
                 shortly, or search directly.
               </p>
               <p class="mt-2 text-dense">
-                <a href="/opportunities" class="font-semibold text-brand">Search opportunities</a>
+                <a
+                  href="/opportunities"
+                  class="inline-flex min-h-11 items-center font-semibold text-brand"
+                >
+                  Search opportunities
+                </a>
               </p>
             </>
           ) : country ? (
@@ -494,7 +511,12 @@ const STATS = [
                 That is the catalogue being honest, not a filter being clever.
               </p>
               <p class="mt-2 text-dense">
-                <a href="/?country=all" class="font-semibold text-brand">Show everything</a>
+                <a
+                  href="/?country=all"
+                  class="inline-flex min-h-11 items-center font-semibold text-brand"
+                >
+                  Show everything
+                </a>
               </p>
             </>
           ) : (
@@ -518,13 +540,13 @@ const STATS = [
   {
     CATEGORY_TILES.length > 0 && (
       <section class="mx-auto max-w-[1160px] px-4 pt-10" aria-labelledby="by-category">
-        <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <div class="flex flex-wrap items-center justify-between gap-x-4">
           <h2 id="by-category" class="text-subtitle font-bold tracking-[-0.015em]">
             Browse by kind
           </h2>
           <a
             href="/categories"
-            class="text-meta font-semibold text-brand no-underline hover:underline"
+            class="inline-flex min-h-11 items-center text-meta font-semibold text-brand no-underline hover:underline"
           >
             All categories →
           </a>
@@ -577,16 +599,13 @@ const STATS = [
   {
     entryPoints.countries.length > 0 && (
       <section class="mx-auto max-w-[1160px] px-4 pt-10" aria-labelledby="by-country">
-        <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <div class="flex flex-wrap items-center justify-between gap-x-4">
           <h2 id="by-country" class="text-subtitle font-bold tracking-[-0.015em]">
             Browse by country
           </h2>
-          <a
-            href="/countries"
-            class="text-meta font-semibold text-brand no-underline hover:underline"
-          >
-            All {entryPoints.countries.length} countries →
-          </a>
+          {/* No "all countries →" link beside this heading: the <details> below is already a
+              44px control that says the same thing, and two controls for one destination is
+              the repetition this pass exists to remove. */}
         </div>
 
         {/* A `<details>` rather than a "show more" button: it needs no script, and the
@@ -625,11 +644,11 @@ const STATS = [
       passes `trustPanelAbove` to the footer so it is not repeated below. */}
   <section class="mx-auto max-w-[1160px] px-4 pt-10" aria-labelledby="how-kept">
     <div class="rounded-sheet border border-line bg-surface p-4">
-      <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+      <div class="flex flex-wrap items-center justify-between gap-x-4">
         <h2 id="how-kept" class="text-dense font-semibold">How this list is kept</h2>
         <a
           href="/verification"
-          class="text-meta font-semibold text-brand no-underline hover:underline"
+          class="inline-flex min-h-11 items-center text-meta font-semibold text-brand no-underline hover:underline"
         >
           What verification means →
         </a>
