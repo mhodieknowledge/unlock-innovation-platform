@@ -211,6 +211,13 @@ const ogImage = new URL("/og.png", Astro.url).href;
     />
 
     {
+      /* Scroll-reveal and the horizontal-row auto-scroll, both progressive enhancement —
+         see motion.js. Skipped in low-data mode, which strips everything non-essential,
+         and served as a static file rather than inlined for the same CSP reason as the
+         service-worker registration below. */
+      !lowData && <script src="/motion.js" defer></script>
+    }
+    {
       /* Registration is a bundled module, never inline: the CSP in public/_headers carries
          no 'unsafe-inline' (see ADR 0002 and apps/web/test/csp.test.ts). */
       offlineCapable && <script src="/sw-register.js" defer></script>

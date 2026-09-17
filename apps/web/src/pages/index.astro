@@ -139,6 +139,20 @@ const featuredSections = featuredCategories
   .filter((section) => section.rows.length > 0);
 
 /**
+ * The hero's rotating stat — real counts, not marketing copy. Padded to exactly four slots
+ * (repeating if the catalogue has fewer than four categories open) because the CSS keyframe
+ * that drives it is a fixed four-step cycle (tokens.css `word-cycle-4`) — a per-request
+ * inline <style> to match an arbitrary count is not possible under this CSP (style-src
+ * 'self', no unsafe-inline).
+ */
+const CYCLE_SLOTS = 4;
+const withOpenCounts = categoryCounts.filter((c) => c.open_count > 0).sort((a, b) => b.open_count - a.open_count);
+const cycleCategories =
+  withOpenCounts.length > 0
+    ? Array.from({ length: CYCLE_SLOTS }, (_, i) => withOpenCounts[i % withOpenCounts.length])
+    : [];
+
+/**
  * Who may cache this, and for how long.
  *
  * The board is identical for everyone EXCEPT when it was shaped by something only this
@@ -204,34 +218,74 @@ const jsonLd = [
   feed={{ path: "/feeds/closing-soon.xml", title: "Closing this week" }}
 >
   {/* ── HERO ──────────────────────────────────────────────────────────────────
-      A real photographic banner — the platform's own people, not stock icons — beside the
-      headline, search and category entry points. The image is decorative (aria-hidden): it
-      illustrates "opportunities worth your time" in general, and carries no claim about any
-      specific listing. Suppressed entirely in low-data mode, per §10. */}
-  <section class="border-b border-line bg-surface">
-    <div class="mx-auto max-w-[1160px] px-4 pt-8 pb-10 lg:flex lg:items-center lg:gap-12 lg:pt-14 lg:pb-16">
+      A real photographic banner beside the headline, search and category entry points,
+      over a slow-drifting brand-blue "aurora" (pure CSS, tokens.css `.hero-aurora`) for a
+      more technical, alive feel. The image is decorative (aria-hidden): it illustrates
+      "opportunities worth your time" in general, and carries no claim about any specific
+      listing. Both the aurora and the image are suppressed in low-data mode. Content fades
+      and lifts in on load via [data-reveal] (motion.js), and degrades to fully visible
+      with no JavaScript at all. */}
+  <section class={`relative overflow-hidden border-b border-line bg-surface ${!lowData ? "hero-aurora" : ""}`}>
+    <div class="relative z-10 mx-auto max-w-[1160px] px-4 pt-8 pb-10 lg:flex lg:items-center lg:gap-12 lg:pt-14 lg:pb-16">
       {
         !lowData && (
-          <div class="lg:order-2 lg:w-[44%] lg:shrink-0">
-            <Image
-              src={heroImage}
-              alt=""
-              aria-hidden="true"
-              widths={[480, 800, 1200, 1600]}
-              sizes="(min-width: 1024px) 44vw, 100vw"
-              loading="eager"
-              fetchpriority="high"
-              class="aspect-[16/10] w-full rounded-sheet object-cover shadow-card lg:aspect-[4/3]"
-            />
+          <div class="lg:order-2 lg:w-[44%] lg:shrink-0" data-reveal>
+            <div class="relative">
+              <Image
+                src={heroImage}
+                alt=""
+                aria-hidden="true"
+                widths={[480, 800, 1200, 1600]}
+                sizes="(min-width: 1024px) 44vw, 100vw"
+                loading="eager"
+                fetchpriority="high"
+                class="aspect-[16/10] w-full rounded-sheet object-cover shadow-card lg:aspect-[4/3]"
+              />
+              {/* A small floating stat card over the photo — the one place a SaaS-style
+                  floating element earns its keep, because the claim on it is true and
+                  general (this platform verifies sources), not attached to one listing. */}
+              <div class="absolute -bottom-4 left-4 hidden items-center gap-2 rounded-row border border-line bg-surface px-3 py-2 shadow-card sm:flex">
+                <span class="flex size-7 shrink-0 items-center justify-center rounded-monogram bg-eligible-wash text-eligible">
+                  <Icon name="check" size={20} class="h-4 w-4" />
+                </span>
+                <span class="text-meta font-semibold">Checked against real sources</span>
+              </div>
+            </div>
           </div>
         )
       }
 
-      <div class="mt-6 lg:order-1 lg:mt-0 lg:flex-1">
-        <h1 class="max-w-[16ch] text-balance text-[2.25rem] leading-[1.1] font-bold tracking-[-0.02em] lg:text-[3rem]">
+      <div class="mt-10 lg:order-1 lg:mt-0 lg:flex-1">
+        {
+          cycleCategories.length === CYCLE_SLOTS && (
+            <p
+              data-reveal
+              class="inline-flex items-center gap-2 rounded-monogram border border-line bg-surface px-3 py-1 text-meta font-semibold text-ink-2 shadow-card"
+            >
+              <span class="relative flex size-2 shrink-0">
+                <span class="absolute inline-flex h-full w-full animate-ping rounded-monogram bg-eligible opacity-75" />
+                <span class="relative inline-flex size-2 rounded-monogram bg-eligible" />
+              </span>
+              <span class="word-cycle">
+                <span class="word-cycle-track">
+                  {cycleCategories.map((c) => (
+                    <span>
+                      {c.open_count} {c.name.toLowerCase()} open now
+                    </span>
+                  ))}
+                </span>
+              </span>
+            </p>
+          )
+        }
+
+        <h1
+          data-reveal
+          class="reveal-d1 mt-4 max-w-[16ch] text-balance text-[2.25rem] leading-[1.1] font-bold tracking-[-0.02em] lg:text-[3rem]"
+        >
           Opportunities worth your time.
         </h1>
-        <p class="prose-measure mt-4 text-[17px] leading-7 text-ink-2">
+        <p data-reveal class="reveal-d2 prose-measure mt-4 text-[17px] leading-7 text-ink-2">
           Mbele tracks scholarships, fellowships, hackathons and grants open to Africa, and
           checks each one against its own source — so the deadline you see is the one that's
           real.
@@ -239,7 +293,7 @@ const jsonLd = [
 
         {/* A plain GET form to the list page: no JS, no autocomplete request, nothing
             typed leaves the device until the reader presses the button. */}
-        <form method="get" action="/opportunities" class="mt-7 flex max-w-xl gap-2">
+        <form method="get" action="/opportunities" data-reveal class="reveal-d3 mt-7 flex max-w-xl gap-2">
           <label class="relative flex-1">
             <span class="sr-only">Search opportunities</span>
             <Icon
@@ -256,7 +310,7 @@ const jsonLd = [
           </label>
           <button
             type="submit"
-            class="h-14 shrink-0 rounded-sheet bg-brand px-6 text-dense font-semibold text-surface hover:bg-brand-ink"
+            class="h-14 shrink-0 rounded-sheet bg-brand px-6 text-dense font-semibold text-surface transition-colors hover:bg-brand-ink"
           >
             Search
           </button>
@@ -265,12 +319,12 @@ const jsonLd = [
         {/* A small, deliberate set of paths in — not a wall of pills. */}
         {
           entryPoints.categories.length > 0 && (
-            <ul class="mt-4 flex list-none flex-wrap gap-2 p-0">
+            <ul data-reveal class="reveal-d4 mt-4 flex list-none flex-wrap gap-2 p-0">
               {entryPoints.categories.slice(0, 5).map((category) => (
                 <li>
                   <a
                     href={`/categories/${category.slug}`}
-                    class="inline-flex min-h-11 items-center rounded-monogram border border-line px-4 text-meta font-medium text-ink-2 no-underline hover:border-line-strong hover:bg-sunken hover:text-ink"
+                    class="inline-flex min-h-11 items-center rounded-monogram border border-line px-4 text-meta font-medium text-ink-2 no-underline transition-colors hover:border-line-strong hover:bg-sunken hover:text-ink"
                   >
                     {category.name}
                   </a>
@@ -288,7 +342,7 @@ const jsonLd = [
     country && (
       <div class="border-b border-line bg-sunken">
         <div class="mx-auto max-w-[1160px] px-4 py-4">
-          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+          <div class="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
             <span class="flex size-10 shrink-0 items-center justify-center rounded-monogram bg-brand-wash text-brand">
               <Icon name="globe" size={20} />
             </span>
@@ -298,7 +352,7 @@ const jsonLd = [
             </p>
             <a
               href="/?country=all"
-              class="inline-flex min-h-11 shrink-0 items-center rounded-row border border-line-strong bg-surface px-4 text-meta font-semibold text-ink no-underline hover:bg-surface/70 sm:self-auto"
+              class="inline-flex min-h-11 shrink-0 items-center justify-center rounded-row border border-line-strong bg-surface px-4 text-meta font-semibold text-ink no-underline hover:bg-surface/70 md:self-auto"
             >
               Change location
             </a>
@@ -325,8 +379,8 @@ const jsonLd = [
   }
 
   {/* ── CLOSING SOON ──────────────────────────────────────────────────────── */}
-  <section class="mx-auto max-w-[1160px] px-4 pt-12" aria-labelledby="board">
-    <div class="flex flex-wrap items-end justify-between gap-3">
+  <section class="mx-auto max-w-[1160px] pt-12" aria-labelledby="board">
+    <div class="flex flex-wrap items-end justify-between gap-3 px-4" data-reveal>
       <div>
         <p class="eyebrow text-brand">Closing soonest</p>
         <h2 id="board" class="mt-1 text-title font-bold tracking-[-0.015em]">
@@ -340,7 +394,7 @@ const jsonLd = [
       </div>
       {
         rows.length > 0 && (
-          <a href="/opportunities" class="hidden shrink-0 text-dense font-semibold text-brand no-underline hover:underline sm:block">
+          <a href="/opportunities" class="hidden shrink-0 text-dense font-semibold text-brand no-underline hover:underline md:block">
             View all closing soon →
           </a>
         )
@@ -350,12 +404,19 @@ const jsonLd = [
     {
       rows.length > 0 ? (
         <>
-          <div class="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {/* A horizontally swipeable row, not a grid — the deliberate "not everything just
+              scrolls downwards" pattern, and it means a long title never has to fight three
+              siblings for column width. Snap-scrolled, not auto-scrolled: this is the one row
+              a reader is actively deciding from, and moving text under someone mid-read is
+              the exact thing WCAG 2.2.2 exists to prevent. */}
+          <div class="scroll-row mt-5 px-4 pb-2" data-reveal>
             {rows.map((o) => (
-              <OpportunityRow opportunity={o} lowData={lowData} />
+              <div class="w-[80%] sm:w-[55%] md:w-[38%] lg:w-[27%]">
+                <OpportunityRow opportunity={o} lowData={lowData} />
+              </div>
             ))}
           </div>
-          <div class="mt-5 pb-2 sm:hidden">
+          <div class="px-4 pb-2 md:hidden">
             <a href="/opportunities" class="text-dense font-semibold text-brand no-underline">
               View all closing soon →
             </a>
@@ -364,7 +425,7 @@ const jsonLd = [
       ) : (
         /* One sentence naming the situation, one action (DESIGN_SYSTEM.md §6.4).
            Never an illustration, never "Nothing here yet!". */
-        <div class="mt-5 rounded-sheet border border-line bg-surface p-5">
+        <div class="mx-4 mt-5 rounded-sheet border border-line bg-surface p-5">
           {degraded ? (
             <>
               <p class="font-semibold">We can't load the board right now.</p>
@@ -404,49 +465,58 @@ const jsonLd = [
       platform looks like", each with real listings under a representative photo. ────── */}
   {
     featuredSections.map((section) => (
-      <section class="mx-auto max-w-[1160px] px-4 pt-14" aria-labelledby={`rail-${section.category.code}`}>
-        <div class="overflow-hidden rounded-sheet border border-line bg-surface shadow-card">
-          <div class="relative">
-            {!lowData && section.image && (
-              <Image
-                src={section.image}
-                alt=""
-                aria-hidden="true"
-                widths={[480, 800, 1160]}
-                sizes="100vw"
-                class="h-40 w-full object-cover lg:h-52"
-              />
-            )}
-            <div
-              class={`flex flex-wrap items-end justify-between gap-3 p-5 ${!lowData && section.image ? "absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" : ""}`}
-            >
-              <div>
-                <p class={`eyebrow ${!lowData && section.image ? "text-white/80" : "text-brand"}`}>
-                  Category
-                </p>
-                <h2
-                  id={`rail-${section.category.code}`}
-                  class={`mt-1 text-title font-bold tracking-[-0.015em] ${!lowData && section.image ? "text-white" : "text-ink"}`}
-                >
-                  {section.category.name}
-                </h2>
-              </div>
-              <a
-                href={`/categories/${section.category.slug}`}
-                class={`inline-flex min-h-11 shrink-0 items-center rounded-row border px-4 text-meta font-semibold no-underline ${
-                  !lowData && section.image
-                    ? "border-white/40 bg-black/30 text-white backdrop-blur hover:bg-black/50"
-                    : "border-line-strong bg-surface text-ink hover:bg-sunken"
-                }`}
+      <section class="pt-14" aria-labelledby={`rail-${section.category.code}`}>
+        {/* The banner is its own card; the listings sit directly on the page below it, not
+            nested inside a second bordered/shadowed container around both — a card wrapping
+            cards reads as an accidental UI, not a deliberate one. */}
+        <div class="relative mx-4 max-w-[1128px] overflow-hidden rounded-sheet lg:mx-auto" data-reveal>
+          {!lowData && section.image && (
+            <Image
+              src={section.image}
+              alt=""
+              aria-hidden="true"
+              widths={[480, 800, 1160]}
+              sizes="100vw"
+              class="h-36 w-full object-cover lg:h-44"
+            />
+          )}
+          <div
+            class={`flex flex-wrap items-end justify-between gap-3 p-5 ${!lowData && section.image ? "absolute inset-0 bg-gradient-to-t from-black/75 via-black/15 to-transparent" : "border border-line bg-surface"}`}
+          >
+            <div>
+              <p class={`eyebrow ${!lowData && section.image ? "text-white/80" : "text-brand"}`}>
+                Category
+              </p>
+              <h2
+                id={`rail-${section.category.code}`}
+                class={`mt-1 text-title font-bold tracking-[-0.015em] ${!lowData && section.image ? "text-white" : "text-ink"}`}
               >
-                View all {section.count} →
-              </a>
+                {section.category.name}
+              </h2>
             </div>
+            <a
+              href={`/categories/${section.category.slug}`}
+              class={`inline-flex min-h-11 shrink-0 items-center rounded-row border px-4 text-meta font-semibold no-underline transition-colors ${
+                !lowData && section.image
+                  ? "border-white/40 bg-black/30 text-white backdrop-blur hover:bg-black/50"
+                  : "border-line-strong bg-surface text-ink hover:bg-sunken"
+              }`}
+            >
+              View all {section.count} →
+            </a>
           </div>
+        </div>
 
-          <div class="grid grid-cols-1 gap-4 p-5 md:grid-cols-2 lg:grid-cols-4">
+        {/* A gently auto-scrolling row — the "premium carousel" register, reserved for this
+            secondary, browse-at-your-own-pace content rather than the primary Closing Soon
+            list above. Pauses the instant a pointer, touch or keyboard focus is on it, and
+            never starts under prefers-reduced-motion (motion.js). */}
+        <div class="mx-auto max-w-[1160px]">
+          <div class="scroll-row mt-4 px-4" data-autoscroll="0.4" data-reveal>
             {section.rows.map((o) => (
-              <OpportunityRow opportunity={o} lowData={lowData} />
+              <div class="w-[75%] sm:w-[50%] md:w-[34%] lg:w-[24%]">
+                <OpportunityRow opportunity={o} lowData={lowData} />
+              </div>
             ))}
           </div>
         </div>
@@ -462,7 +532,7 @@ const jsonLd = [
       const remaining = entryPoints.categories.filter((c) => !featuredCodes.has(c.code));
       return (
         remaining.length > 0 && (
-          <section class="mx-auto max-w-[1160px] px-4 pt-14" aria-labelledby="by-kind">
+          <section class="mx-auto max-w-[1160px] px-4 pt-14" aria-labelledby="by-kind" data-reveal>
             <p class="eyebrow text-brand">Explore</p>
             <h2 id="by-kind" class="mt-1 text-title font-bold tracking-[-0.015em]">
               Browse by category
@@ -499,7 +569,7 @@ const jsonLd = [
   {/* ── BROWSE BY LOCATION — compact, correctable, part of the product. ────── */}
   {
     entryPoints.countries.length > 0 && (
-      <section class="mx-auto max-w-[1160px] px-4 pt-14" aria-labelledby="by-country">
+      <section class="mx-auto max-w-[1160px] px-4 pt-14" aria-labelledby="by-country" data-reveal>
         <p class="eyebrow text-brand">Explore</p>
         <h2 id="by-country" class="mt-1 text-title font-bold tracking-[-0.015em]">
           Browse by country
@@ -532,8 +602,8 @@ const jsonLd = [
   }
 
   {/* ── CAN I APPLY? — the eligibility profile, framed as a core capability. ── */}
-  <section class="mx-auto max-w-[1160px] px-4 pt-14" aria-labelledby="can-i-apply">
-    <div class="flex flex-col gap-5 rounded-sheet border border-line bg-surface p-6 sm:flex-row sm:items-center">
+  <section class="mx-auto max-w-[1160px] px-4 pt-14" aria-labelledby="can-i-apply" data-reveal>
+    <div class="flex flex-col gap-5 rounded-sheet border border-line bg-surface p-6 md:flex-row md:items-center">
       <div class="flex-1">
         <p class="eyebrow text-brand">Can you apply?</p>
         <h2 id="can-i-apply" class="mt-1 text-subtitle font-semibold">
@@ -547,7 +617,7 @@ const jsonLd = [
       </div>
       <a
         href="/you/eligibility"
-        class="inline-flex min-h-12 shrink-0 items-center rounded-row bg-brand px-5 text-dense font-semibold text-surface no-underline hover:bg-brand-ink"
+        class="inline-flex min-h-12 shrink-0 items-center justify-center rounded-row bg-brand px-5 text-dense font-semibold text-surface no-underline transition-colors hover:bg-brand-ink md:w-auto"
       >
         {user ? "Your eligibility details" : "Add your details"}
       </a>
@@ -558,12 +628,18 @@ const jsonLd = [
       MODERATION_AND_TRUST.md §2.1 rule 3's no-fee line is the third of these, stated
       here rather than in the footer so it sits with the two promises it belongs with.
       Base passes `trustPanelAbove` to the footer so it is not repeated below. */}
-  <section class="mx-auto max-w-[1160px] px-4 pt-14 pb-4" aria-labelledby="how-kept">
-    <p class="eyebrow text-brand">How this list is kept</p>
-    <h2 id="how-kept" class="mt-1 text-title font-bold tracking-[-0.015em]">
-      Nothing here is copied and forgotten.
-    </h2>
-    <div class="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
+  <section class="pt-14 pb-4" aria-labelledby="how-kept" data-reveal>
+    <div class="mx-auto max-w-[1160px] px-4">
+      <p class="eyebrow text-brand">How this list is kept</p>
+      <h2 id="how-kept" class="mt-1 text-title font-bold tracking-[-0.015em]">
+        Nothing here is copied and forgotten.
+      </h2>
+    </div>
+    {/* A horizontally swipeable row below md, where three side-by-side cards of full
+        sentences had been squeezed into columns barely wider than the icon — the same
+        breakpoint mistake the opportunity-card grids had. A static 3-up grid from md up,
+        where there is room for it. */}
+    <div class="scroll-row mt-5 px-4 md:mx-auto md:grid md:max-w-[1160px] md:grid-cols-3 md:gap-4 md:overflow-visible md:px-4">
       {
         [
           {
@@ -576,7 +652,7 @@ const jsonLd = [
           },
           { icon: "alert" as const, text: NO_FEE_STATEMENT },
         ].map((item) => (
-          <div class="rounded-sheet border border-line bg-surface p-5">
+          <div class="w-[78%] rounded-sheet border border-line bg-surface p-5 sm:w-[55%] md:w-auto">
             <span class="flex size-9 items-center justify-center rounded-monogram bg-brand-wash text-brand">
               <Icon name={item.icon} size={20} />
             </span>

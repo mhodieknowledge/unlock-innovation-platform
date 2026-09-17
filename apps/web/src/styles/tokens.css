@@ -166,6 +166,155 @@
     max-width: 68ch;
   }
 
+  /* ── Motion: entrance reveals, hero aurora, word-cycle, horizontal rows ──────
+   * Progressive enhancement throughout: a [data-reveal] element is only ever hidden once
+   * motion.js has added `.js-ready` to <html>, so a reader with no JavaScript, or a
+   * crawler, always sees full content immediately. The §7 reduced-motion block below
+   * neutralises every animation and transition declared here for free — nothing here
+   * needs its own reduced-motion branch. */
+  [data-reveal] {
+    opacity: 1;
+    transform: none;
+  }
+  html.js-ready [data-reveal] {
+    opacity: 0;
+    transform: translateY(18px);
+    transition:
+      opacity 0.7s ease,
+      transform 0.7s ease;
+    transition-delay: var(--reveal-delay, 0ms);
+  }
+  html.js-ready [data-reveal].is-visible {
+    opacity: 1;
+    transform: none;
+  }
+  .reveal-d1 {
+    --reveal-delay: 90ms;
+  }
+  .reveal-d2 {
+    --reveal-delay: 180ms;
+  }
+  .reveal-d3 {
+    --reveal-delay: 270ms;
+  }
+  .reveal-d4 {
+    --reveal-delay: 360ms;
+  }
+
+  /* Horizontal, swipeable rows — native scroll-snap, no JS required to use at all.
+   * motion.js's [data-autoscroll] is an optional layer on top of this, never a
+   * replacement for it. */
+  .scroll-row {
+    display: flex;
+    gap: 1rem;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: 1rem;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+  .scroll-row::-webkit-scrollbar {
+    height: 6px;
+  }
+  .scroll-row::-webkit-scrollbar-thumb {
+    background: var(--color-line-strong);
+    border-radius: 999px;
+  }
+  .scroll-row > * {
+    scroll-snap-align: start;
+    flex: 0 0 auto;
+  }
+
+  /* Hero aurora: two slow-drifting blurred blobs behind the hero content. Brand-wash
+   * only — §1.2's colour discipline extends to motion too; nothing here introduces a
+   * new hue, it just moves the one the product already uses. */
+  @keyframes aurora-drift-a {
+    0%,
+    100% {
+      transform: translate(-8%, -6%) scale(1);
+    }
+    50% {
+      transform: translate(6%, 8%) scale(1.15);
+    }
+  }
+  @keyframes aurora-drift-b {
+    0%,
+    100% {
+      transform: translate(6%, 4%) scale(1.1);
+    }
+    50% {
+      transform: translate(-8%, -8%) scale(1);
+    }
+  }
+  .hero-aurora::before,
+  .hero-aurora::after {
+    content: "";
+    position: absolute;
+    border-radius: 999px;
+    filter: blur(60px);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .hero-aurora::before {
+    top: -10%;
+    left: -5%;
+    width: 55%;
+    height: 70%;
+    background: var(--color-brand-wash);
+    animation: aurora-drift-a 16s ease-in-out infinite;
+  }
+  .hero-aurora::after {
+    bottom: -20%;
+    right: -8%;
+    width: 45%;
+    height: 60%;
+    background: var(--color-brand-wash);
+    opacity: 0.7;
+    animation: aurora-drift-b 20s ease-in-out infinite;
+  }
+
+  /* The rotating category stat in the hero eyebrow. Four fixed steps because the homepage
+   * only ever features up to four categories there (index.astro's FEATURED_CATEGORY_CODES)
+   * — a static keyframe list keeps this out of a per-request inline <style>, which the CSP
+   * (style-src 'self', no unsafe-inline) does not allow. */
+  @keyframes word-cycle-4 {
+    0%,
+    21% {
+      transform: translateY(0);
+    }
+    25%,
+    46% {
+      transform: translateY(-1.5em);
+    }
+    50%,
+    71% {
+      transform: translateY(-3em);
+    }
+    75%,
+    96% {
+      transform: translateY(-4.5em);
+    }
+    100% {
+      transform: translateY(0);
+    }
+  }
+  .word-cycle {
+    display: inline-block;
+    height: 1.5em;
+    overflow: hidden;
+    vertical-align: bottom;
+  }
+  .word-cycle-track {
+    display: block;
+    animation: word-cycle-4 10s steps(1, end) infinite;
+  }
+  .word-cycle-track > span {
+    display: block;
+    height: 1.5em;
+    line-height: 1.5em;
+  }
+
   /* §7: prefers-reduced-motion removes all motion, leaving instant state
    * changes. Declared once, globally, rather than per component. */
   @media (prefers-reduced-motion: reduce) {
