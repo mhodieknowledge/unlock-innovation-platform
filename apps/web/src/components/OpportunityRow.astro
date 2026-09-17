@@ -1,22 +1,21 @@
 ---
-// The primary object, in two shapes: a CARD for the multi-column grids, and a
-// LIST ROW for a single column. Kept in this file so every call site — the
-// homepage, the listing page, categories, countries, organisation pages —
-// shares one definition of what a listing shows.
+// The primary object, as a card, on every surface that lists one. Kept in this
+// file so the homepage, the listing page, categories, countries and
+// organisation pages share one definition of what a listing shows.
 //
-// WHY TWO SHAPES AND NOT ONE. A card earns its border when it sits beside
-// another card horizontally: the border is what says where one listing stops
-// and the next begins. In a single column that job is already done by the
-// stacking, so the border draws a box around something nobody was going to
-// confuse — and twelve of them down a phone screen is twelve rounded
-// rectangles of chrome carrying the same eight facts. DESIGN_SYSTEM.md §1's
-// own rejection table says it first: "Identical rounded cards with the same
-// soft grey shadow → No. Rows with a status rail."
+// A BORDERLESS LIST ROW WAS TRIED HERE AND REVERTED. The argument for it was
+// DESIGN_SYSTEM.md §1's own rejection table ("Identical rounded cards with the
+// same soft grey shadow → No. Rows with a status rail") plus the observation
+// that a border has nothing to separate in a single column. Both are true on
+// paper. Built and looked at, the page read as a spreadsheet: hairlines are
+// not enough to group four facts into one object, so the eye has to do the
+// grouping itself on every row, and the board stopped looking like somewhere
+// a person would want to spend time. The card's border is not decoration —
+// it is the thing that says "these four facts are one opportunity".
 //
-// So `variant="list"` drops the border, the radius and the shadow, keeps the
-// padding as vertical rhythm, and lets a hairline between siblings do the
-// separating. Everything inside — what a reader decides on — is identical in
-// both, because it is the same object either way.
+// What survived from that pass is in the page, not here: the board scrolls
+// vertically instead of sideways, and the photographic category bands are
+// gone. Those were the real complaints. The card was not.
 //
 // The old row optimised for density: a fact grid of up to four cells on every
 // card, plus a separate "checked N days ago" line. That is exactly the
@@ -37,20 +36,14 @@ interface Props {
   /** Low-data mode drops the standout-fact badge; everything else is already minimal. */
   lowData?: boolean;
   /**
-   * `card` for a multi-column grid, `list` for a single column. The default stays `card`
-   * so the five pages that render a responsive grid are unaffected by this prop existing.
-   */
-  variant?: "card" | "list";
-  /**
-   * Drop the category label. For a list that is already under a category heading, where
-   * "AI CHALLENGE" on all five rows of the "AI challenges" section is the heading read
+   * Drop the category label. For a section that is already under a category heading, where
+   * "AI CHALLENGE" on all five cards of the "AI challenges" section is the heading read
    * back five times in a smaller font.
    */
   hideCategory?: boolean;
 }
 
-const { opportunity: o, lowData = false, variant = "card", hideCategory = false } = Astro.props;
-const asList = variant === "list";
+const { opportunity: o, lowData = false, hideCategory = false } = Astro.props;
 
 const facts = deadlineFacts({
   deadline_at: o.deadline_at,
@@ -86,205 +79,110 @@ const standoutFact: string | null = prize
 
 const categoryLabel =
   !hideCategory && o.categories?.name && o.categories.code !== "other" ? o.categories.name : null;
-const verLabel = verificationLabel(o.verification);
+/**
+ * WHAT THE CARD SAYS ABOUT HOW THIS LISTING WAS CHECKED — AND WHEN IT SAYS NOTHING.
+ *
+ * `auto` is suppressed here. "Checked automatically" was on the large majority of cards on
+ * the board, which is the definition of a label that is not telling anyone anything: a fact
+ * true of nearly every row cannot help a reader choose between rows. It was also the weakest
+ * claim in the set, spending a line of every card to say that nobody had looked yet.
+ *
+ * The rest still show, and the ones that are NOT reassuring matter most: `stale`,
+ * `community_flagged` and `disputed` are the states MODERATION_AND_TRUST.md §2.2 puts a
+ * listing into the moment a scam or payment report arrives, and a board that hid those to
+ * look tidier would be the wrong trade in the one place this product cannot afford it.
+ *
+ * Nothing is lost for `auto`: the detail page prints the full verification story in its
+ * "Source & verification" section, where there is room to say what an automated check is
+ * and — per /verification's promise — that it is pending rather than verified.
+ */
+const verLabel = o.verification === "auto" ? null : verificationLabel(o.verification);
+
+/**
+ * A TICK IS NOT A NEUTRAL BULLET, so the mark follows the state rather than the position.
+ *
+ * Every one of these rendered `check` — including "Disputed", which MODERATION_AND_TRUST.md
+ * §2.2 sets the moment a scam or payment report arrives. A green-adjacent tick beside the
+ * word Disputed does not read as punctuation; it reads as "checked, and fine", which is the
+ * opposite of what the field is saying. It went unnoticed while `auto` covered most of the
+ * board and the tick was, in practice, always beside an innocuous label.
+ *
+ * `official` and `verified` are the only two states that are an endorsement. The rest are
+ * warnings or absences of confirmation, and take the alert mark in the warning colour.
+ */
+const verPositive = o.verification === "official" || o.verification === "verified";
 ---
 
 <article
-  class={`group relative ${
-    asList
-      ? // No border, no radius, no shadow: the row above and the row below are what
-        // separate this one. `-mx-4 px-4` lets the hover wash run to the screen edge on a
-        // phone rather than stopping short of it in a way that looks clipped.
-        "flex gap-3 -mx-4 px-4 py-4 transition-colors hover:bg-sunken"
-      : "flex flex-col rounded-sheet border border-line bg-surface p-4 shadow-card transition-shadow hover:shadow-card-hover"
-  } ${closed ? "opacity-60" : ""}`}
+  class={`group relative flex flex-col rounded-sheet border border-line bg-surface p-4 shadow-card transition-shadow hover:shadow-card-hover ${closed ? "opacity-60" : ""}`}
 >
-  {
-    asList ? (
-      /*
-        THREE COLUMNS, BECAUSE THE COUNTDOWN IS THE OTHER HALF OF THE DECISION.
+{/* Badge row: category + one standout fact. Neutral, not a colour wash — the brief's
+    restraint applies here too; colour is spent on the primary action only. */}
+<div class="flex flex-wrap items-center gap-[6px]">
+  {categoryLabel && (
+    <span class="eyebrow rounded-row bg-sunken px-2 py-1 text-ink-2">{categoryLabel}</span>
+  )}
+  {!lowData && standoutFact && (
+    <span class="eyebrow rounded-row border border-line-strong px-2 py-1 text-ink-2">
+      {standoutFact}
+    </span>
+  )}
+  {/* §10: one fact cell, not four. Cost is the only one a decision turns on, so it is
+      the one kept when every other byte is being counted. */}
+  {lowData && (
+    <span class="eyebrow rounded-row bg-sunken px-2 py-1 text-ink-2">
+      <span>Cost</span>: {o.cost === "free" ? "Free" : o.cost === "paid" ? "Has a cost" : "Not stated"}
+    </span>
+  )}
+</div>
 
-        Stacked — the card's arrangement, kept when the border first came off — a row ran
-        168px on a 390px screen and eight of them were most of three viewports. The
-        countdown sat on its own line under the organiser, which is a lot of vertical space
-        for the two words a reader is actually scanning for.
+<h3 class="mt-[10px] line-clamp-2 text-[17px] leading-[23px] font-semibold tracking-[-0.01em]">
+  <a href={`/opportunities/${o.slug}`} class="text-ink no-underline after:absolute after:inset-0">
+    {o.title}
+  </a>
+</h3>
 
-        Side by side it lands near 120px, and more usefully the deadlines form a COLUMN
-        down the edge of the list — the thing a list can do that a stack of cards cannot:
-        eight deadlines compared in one downward glance.
+{/*
+  ORGANISER AND HOW IT WAS CHECKED, on one line, with only the organiser allowed to
+  truncate.
 
-        Three columns rather than two, because Save stacked under the date made the right
-        side taller than the left and left the row sitting on 30px of nothing. Centred in
-        its own column, the button no longer sets the row's height.
+  `truncate` used to be on the whole line, which sets `white-space: nowrap` and an
+  ellipsis on everything inside it — so a long organiser name ate the verification. On
+  the live board "African Leadership Institute (AFLI) Archbishop Tutu Fellowship"
+  rendered with no verification at all, and it is one of the two facts that tell a
+  reader whether this listing has been looked at. A flex row with `min-w-0` on the name
+  and `shrink-0` on the status truncates the part that can afford it.
+*/}
+<p class="mt-1 flex items-center gap-1 text-meta text-ink-2">
+  <span class="min-w-0 truncate">{o.organisations?.name ?? "Organisation not identified"}</span>
+  {verLabel && (
+    <span class={`flex shrink-0 items-center gap-1 ${verPositive ? "text-ink-3" : "text-unclear"}`}>
+      <span aria-hidden="true">·</span>
+      <Icon name={verPositive ? "check" : "alert"} size={20} class="h-3 w-3" />
+      <span class="whitespace-nowrap">{verLabel}</span>
+    </span>
+  )}
+</p>
 
-        The badges become a plain eyebrow line here. A pill is chrome that earns its keep on
-        a card, where it separates a label from the card's own edge; in a list it is a
-        second border inside something that just had its border removed.
-      */
-      <>
-        <div class="min-w-0 flex-1">
-          {/* The eyebrow WRAPS rather than truncates. At 11px in a ~175px column
-              "HACKATHON · FREE TO APPLY" is a hair over one line, and `truncate` spent that
-              hair on "FREE TO A…" — an ellipsis is the right answer for a name with no short
-              form, and the wrong one for a two-word fact that can take a second line. */}
-          {(categoryLabel || standoutFact) && (
-            <p class="eyebrow">
-              {categoryLabel}
-              {categoryLabel && standoutFact && !lowData && <span> · </span>}
-              {!lowData && standoutFact}
-              {/* §10's one fact cell, and it keeps its LABEL. The first list row wrote the
-                  value alone ("Free"), which reads as a claim about the listing rather than
-                  as the answer to "what does it cost" — invariant 13 turns on that field, so
-                  it is the one place a bare value is not good enough. */}
-              {lowData && (
-                <span>
-                  {categoryLabel && " · "}
-                  <span>Cost</span>: {o.cost === "free" ? "Free" : o.cost === "paid" ? "Has a cost" : "Not stated"}
-                </span>
-              )}
-            </p>
-          )}
+<div class="mt-auto flex items-end justify-between gap-3 pt-3">
+  <p class="flex flex-col">
+    <span
+      class={`text-countdown-sm ${closed ? "text-ink-3 line-through" : urgent ? "text-noteligible" : "text-ink"}`}
+      style={`font-weight:${countdownWeight(facts.daysRemaining)}`}
+    >
+      {closed ? "Closed" : countdownLabel(facts)}
+    </span>
+    {closesOn && <span class="text-meta text-ink-3">Closes {closesOn}</span>}
+  </p>
 
-          <h3 class="mt-1 line-clamp-2 text-[17px] leading-[23px] font-semibold tracking-[-0.01em]">
-            <a href={`/opportunities/${o.slug}`} class="text-ink no-underline after:absolute after:inset-0">
-              {o.title}
-            </a>
-          </h3>
-
-          {/*
-            THE VERIFICATION LABEL STAYS, IN WORDS.
-
-            The first list row cut it to a bare tick to buy width, which is two mistakes in
-            one character. §8: "no content conveyed by icon alone". And a tick is READ as
-            approval, while this field's whole reason for existing (see lib/verification.ts)
-            is that four of its seven states are not approval — `stale`, `disputed`,
-            `community_flagged`, `expired`. A tick beside a disputed listing is not a
-            shorter label, it is the wrong one.
-
-            `flex-wrap` rather than the card's single line: in a narrower column the status
-            drops to its own line instead of pushing the organiser into an ellipsis. Only
-            the organiser truncates, and only when it is alone on its line.
-          */}
-          <p class="mt-1 flex flex-wrap items-center gap-x-1 text-meta text-ink-2">
-            <span class="min-w-0 max-w-full truncate">
-              {o.organisations?.name ?? "Organisation not identified"}
-            </span>
-            {verLabel && (
-              <span class="flex shrink-0 items-center gap-1 text-ink-3">
-                <span aria-hidden="true">·</span>
-                <Icon name="check" size={20} class="h-3 w-3" />
-                <span>{verLabel}</span>
-              </span>
-            )}
-          </p>
-        </div>
-
-        {/* The deadline column. Right-aligned and never wrapping, so eight of them line up
-            down the edge of the list — the comparison a stack of cards could not offer. */}
-        <div class="flex shrink-0 flex-col items-end">
-          <span
-            class={`text-countdown-sm whitespace-nowrap ${closed ? "text-ink-3 line-through" : urgent ? "text-noteligible" : "text-ink"}`}
-            style={`font-weight:${countdownWeight(facts.daysRemaining)}`}
-          >
-            {closed ? "Closed" : countdownLabel(facts)}
-          </span>
-          {closesOn && <span class="text-meta whitespace-nowrap text-ink-3">Closes {closesOn}</span>}
-        </div>
-
-        {!closed && (
-          /*
-            ICON-ONLY, AND NAMED FOR THIS LISTING.
-
-            A list of eight rows with eight links reading "Save" is, to a screen reader, eight
-            identical links — the visible word was carrying the meaning for sighted readers
-            only. `aria-label` names the opportunity, and the 44px box is the target §8
-            requires even though the mark inside it is 16px.
-
-            `self-center` rather than a third line in the deadline column: it keeps the row's
-            height set by its text rather than by its button. `z-10` keeps it above the
-            title's stretched hit area — without it the row-wide link swallows the save.
-          */
-          <a
-            href={`/tracker?add=${o.slug}`}
-            aria-label={`Save ${o.title}`}
-            class="relative z-10 inline-flex size-11 shrink-0 items-center justify-center self-center rounded-monogram border border-line-strong bg-surface text-ink no-underline hover:bg-sunken"
-          >
-            <Icon name="tracker" size={20} class="h-4 w-4" />
-          </a>
-        )}
-      </>
-    ) : (
-      <>
-        {/* Badge row: category + one standout fact. Neutral, not a colour wash — the brief's
-            restraint applies here too; colour is spent on the primary action only. */}
-        <div class="flex flex-wrap items-center gap-[6px]">
-          {categoryLabel && (
-            <span class="eyebrow rounded-row bg-sunken px-2 py-1 text-ink-2">{categoryLabel}</span>
-          )}
-          {!lowData && standoutFact && (
-            <span class="eyebrow rounded-row border border-line-strong px-2 py-1 text-ink-2">
-              {standoutFact}
-            </span>
-          )}
-          {/* §10: one fact cell, not four. Cost is the only one a decision turns on, so it is
-              the one kept when every other byte is being counted. */}
-          {lowData && (
-            <span class="eyebrow rounded-row bg-sunken px-2 py-1 text-ink-2">
-              <span>Cost</span>: {o.cost === "free" ? "Free" : o.cost === "paid" ? "Has a cost" : "Not stated"}
-            </span>
-          )}
-        </div>
-
-        <h3 class="mt-[10px] line-clamp-2 text-[17px] leading-[23px] font-semibold tracking-[-0.01em]">
-          <a href={`/opportunities/${o.slug}`} class="text-ink no-underline after:absolute after:inset-0">
-            {o.title}
-          </a>
-        </h3>
-
-        {/*
-          ORGANISER AND HOW IT WAS CHECKED, on one line, with only the organiser allowed to
-          truncate.
-
-          `truncate` used to be on the whole line, which sets `white-space: nowrap` and an
-          ellipsis on everything inside it — so a long organiser name ate the verification. On
-          the live board "African Leadership Institute (AFLI) Archbishop Tutu Fellowship"
-          rendered with no verification at all, and it is one of the two facts that tell a
-          reader whether this listing has been looked at. A flex row with `min-w-0` on the name
-          and `shrink-0` on the status truncates the part that can afford it.
-        */}
-        <p class="mt-1 flex items-center gap-1 text-meta text-ink-2">
-          <span class="min-w-0 truncate">{o.organisations?.name ?? "Organisation not identified"}</span>
-          {verLabel && (
-            <span class="flex shrink-0 items-center gap-1 text-ink-3">
-              <span aria-hidden="true">·</span>
-              <Icon name="check" size={20} class="h-3 w-3" />
-              <span class="whitespace-nowrap">{verLabel}</span>
-            </span>
-          )}
-        </p>
-
-        <div class="mt-auto flex items-end justify-between gap-3 pt-3">
-          <p class="flex flex-col">
-            <span
-              class={`text-countdown-sm ${closed ? "text-ink-3 line-through" : urgent ? "text-noteligible" : "text-ink"}`}
-              style={`font-weight:${countdownWeight(facts.daysRemaining)}`}
-            >
-              {closed ? "Closed" : countdownLabel(facts)}
-            </span>
-            {closesOn && <span class="text-meta text-ink-3">Closes {closesOn}</span>}
-          </p>
-
-          {!closed && (
-            <a
-              href={`/tracker?add=${o.slug}`}
-              class="relative z-10 inline-flex min-h-11 shrink-0 items-center gap-[6px] rounded-monogram border border-line-strong bg-surface px-3 text-meta font-semibold text-ink no-underline hover:bg-sunken"
-            >
-              <Icon name="tracker" size={20} class="h-[15px] w-[15px]" />
-              Save
-            </a>
-          )}
-        </div>
-      </>
-    )
-  }
+  {!closed && (
+    <a
+      href={`/tracker?add=${o.slug}`}
+      class="relative z-10 inline-flex min-h-11 shrink-0 items-center gap-[6px] rounded-monogram border border-line-strong bg-surface px-3 text-meta font-semibold text-ink no-underline hover:bg-sunken"
+    >
+      <Icon name="tracker" size={20} class="h-[15px] w-[15px]" />
+      Save
+    </a>
+  )}
+</div>
 </article>
