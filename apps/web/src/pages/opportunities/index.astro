@@ -328,7 +328,7 @@ const SORT_LABELS: [string, string][] = [
             needs its own h2 — the count line above is the visible label, and repeating it as a
             heading would be noise for a sighted reader and a missing level for everyone else. */}
         <h2 class="sr-only">Results</h2>
-        <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {rows.map((o) => (
             <OpportunityRow opportunity={o} lowData={lowData} />
           ))}

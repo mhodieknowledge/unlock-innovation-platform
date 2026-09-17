@@ -179,14 +179,12 @@ describe("the board is the hero (UX_FLOWS.md §2)", () => {
     expect(state.asked?.limit).toBe(8);
   });
 
-  it("carries none of what §2 lists as deliberately absent", async () => {
+  it("carries none of the fabricated content §2 always ruled out", async () => {
     const html = await (await home()).text();
-    // No hero image, illustration or gradient — and the only image this product ships is the
-    // installed app's icon, which is referenced from the manifest, never from a page.
-    expect(html).not.toMatch(/<img\b/);
-    expect(html).not.toMatch(/<picture\b/);
-    expect(html).not.toMatch(/background-image/i);
-    expect(html).not.toMatch(/gradient/i);
+    // The 2026-09-17 redesign reverses §2's "no hero image" stance deliberately: a real,
+    // category-general photographic hero and per-category banners are now part of the
+    // product (never attached to a specific listing, so no unverifiable claim is made).
+    // What §2 always ruled out on different grounds — fabricated social proof — still holds.
     expect(html).not.toMatch(/testimonial/i);
     // No community numbers: the only counts on the page are the two live ones below.
     expect(html).not.toMatch(/\d[\d,]*\+/);

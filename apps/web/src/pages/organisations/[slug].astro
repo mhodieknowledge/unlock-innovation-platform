@@ -181,7 +181,7 @@ const VERIFICATION_COPY: Record<string, string> = {
       <h2 class="mt-8 text-subtitle font-semibold">Open opportunities</h2>
       {
         open.length > 0 ? (
-          <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {open.map((o) => (
               <OpportunityRow opportunity={o} lowData={lowData} />
             ))}
@@ -206,7 +206,7 @@ const VERIFICATION_COPY: Record<string, string> = {
               <summary class="cursor-pointer text-dense font-semibold">
                 Show {past.length} past {past.length === 1 ? "opportunity" : "opportunities"}
               </summary>
-              <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {past.map((o) => (
                   <OpportunityRow opportunity={o} lowData={lowData} />
                 ))}

@@ -89,7 +89,7 @@ const jsonLd = [
       (group) => (
         <section class="mt-9" aria-labelledby={`region-${group.region}`}>
           <h2 id={`region-${group.region}`} class="eyebrow text-brand">{group.name}</h2>
-          <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div class="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3">
             {group.countries.map((row) => (
               <a
                 href={`/countries/${row.slug}`}

@@ -2,18 +2,26 @@
 // The board. UX_FLOWS.md §2.
 //
 // "The most characteristic thing in this product's world is a live list of things about to
-// close. Showing it IS the hero." So there is no hero: one line of what this is, a search
-// field, and then eight rows, soonest deadline first, server-rendered above the fold.
+// close." The live board is still the substance of the page — but it now sits under a real
+// photographic hero and category rails, per an explicit product decision to make the homepage
+// feel like a premium, image-rich editorial product rather than a text-only notice board.
 //
-// Deliberately absent, per §2: hero image, illustration, gradient, animated statistic,
-// testimonials, fabricated community numbers, and any count this product cannot verify.
 // CONTENT_AND_LAUNCH.md §1: every number shown is true and computed live — which is why the
-// counts at the foot of this page come from two queries and disappear when they come back
-// empty, rather than being padded to look like a launch.
+// counts at the foot of this page come from live queries and disappear when they come back
+// empty, rather than being padded to look like a launch. Photography is category-level and
+// generic (what a hackathon/scholarship/grant/internship looks like), never attached to a
+// specific listing — attaching stock photography to one real opportunity would be exactly the
+// kind of unverifiable claim this product refuses to make.
 
+import { Image } from "astro:assets";
 import Base from "../layouts/Base.astro";
 import Icon from "../components/Icon.astro";
 import OpportunityRow from "../components/OpportunityRow.astro";
+import heroImage from "../assets/marketing/hero-collab.jpg";
+import catHackathon from "../assets/marketing/cat-hackathon.jpg";
+import catScholarship from "../assets/marketing/cat-scholarship.jpg";
+import catGrant from "../assets/marketing/cat-grant.jpg";
+import catInternship from "../assets/marketing/cat-internship.jpg";
 import {
   getCategoryCounts,
   getCountry,
@@ -28,6 +36,16 @@ import { resolveLowData } from "../lib/lowdata";
 import { itemList, website } from "../lib/seo";
 import { BRAND, NO_FEE_STATEMENT } from "@mbele/config";
 import { runtimeEnv } from "~/lib/runtime";
+
+/** One representative photo per category, used only for the category rail banners below —
+ * never rendered on an individual opportunity, which has no photo of its own. */
+const CATEGORY_IMAGES: Record<string, ImageMetadata> = {
+  hackathon: catHackathon,
+  scholarship: catScholarship,
+  grant: catGrant,
+  internship: catInternship,
+};
+const FEATURED_CATEGORY_CODES = ["hackathon", "scholarship", "grant", "internship"];
 
 export const prerender = false;
 
@@ -95,6 +113,32 @@ const rows = board.ok ? board.data : [];
 const degraded = !board.ok;
 
 /**
+ * Category rails: a handful of real listings per featured category, so the homepage reads
+ * as "here is what a hackathon on this platform looks like" rather than a bare link. Limited
+ * to the categories we have a representative photo for, and only when that category actually
+ * has something open — an image over an empty section would be decoration standing in for
+ * content, which is exactly what CONTENT_AND_LAUNCH.md §1 rules out.
+ */
+const featuredCategories = FEATURED_CATEGORY_CODES.map((code) =>
+  entryPoints.categories.find((c) => c.code === code),
+)
+  .filter((c): c is { code: string; name: string; slug: string } => c !== undefined)
+  .filter((c) => (categoryCounts.find((cc) => cc.code === c.code)?.open_count ?? 0) > 0);
+
+const featuredResults = await Promise.all(
+  featuredCategories.map((c) => listOpportunities({ categoryCode: c.code, limit: 4, countryIso2 }, env)),
+);
+
+const featuredSections = featuredCategories
+  .map((category, i) => ({
+    category,
+    count: categoryCounts.find((cc) => cc.code === category.code)?.open_count ?? 0,
+    rows: featuredResults[i]?.ok ? featuredResults[i].data : [],
+    image: CATEGORY_IMAGES[category.code],
+  }))
+  .filter((section) => section.rows.length > 0);
+
+/**
  * Who may cache this, and for how long.
  *
  * The board is identical for everyone EXCEPT when it was shaped by something only this
@@ -160,63 +204,82 @@ const jsonLd = [
   feed={{ path: "/feeds/closing-soon.xml", title: "Closing this week" }}
 >
   {/* ── HERO ──────────────────────────────────────────────────────────────────
-      A real editorial hero — headline, supporting sentence, a search field that is
-      the dominant control on the page, and a small set of deliberate category
-      entry points. No image, no illustration: the promise ("checked against its
-      own source") is made in words because that is the actual product. */}
+      A real photographic banner — the platform's own people, not stock icons — beside the
+      headline, search and category entry points. The image is decorative (aria-hidden): it
+      illustrates "opportunities worth your time" in general, and carries no claim about any
+      specific listing. Suppressed entirely in low-data mode, per §10. */}
   <section class="border-b border-line bg-surface">
-    <div class="mx-auto max-w-[1160px] px-4 pt-14 pb-10 lg:pt-20 lg:pb-14">
-      <h1 class="max-w-[16ch] text-balance text-[2.25rem] leading-[1.1] font-bold tracking-[-0.02em] lg:text-[3rem]">
-        Opportunities worth your time.
-      </h1>
-      <p class="prose-measure mt-4 text-[17px] leading-7 text-ink-2">
-        Mbele tracks scholarships, fellowships, hackathons and grants open to Africa, and
-        checks each one against its own source — so the deadline you see is the one that's
-        real.
-      </p>
-
-      {/* A plain GET form to the list page: no JS, no autocomplete request, nothing
-          typed leaves the device until the reader presses the button. */}
-      <form method="get" action="/opportunities" class="mt-7 flex max-w-xl gap-2">
-        <label class="relative flex-1">
-          <span class="sr-only">Search opportunities</span>
-          <Icon
-            name="search"
-            size={20}
-            class="pointer-events-none absolute top-1/2 left-4 h-[18px] w-[18px] -translate-y-1/2 text-ink-3"
-          />
-          <input
-            type="search"
-            name="q"
-            placeholder="Search scholarships, hackathons, grants…"
-            class="h-14 w-full rounded-sheet border border-line-strong bg-surface pr-3 pl-11 text-[15px] shadow-card"
-          />
-        </label>
-        <button
-          type="submit"
-          class="h-14 shrink-0 rounded-sheet bg-brand px-6 text-dense font-semibold text-surface hover:bg-brand-ink"
-        >
-          Search
-        </button>
-      </form>
-
-      {/* A small, deliberate set of paths in — not a wall of pills. */}
+    <div class="mx-auto max-w-[1160px] px-4 pt-8 pb-10 lg:flex lg:items-center lg:gap-12 lg:pt-14 lg:pb-16">
       {
-        entryPoints.categories.length > 0 && (
-          <ul class="mt-4 flex list-none flex-wrap gap-2 p-0">
-            {entryPoints.categories.slice(0, 5).map((category) => (
-              <li>
-                <a
-                  href={`/categories/${category.slug}`}
-                  class="inline-flex min-h-11 items-center rounded-monogram border border-line px-4 text-meta font-medium text-ink-2 no-underline hover:border-line-strong hover:bg-sunken hover:text-ink"
-                >
-                  {category.name}
-                </a>
-              </li>
-            ))}
-          </ul>
+        !lowData && (
+          <div class="lg:order-2 lg:w-[44%] lg:shrink-0">
+            <Image
+              src={heroImage}
+              alt=""
+              aria-hidden="true"
+              widths={[480, 800, 1200, 1600]}
+              sizes="(min-width: 1024px) 44vw, 100vw"
+              loading="eager"
+              fetchpriority="high"
+              class="aspect-[16/10] w-full rounded-sheet object-cover shadow-card lg:aspect-[4/3]"
+            />
+          </div>
         )
       }
+
+      <div class="mt-6 lg:order-1 lg:mt-0 lg:flex-1">
+        <h1 class="max-w-[16ch] text-balance text-[2.25rem] leading-[1.1] font-bold tracking-[-0.02em] lg:text-[3rem]">
+          Opportunities worth your time.
+        </h1>
+        <p class="prose-measure mt-4 text-[17px] leading-7 text-ink-2">
+          Mbele tracks scholarships, fellowships, hackathons and grants open to Africa, and
+          checks each one against its own source — so the deadline you see is the one that's
+          real.
+        </p>
+
+        {/* A plain GET form to the list page: no JS, no autocomplete request, nothing
+            typed leaves the device until the reader presses the button. */}
+        <form method="get" action="/opportunities" class="mt-7 flex max-w-xl gap-2">
+          <label class="relative flex-1">
+            <span class="sr-only">Search opportunities</span>
+            <Icon
+              name="search"
+              size={20}
+              class="pointer-events-none absolute top-1/2 left-4 h-[18px] w-[18px] -translate-y-1/2 text-ink-3"
+            />
+            <input
+              type="search"
+              name="q"
+              placeholder="Search scholarships, hackathons, grants…"
+              class="h-14 w-full rounded-sheet border border-line-strong bg-surface pr-3 pl-11 text-[15px] shadow-card"
+            />
+          </label>
+          <button
+            type="submit"
+            class="h-14 shrink-0 rounded-sheet bg-brand px-6 text-dense font-semibold text-surface hover:bg-brand-ink"
+          >
+            Search
+          </button>
+        </form>
+
+        {/* A small, deliberate set of paths in — not a wall of pills. */}
+        {
+          entryPoints.categories.length > 0 && (
+            <ul class="mt-4 flex list-none flex-wrap gap-2 p-0">
+              {entryPoints.categories.slice(0, 5).map((category) => (
+                <li>
+                  <a
+                    href={`/categories/${category.slug}`}
+                    class="inline-flex min-h-11 items-center rounded-monogram border border-line px-4 text-meta font-medium text-ink-2 no-underline hover:border-line-strong hover:bg-sunken hover:text-ink"
+                  >
+                    {category.name}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )
+        }
+      </div>
     </div>
   </section>
 
@@ -287,7 +350,7 @@ const jsonLd = [
     {
       rows.length > 0 ? (
         <>
-          <div class="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div class="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
             {rows.map((o) => (
               <OpportunityRow opportunity={o} lowData={lowData} />
             ))}
@@ -337,16 +400,75 @@ const jsonLd = [
     }
   </section>
 
-  {/* ── BROWSE BY CATEGORY — a discovery grid, not a database index. ───────── */}
+  {/* ── FEATURED CATEGORY RAILS — "what a hackathon/scholarship/grant/internship on this
+      platform looks like", each with real listings under a representative photo. ────── */}
   {
-    entryPoints.categories.length > 0 && (
-      <section class="mx-auto max-w-[1160px] px-4 pt-14" aria-labelledby="by-kind">
-        <p class="eyebrow text-brand">Explore</p>
-        <h2 id="by-kind" class="mt-1 text-title font-bold tracking-[-0.015em]">
-          Browse by category
-        </h2>
-        <div class="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-          {entryPoints.categories.map((category) => {
+    featuredSections.map((section) => (
+      <section class="mx-auto max-w-[1160px] px-4 pt-14" aria-labelledby={`rail-${section.category.code}`}>
+        <div class="overflow-hidden rounded-sheet border border-line bg-surface shadow-card">
+          <div class="relative">
+            {!lowData && section.image && (
+              <Image
+                src={section.image}
+                alt=""
+                aria-hidden="true"
+                widths={[480, 800, 1160]}
+                sizes="100vw"
+                class="h-40 w-full object-cover lg:h-52"
+              />
+            )}
+            <div
+              class={`flex flex-wrap items-end justify-between gap-3 p-5 ${!lowData && section.image ? "absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" : ""}`}
+            >
+              <div>
+                <p class={`eyebrow ${!lowData && section.image ? "text-white/80" : "text-brand"}`}>
+                  Category
+                </p>
+                <h2
+                  id={`rail-${section.category.code}`}
+                  class={`mt-1 text-title font-bold tracking-[-0.015em] ${!lowData && section.image ? "text-white" : "text-ink"}`}
+                >
+                  {section.category.name}
+                </h2>
+              </div>
+              <a
+                href={`/categories/${section.category.slug}`}
+                class={`inline-flex min-h-11 shrink-0 items-center rounded-row border px-4 text-meta font-semibold no-underline ${
+                  !lowData && section.image
+                    ? "border-white/40 bg-black/30 text-white backdrop-blur hover:bg-black/50"
+                    : "border-line-strong bg-surface text-ink hover:bg-sunken"
+                }`}
+              >
+                View all {section.count} →
+              </a>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 gap-4 p-5 md:grid-cols-2 lg:grid-cols-4">
+            {section.rows.map((o) => (
+              <OpportunityRow opportunity={o} lowData={lowData} />
+            ))}
+          </div>
+        </div>
+      </section>
+    ))
+  }
+
+  {/* ── BROWSE BY CATEGORY — the rest of the taxonomy, as a discovery grid. The
+      categories with their own photo rail above are left out here so nothing repeats. ── */}
+  {
+    (() => {
+      const featuredCodes = new Set(featuredSections.map((s) => s.category.code));
+      const remaining = entryPoints.categories.filter((c) => !featuredCodes.has(c.code));
+      return (
+        remaining.length > 0 && (
+          <section class="mx-auto max-w-[1160px] px-4 pt-14" aria-labelledby="by-kind">
+            <p class="eyebrow text-brand">Explore</p>
+            <h2 id="by-kind" class="mt-1 text-title font-bold tracking-[-0.015em]">
+              Browse by category
+            </h2>
+            <div class="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+              {remaining.map((category) => {
             const open = categoryCounts.find((c) => c.code === category.code)?.open_count;
             return (
               <a
@@ -361,15 +483,17 @@ const jsonLd = [
                 </span>
               </a>
             );
-          })}
-        </div>
-        <p class="mt-4">
-          <a href="/categories" class="text-dense font-semibold text-brand no-underline hover:underline">
-            All categories →
-          </a>
-        </p>
-      </section>
-    )
+              })}
+            </div>
+            <p class="mt-4">
+              <a href="/categories" class="text-dense font-semibold text-brand no-underline hover:underline">
+                All categories →
+              </a>
+            </p>
+          </section>
+        )
+      );
+    })()
   }
 
   {/* ── BROWSE BY LOCATION — compact, correctable, part of the product. ────── */}

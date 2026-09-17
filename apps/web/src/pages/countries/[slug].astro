@@ -210,7 +210,7 @@ const description = !country
     week.length > 0 && (
       <section class="mt-8" aria-labelledby="this-week">
         <h2 id="this-week" class="text-subtitle font-semibold">Closing this week</h2>
-        <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {week.map((row) => (
             <OpportunityRow opportunity={row} lowData={lowData} />
           ))}
@@ -225,7 +225,7 @@ const description = !country
         <h2 id="all-open" class="text-subtitle font-semibold">
           {week.length > 0 ? "Also open" : "Open now"}
         </h2>
-        <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {rest.map((row) => (
             <OpportunityRow opportunity={row} lowData={lowData} />
           ))}
@@ -252,7 +252,7 @@ const description = !country
     cells.length > 0 && (
       <section class="mt-10 border-t border-line pt-6" aria-labelledby="by-kind">
         <h2 id="by-kind" class="text-subtitle font-semibold">By kind, open to {country.name}</h2>
-        <div class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        <div class="mt-4 grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3">
           {withPages.map((cell) => (
             <a
               href={`/countries/${country.slug}/${cell.category_slug}`}
